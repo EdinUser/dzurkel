@@ -29,6 +29,9 @@ window borders to resize, or maximize it using the KDE title bar. Your chosen
 size is retained across previews until the process exits; reopening on a smaller
 screen fits it to that screen. Images retain their proportions as the window
 changes size, and PDF pages scale to the available width.
+Files without a content preview temporarily use a compact information window.
+Opening an image, PDF, or text preview restores your previous preview size and
+maximized state.
 
 Click **Settings** at the bottom right of the preview to open desktop setup and
 see available preview support. **Use Space in Dolphin** backs up the affected

@@ -16,6 +16,8 @@
 #include <QTextStream>
 #include <QVBoxLayout>
 #include <QWindow>
+#include <QResizeEvent>
+#include <QTimer>
 #include <algorithm>
 
 namespace dzurkel {
@@ -108,7 +110,57 @@ void PreviewWindow::setStatus(const QString &status)
 }
 QSize PreviewWindow::previewSize() const
 {
-    return (contentHost_->size() * devicePixelRatioF()).boundedTo(QSize(2048, 2048)).expandedTo(QSize(1, 1));
+    // A compact fallback must not reduce the next image's decode resolution.
+    QSize target = informationMode_ ? previewContentSize_ : contentHost_->size();
+    if (screen()) target = target.boundedTo(screen()->availableGeometry().size());
+    return (target * devicePixelRatioF()).boundedTo(QSize(2048, 2048)).expandedTo(QSize(1, 1));
+}
+void PreviewWindow::setInformationMode(bool information)
+{
+    if (!information && !informationMode_) return;
+    const QPoint center = geometry().center();
+    const auto minimized = windowState() & Qt::WindowMinimized;
+    if (information) {
+        if (!informationMode_) {
+            previewWindowState_ = windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+            previewWindowSize_ = previewWindowState_ ? normalGeometry().size() : size();
+            previewContentSize_ = contentHost_->size();
+        }
+        informationMode_ = true;
+        informationRestorePending_ = isMaximized() || isFullScreen();
+        // Unmaximize temporarily; do not request activation when loading ends.
+        setWindowState(minimized);
+        fitInformation();
+    } else {
+        informationMode_ = false;
+        informationRestorePending_ = false;
+        resize(previewWindowSize_);
+        setWindowState(previewWindowState_ | minimized);
+    }
+    if (!isMaximized() && !isFullScreen()) {
+        move(center - rect().center());
+        fitScreen(screen());
+    }
+}
+void PreviewWindow::fitInformation()
+{
+    layout()->invalidate();
+    const int width = std::clamp(content_ ? content_->sizeHint().width() + 40 : 480, 380, 560);
+    const int height = std::max(layout()->totalHeightForWidth(width), layout()->minimumSize().height());
+    resize(width, height);
+    fitScreen(screen());
+}
+void PreviewWindow::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    if (informationRestorePending_ && event->spontaneous() && !isMaximized() && !isFullScreen()) {
+        informationRestorePending_ = false;
+        // Wayland's restore configure can supersede the initial resize. Fit
+        // again after that native resize, then leave manual resizing alone.
+        QTimer::singleShot(0, this, [this] {
+            if (informationMode_ && isVisible() && !isMaximized() && !isFullScreen()) fitInformation();
+        });
+    }
 }
 void PreviewWindow::showEvent(QShowEvent *event)
 {

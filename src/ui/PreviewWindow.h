@@ -18,6 +18,7 @@ public:
     // Takes ownership; replacing content destroys its widgets/documents.
     void setContent(QWidget *content);
     void setStatus(const QString &status);
+    void setInformationMode(bool information);
     QSize previewSize() const;
 signals:
     void dismissed();
@@ -26,12 +27,19 @@ protected:
     void hideEvent(QHideEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void changeEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 private:
+    void fitInformation();
     void watchScreen(QScreen *screen);
     void fitScreen(QScreen *screen);
     bool diagnostics_;
     bool shown_ = false;
     bool trackingScreen_ = false;
+    bool informationMode_ = false;
+    bool informationRestorePending_ = false;
+    QSize previewWindowSize_;
+    QSize previewContentSize_;
+    Qt::WindowStates previewWindowState_;
     QMetaObject::Connection screenGeometryConnection_;
     QWidget *contentHost_;
     QWidget *content_ = nullptr;

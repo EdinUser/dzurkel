@@ -4,6 +4,12 @@ Dzurkel renders content in one reusable window. Space or Escape dismisses the
 preview; the process stays resident until `dzurkel --quit`. Mouse-wheel scrolling
 works in documents and text. Previewing does not execute or edit file contents.
 
+Information-only views automatically shrink to fit their icon and text. This is
+temporary: a supported content preview restores the previous preview dimensions
+and maximized state, fitting the current display. Resizing an information window
+does not replace the remembered content-preview size. Repeated information views
+remain compact, and image decoding still targets the larger preview size.
+
 ## Supported content
 
 | Content | Behavior |

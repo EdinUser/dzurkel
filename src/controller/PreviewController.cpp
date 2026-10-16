@@ -69,6 +69,7 @@ void PreviewController::startPending()
             window_.setContent(PreviewRegistry::createWidget(data, nullptr));
             window_.setStatus(data.kind == PreviewKind::Information ? QString()
                 : (data.message.isEmpty() ? data.detail : data.message));
+            window_.setInformationMode(data.kind == PreviewKind::Information);
         }
         if (pending_ && window_.isVisible()) startPending();
     });

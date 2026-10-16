@@ -40,12 +40,89 @@ private slots:
     void textAndPdfChildrenDoNotConsumeDismissal();
     void repeatedlyReplacesAndReleasesProviders();
     void retainedPdfRuntimeStillReleasesEachDocument();
+    void informationFallbackTemporarilyCompactsWindow();
+    void informationFallbackRestoresMaximizedPreview();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
 };
+
+void PreviewTest::informationFallbackTemporarilyCompactsWindow()
+{
+    const QString unsupported = write(QStringLiteral("compact.zip"), QByteArray::fromHex("00010203ff"));
+    const QString text = write(QStringLiteral("compact-return.txt"), "A readable preview\n");
+    const QString imagePath = directory_.filePath(QStringLiteral("compact-return.png"));
+    QImage image(1600, 900, QImage::Format_RGB32);
+    image.fill(Qt::blue);
+    QVERIFY(image.save(imagePath));
+    std::atomic<int> targetWidth = 0;
+    PreviewController controller(false, [&targetWidth](const FileResource &resource, const QSize &target, const Cancellation &cancel) {
+        targetWidth.store(target.width());
+        return PreviewRegistry::load(resource, target, cancel);
+    });
+    QString error;
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    window->resize(740, 700);
+    QCoreApplication::processEvents();
+    const QSize previewSize = window->size();
+    QVERIFY(controller.show(unsupported, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("information"));
+    QVERIFY(window->width() <= 560);
+    QVERIFY(window->height() < 500);
+    QVERIFY(window->grab().save(QStringLiteral("preview-information-compact.png")));
+    controller.hide();
+    QVERIFY(controller.show(unsupported, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(window->width() <= 560);
+    // Compact window resizing must not replace the remembered preview size.
+    window->resize(500, 400);
+    QVERIFY(controller.show(imagePath, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("image"));
+    QTRY_COMPARE(window->size(), previewSize);
+    QVERIFY(targetWidth.load() > 600);
+    QVERIFY(controller.show(unsupported, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_COMPARE(window->size(), previewSize);
+    QVERIFY(controller.show(unsupported, error));
+    window->showMinimized();
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(window->isMinimized());
+}
+
+void PreviewTest::informationFallbackRestoresMaximizedPreview()
+{
+    const QString text = write(QStringLiteral("maximized-return.txt"), "Text preview\n");
+    const QString pdf = makePdf();
+    const QString unsupported = write(QStringLiteral("maximized.bin"), QByteArray::fromHex("00010203ff"));
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    const QSize normalSize = window->size();
+    window->showMaximized();
+    QTRY_VERIFY(window->isMaximized());
+    // Wait for the compositor's maximize configure, not just Qt's local flag.
+    QTRY_VERIFY(window->size() != normalSize);
+    QVERIFY(controller.show(unsupported, error));
+    QTRY_VERIFY(!controller.loading());
+    // Wayland acknowledges maximize/restore requests asynchronously.
+    QTRY_VERIFY(!window->isMaximized());
+    QTRY_VERIFY(window->width() <= 560);
+    QVERIFY(controller.show(pdf, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
+    QTRY_VERIFY(window->isMaximized());
+}
 
 void PreviewTest::retainedPdfRuntimeStillReleasesEachDocument()
 {
