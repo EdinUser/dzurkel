@@ -96,7 +96,10 @@ or screen transfer through Dolphin: those interactions remain manual below.
 ## Dolphin acceptance remains manual
 
 Version 0.4.0 is installed locally with the executable, service menu, and hidden
-application identity. Shortcut assignment,
+application identity. The user confirmed that resizing works and reported that
+the window "kind of remembers the size." Size retention is process-local and
+may be reduced to fit a smaller display; full cross-monitor retention remains
+unverified. Shortcut assignment,
 selected-file delivery through Dolphin, keyboard focus restoration, display
 scaling, multiple monitors, and themes still require the
 [desktop acceptance checklist](dolphin-integration.md). No existing shortcut has
