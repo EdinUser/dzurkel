@@ -1,5 +1,7 @@
 # Dzurkel
 
+**Peek-a-Dzurkel!**
+
 Dzurkel (Дзъркел, Bulgarian slang for “eye”) is a standalone C++20 / Qt 6
 Widgets file-preview application for Fedora KDE Wayland.
 
@@ -20,10 +22,6 @@ running instance succeed without starting one. Relative paths resolve against
 the invoking client's directory. Invalid requests leave the current preview
 unchanged. Image, PDF, and text rendering remain planned for Milestone 2.
 
-The [D-Bus API](docs/dbus-api.md) works independently of Dolphin. Private planning
-and milestone work notes live in the ignored `helpers/` directory and are not
-included in Git.
-
 ## Build and run
 
 On Fedora:
@@ -37,9 +35,10 @@ ctest --test-dir build --output-on-failure
 ```
 
 CMake 3.22+ and Qt 6.4+ Core, Gui, Widgets, DBus, and Test are required. The
-minimum Qt version is a configured baseline, not a compatibility certification; see the
-[test report](docs/testing.md) for the version actually tested. Tests also require
-`dbus-run-session` (Fedora package `dbus-daemon`). No PDF or KDE Frameworks development packages are needed for this milestone.
+minimum Qt version is a configured baseline, not a compatibility certification;
+see the [test report](docs/testing.md) for the version actually tested. Tests also
+require `dbus-run-session` (Fedora package `dbus-daemon`). No PDF or KDE Frameworks
+development packages are needed for this milestone.
 
 ```bash
 ./build/dzurkel --help
@@ -53,8 +52,8 @@ minimum Qt version is a configured baseline, not a compatibility certification; 
 
 Remote URLs and directories are rejected. File contents are never executed or
 modified. Diagnostic logging is opt-in for a new primary process and reports its
-PID,
-Qt platform, and activation changes. It does not reconfigure an existing service.
+PID, Qt platform, and activation changes. It does not reconfigure an existing
+service.
 
 ## Dolphin integration
 
@@ -88,3 +87,12 @@ the old resident process.
 
 To remove this user-local installation, remove only the two installed files
 listed above; retain your source checkout and any unrelated menu entries.
+
+## Documentation
+
+- [Dolphin integration](docs/dolphin-integration.md): shortcut setup, desktop
+  checks, and Wayland focus limitations.
+- [D-Bus API](docs/dbus-api.md): control Dzurkel independently of Dolphin,
+  inspect preview state, and handle errors.
+- [Testing and validation](docs/testing.md): supported test environment,
+  automated checks, memory measurements, and pending desktop verification.
