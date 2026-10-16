@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Service
+Name=Dzurkel
+MimeType=application/octet-stream;
+Actions=dzurkel;
+X-KDE-Protocols=file
+X-KDE-RequiredNumberOfUrls=1
+X-KDE-Priority=TopLevel
+
+[Desktop Action dzurkel]
+Name=Dzurkel
+Icon=preview
+Exec="@DZURKEL_EXEC@" --show -- %u

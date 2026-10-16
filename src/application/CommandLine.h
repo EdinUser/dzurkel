@@ -1,0 +1,13 @@
+#pragma once
+#include <QStringList>
+
+namespace dzurkel {
+enum class Command { Show, Hide, Toggle, Quit, Help, Version };
+struct Request {
+    Command command = Command::Show;
+    QString url;
+    bool diagnostics = false;
+};
+bool parseCommandLine(const QStringList &arguments, Request &request, QString &error);
+QString commandLineHelp();
+} // namespace dzurkel

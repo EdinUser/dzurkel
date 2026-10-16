@@ -1,0 +1,5 @@
+/build*/
+/CMakeUserPresets.json
+
+# Private specifications and implementation notes.
+/helpers/
