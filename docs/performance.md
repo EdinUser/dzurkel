@@ -91,6 +91,12 @@ sanitizer suppression remain documented in [testing](testing.md).
 
 ## Measured results: 2026-10-16
 
+These benchmark and size results describe version 0.5.0. Version 0.5.1 adds a
+lazily created Settings dialog and shortcut setup using existing Qt libraries;
+its stripped executable is 196,160 bytes (191.6 KiB), with no additional shared
+library dependency. The figures below are retained as the 0.5.0 optimization
+baseline; the long-run measurements have not been repeated for 0.5.1.
+
 Fedora 44, Qt 6.11.2, GCC 16.2.1; shared system libraries and KDE activation
 enabled. The original Debug executable was 6,258,680 bytes. The size-focused
 stripped executable is **133,504 bytes (130.4 KiB)**; including both desktop

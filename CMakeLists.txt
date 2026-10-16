@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.5.0 LANGUAGES CXX)
+project(Dzurkel VERSION 0.5.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,6 +19,7 @@ add_library(dzurkel_core STATIC
     src/application/InstanceCoordinator.cpp
     src/controller/PreviewController.cpp
     src/desktop/DesktopIntegration.cpp
+    src/desktop/DolphinShortcuts.cpp
     src/ipc/PreviewService.cpp
     src/preview/PreviewRegistry.cpp
     src/preview/providers/ImagePreviewProvider.cpp
@@ -27,6 +28,7 @@ add_library(dzurkel_core STATIC
     src/preview/providers/FileInfoProvider.cpp
     src/resources/FileResource.cpp
     src/ui/PreviewWindow.cpp
+    src/ui/SettingsDialog.cpp
 )
 target_include_directories(dzurkel_core PUBLIC src)
 target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets)

@@ -17,11 +17,14 @@ ctest --preset compact
 
 Five suites pass:
 
-- Qt Test: 22 checks including setup/cleanup, resource validation, special and
+- Qt Test: 25 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
   Space/Escape dismissal with child focus, Shift+Space dismissal, Ctrl+Space
   preservation, 85% initial geometry, enlargement beyond the default, resize
-  retention on reopening, and live light/dark palette propagation.
+  retention on reopening, live light/dark palette propagation, Settings link
+  keyboard behavior and dialog reuse, shortcut backup/restore with alternate
+  bindings and unrelated toolbar edits preserved, malformed/custom-scheme
+  rejection, and refusal to overwrite newer managed-shortcut changes.
 - Preview providers: 23 checks including setup/cleanup cover PNG/JPEG/BMP,
   orientation, image budgets, UTF-8/16/32 and Latin-1, newline normalization,
   text truncation/binary fallback, multipage/encrypted/damaged/oversized PDFs,
@@ -124,7 +127,7 @@ or screen transfer through Dolphin: those interactions remain manual below.
 
 ## Dolphin acceptance remains manual
 
-Version 0.5.0's compact stripped build is installed locally with the executable, service menu, and hidden
+Version 0.5.1's compact stripped build is installed locally with the executable, service menu, and hidden
 application identity. The user confirmed that resizing works and reported that
 the window "kind of remembers the size." Size retention is process-local and
 may be reduced to fit a smaller display; full cross-monitor retention remains
@@ -133,6 +136,12 @@ selected-file delivery through Dolphin, keyboard focus restoration, display
 scaling, multiple monitors, and themes still require the
 [desktop acceptance checklist](dolphin-integration.md). No existing shortcut has
 been changed by the implementation.
+
+The preview now has a Settings link and a desktop setup dialog. Automated setup
+tests use temporary configuration/backup paths; the agent did not apply shortcuts
+to the user's Dolphin configuration. Opening Settings performs no writes. The
+dialog screenshot was inspected; end-to-end setup, restart, Space invocation and
+Restore through the real Dolphin installation remain manual checks.
 
 `desktop-file-validate` flags `MimeType` and `Actions` for KDE's documented
 `Type=Service`: its freedesktop schema does not recognize that KDE combination.

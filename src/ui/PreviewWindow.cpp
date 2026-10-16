@@ -1,4 +1,5 @@
 #include "PreviewWindow.h"
+#include "SettingsDialog.h"
 #include "desktop/DesktopIntegration.h"
 #include "resources/FileResource.h"
 #include <QApplication>
@@ -8,6 +9,8 @@
 #include <QHideEvent>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QPushButton>
+#include <QHBoxLayout>
 #include <QScreen>
 #include <QShowEvent>
 #include <QTextStream>
@@ -47,7 +50,25 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     status_ = addLabel({});
     status_->setObjectName(QStringLiteral("previewStatus"));
     status_->hide();
-    addLabel(QStringLiteral("Space or Escape to close"));
+    auto *footer = new QHBoxLayout;
+    footer->addWidget(new QLabel(QStringLiteral("Space or Escape to close"), this));
+    footer->addStretch();
+    auto *settings = new QPushButton(QStringLiteral("Settings"), this);
+    settings->setObjectName(QStringLiteral("settingsLink"));
+    settings->setFlat(true);
+    settings->setCursor(Qt::PointingHandCursor);
+    auto linkFont = settings->font();
+    linkFont.setUnderline(true);
+    settings->setFont(linkFont);
+    settings->setAccessibleDescription(QStringLiteral("Open Dzurkel desktop and preview settings"));
+    footer->addWidget(settings);
+    layout->addLayout(footer);
+    connect(settings, &QPushButton::clicked, this, [this] {
+        if (!settings_) settings_ = new SettingsDialog(this);
+        settings_->show();
+        settings_->raise();
+        settings_->activateWindow();
+    });
     qApp->installEventFilter(this);
 }
 PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics) : PreviewWindow(diagnostics)
@@ -74,6 +95,7 @@ void PreviewWindow::setContent(QWidget *content)
     if (content_) {
         content_->setParent(contentHost_);
         contentLayout_->addWidget(content_);
+        if (settings_ && settings_->isVisible()) return;
         if (content_->focusProxy() || content_->focusPolicy() != Qt::NoFocus)
             content_->setFocus(Qt::OtherFocusReason);
         else setFocus(Qt::OtherFocusReason);
@@ -147,6 +169,9 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
         const bool dismiss = (key->key() == Qt::Key_Space
             && (key->modifiers() == Qt::NoModifier || key->modifiers() == Qt::ShiftModifier))
             || (key->key() == Qt::Key_Escape && key->modifiers() == Qt::NoModifier);
+        // Space on the Settings link activates the focused button.
+        if (key->key() == Qt::Key_Space && target->objectName() == QStringLiteral("settingsLink"))
+            return QWidget::eventFilter(watched, event);
         if (dismiss) {
             key->accept();
             if (event->type() == QEvent::KeyPress && !key->isAutoRepeat()) close();
@@ -157,6 +182,7 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 }
 void PreviewWindow::hideEvent(QHideEvent *event)
 {
+    if (settings_) settings_->hide();
     QWidget::hideEvent(event);
     emit dismissed();
 }

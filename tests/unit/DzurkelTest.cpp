@@ -2,6 +2,8 @@
 #include "application/CommandLine.h"
 #include "controller/PreviewController.h"
 #include "ui/PreviewWindow.h"
+#include "ui/SettingsDialog.h"
+#include "desktop/DolphinShortcuts.h"
 
 #include <QFile>
 #include <QLabel>
@@ -11,6 +13,8 @@
 #include <QScreen>
 #include <QPlainTextEdit>
 #include <QScopeGuard>
+#include <QPushButton>
+#include <QStandardPaths>
 
 class DzurkelTest : public QObject {
     Q_OBJECT
@@ -28,7 +32,98 @@ private slots:
     void windowStartsLargeAndRetainsResizing();
     void shiftSpaceDismissesButControlSpaceDoesNot();
     void followsLightAndDarkPalettes();
+    void shortcutSetupPreservesAndRestores();
+    void shortcutSetupRejectsMalformedAndNewerChanges();
+    void settingsLinkIsReusedAndKeyboardIndependent();
 };
+
+void DzurkelTest::shortcutSetupPreservesAndRestores()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("dolphinui.rc"));
+    const QString backup = directory.filePath(QStringLiteral("backup.json"));
+    auto put = [&](const QByteArray &bytes) {
+        QFile file(path);
+        return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size();
+    };
+    auto get = [&] { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); };
+    QVERIFY(put("<gui name=\"dolphin\" version=\"60\"><!--Keep comment--><ToolBar name=\"main\">Keep me</ToolBar>"
+        "<ActionProperties><Action name=\"custom\" shortcut=\"Space; Ctrl+J\" icon=\"folder\"/>"
+        "<Action name=\"unrelated\" shortcut=\"Ctrl+K\"/></ActionProperties></gui>"));
+    dzurkel::DolphinShortcuts shortcuts(path, backup);
+    QString error;
+    QVERIFY2(shortcuts.useSpace(error), qPrintable(error));
+    QVERIFY(shortcuts.usesSpace());
+    QVERIFY(shortcuts.hasBackup());
+    const auto configured = get();
+    QVERIFY(configured.contains("shortcut=\"Ctrl+J\""));
+    QVERIFY(configured.contains("shortcut=\"Ctrl+K\""));
+    QVERIFY(configured.contains("Keep comment"));
+    QVERIFY(configured.contains("icon=\"folder\""));
+    QVERIFY(!shortcuts.useSpace(error));
+    QCOMPARE(get(), configured);
+    QVERIFY(put(QByteArray(configured).replace("Keep me", "New toolbar text")));
+    QVERIFY2(shortcuts.restore(error), qPrintable(error));
+    QVERIFY(!shortcuts.usesSpace());
+    QVERIFY(!shortcuts.hasBackup());
+    QVERIFY(get().contains("New toolbar text"));
+    QVERIFY(get().contains("shortcut=\"Space; Ctrl+J\""));
+    QVERIFY(get().contains("shortcut=\"Ctrl+K\""));
+}
+
+void DzurkelTest::shortcutSetupRejectsMalformedAndNewerChanges()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("dolphinui.rc"));
+    dzurkel::DolphinShortcuts shortcuts(path, directory.filePath(QStringLiteral("backup.json")));
+    auto put = [&](const QByteArray &bytes) {
+        QFile file(path);
+        return file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size();
+    };
+    auto get = [&] { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); };
+    QString error;
+    QVERIFY(put("<gui name=\"dolphin\"><ActionProperties scheme=\"Custom\"/></gui>"));
+    QVERIFY(!shortcuts.useSpace(error));
+    QVERIFY(!shortcuts.hasBackup());
+    QVERIFY(put("<gui broken"));
+    QVERIFY(!shortcuts.useSpace(error));
+    QCOMPARE(get(), QByteArray("<gui broken"));
+    QVERIFY(!shortcuts.hasBackup());
+    QVERIFY(QFile::remove(path));
+    QVERIFY2(shortcuts.useSpace(error), qPrintable(error));
+    QVERIFY(shortcuts.usesSpace());
+    // A later user shortcut edit must not be silently replaced by Restore.
+    QVERIFY(put(get().replace("shortcut=\"Space\"", "shortcut=\"Ctrl+P\"")));
+    const auto changed = get();
+    QVERIFY(!shortcuts.restore(error));
+    QCOMPARE(get(), changed);
+    QVERIFY(shortcuts.hasBackup());
+}
+
+void DzurkelTest::settingsLinkIsReusedAndKeyboardIndependent()
+{
+    QStandardPaths::setTestModeEnabled(true);
+    const auto restorePaths = qScopeGuard([] { QStandardPaths::setTestModeEnabled(false); });
+    dzurkel::PreviewWindow window;
+    window.show();
+    auto *link = window.findChild<QPushButton *>(QStringLiteral("settingsLink"));
+    QVERIFY(link);
+    link->setFocus();
+    QTest::keyClick(link, Qt::Key_Space);
+    auto *dialog = window.findChild<dzurkel::SettingsDialog *>();
+    QVERIFY(dialog);
+    QVERIFY(dialog->isVisible());
+    QVERIFY(window.isVisible());
+    QTest::keyClick(dialog, Qt::Key_Escape);
+    QVERIFY(!dialog->isVisible());
+    QVERIFY(window.isVisible());
+    QTest::mouseClick(link, Qt::LeftButton);
+    QCOMPARE(window.findChildren<dzurkel::SettingsDialog *>().size(), 1);
+    QVERIFY(dialog->isVisible());
+    QVERIFY(dialog->grab().save(QStringLiteral("settings-dialog.png")));
+    window.hide();
+    QVERIFY(!dialog->isVisible());
+}
 
 void DzurkelTest::shiftSpaceDismissesButControlSpaceDoesNot()
 {

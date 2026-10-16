@@ -30,6 +30,12 @@ size is retained across previews until the process exits; reopening on a smaller
 screen fits it to that screen. Images retain their proportions as the window
 changes size, and PDF pages scale to the available width.
 
+Click **Settings** at the bottom right of the preview to open desktop setup and
+see available preview support. **Use Space in Dolphin** backs up the affected
+bindings and reassigns Space; **Restore previous shortcuts** undoes that setup
+while preserving unrelated settings. Close Dolphin before applying or restoring,
+then reopen it. Opening Settings alone changes nothing and needs no sudo.
+
 ## Build and run
 
 On Fedora:

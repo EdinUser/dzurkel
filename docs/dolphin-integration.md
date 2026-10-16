@@ -15,13 +15,39 @@ Dolphin supplied the right URL: verify the path shown by the actual menu action.
 
 ## Desktop acceptance checklist
 
+The preview's bottom-right **Settings** link opens desktop setup and the current
+preview-support list. For automatic Space setup, close Dolphin, choose **Use
+Space in Dolphin**, then reopen Dolphin. This changes per-user bindings only;
+it neither needs sudo nor runs automatically when Settings opens. It removes
+unmodified Space (including sequences beginning with Space) from explicit
+conflicting bindings and overrides Dolphin's default selection binding, keeping
+alternate shortcuts. The Dzurkel action becomes `Space`.
+
+A record of affected shortcut attributes is stored under
+`$XDG_CONFIG_HOME/dzurkel/dolphin-space-backup.json` (normally `~/.config/`).
+**Restore previous shortcuts** restores those attributes and keeps unrelated
+toolbar or shortcut edits. If a managed shortcut was changed after setup,
+restoration refuses to overwrite the newer choice. The integration must be
+installed before the setup button is enabled; viewer-package installation
+remains a deferred feature.
+
+The helper edits the user-local `kxmlgui5/dolphin/dolphinui.rc` beneath
+`XDG_DATA_HOME` (normally `~/.local/share/`), using the service action ID
+`servicemenu_dzurkel.desktop::dzurkel`. Malformed or ambiguous XML and direct
+symlinks are refused. End-to-end application of the changed bindings still needs
+the real Dolphin checks below.
+
+Automatic setup currently supports Dolphin's Default shortcut scheme. For a
+custom scheme, use Dolphin's shortcut editor; setup refuses to alter custom or
+ambiguous scheme sections.
+
 Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 
 - [ ] One selected file exposes **Dzurkel**; multiple selections do not.
 - [ ] Context-menu invocation displays the selected file's correct path.
 - [ ] Paths containing spaces and Unicode survive menu invocation unchanged.
 - [ ] The Dzurkel action is available in Dolphin's shortcut configuration.
-- [ ] Assign Space manually, reviewing conflicts without erasing existing bindings.
+- [ ] Assign Space using Settings or Dolphin's shortcut editor; verify backup/restore.
 - [ ] Select a file and press Space; preview opens and receives keyboard focus.
 - [ ] Press Space again; the window closes and Dolphin is usable immediately.
 - [ ] Repeat with Escape and Alt+F4 for dismissal.
@@ -41,7 +67,8 @@ within the running process, fitting a smaller screen on reopening. Screen and
 available-geometry changes also fit a normal window to its current display. The Wayland
 compositor controls final placement and activation; positioning is best effort.
 The app does not force focus, stay on top, inject global keys, inspect Dolphin,
-or change its settings. Closing the window lets the compositor restore focus.
+or change its settings unless shortcut setup is explicitly selected. Closing
+the window lets the compositor restore focus.
 
 KDE builds forward the launcher's `XDG_ACTIVATION_TOKEN` to the resident window
 through KDE WindowSystem's public activation API. A hidden application desktop

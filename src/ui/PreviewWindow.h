@@ -1,11 +1,13 @@
 #pragma once
 #include <QWidget>
+#include <QPointer>
 
 class QLabel;
 class QVBoxLayout;
 class QScreen;
 namespace dzurkel {
 struct FileResource;
+class SettingsDialog;
 class PreviewWindow : public QWidget {
     Q_OBJECT
 public:
@@ -35,5 +37,6 @@ private:
     QWidget *content_ = nullptr;
     QVBoxLayout *contentLayout_;
     QLabel *status_;
+    QPointer<SettingsDialog> settings_;
 };
 } // namespace dzurkel
