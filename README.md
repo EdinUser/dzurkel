@@ -5,7 +5,7 @@
 Dzurkel (Дзъркел, Bulgarian slang for “eye”) is a standalone C++20 / Qt 6
 Widgets file-preview application for Fedora KDE Wayland.
 
-## Current scope: Milestone 3
+## Current scope: Milestone 4
 
 Dzurkel previews images, PDFs, and plain text for local paths or `file://` URLs.
 Unsupported files, directories, links, and special objects get an information
@@ -35,7 +35,8 @@ changes size, and PDF pages scale to the available width.
 On Fedora:
 
 ```bash
-sudo dnf install gcc-c++ cmake make qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
+sudo dnf install gcc-c++ cmake make qt6-qtbase-devel qt6-qtpdf-devel \
+  kf6-kwindowsystem-devel dbus-daemon python3 desktop-file-utils
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
@@ -50,6 +51,13 @@ version actually tested. Tests also require `dbus-run-session` (Fedora package
 Qt-only build is available with `-DDZURKEL_WITH_KDE_ACTIVATION=OFF`; activation
 of an existing window is then best effort without token forwarding to KDE. The
 optional `qt6-qtimageformats` package enables additional image readers.
+
+For a tested, size-focused Fedora installation, run
+`./packaging/fedora/install.sh`. It builds and tests the checkout, then installs
+a stripped executable into `~/.local`. See [installation and staging](docs/installation.md)
+for dependency checks, custom prefixes, and removal. Development Debug builds
+above retain symbols; optimized configurations are available as
+`cmake --preset release` and `cmake --preset compact`.
 
 ```bash
 ./build/dzurkel --help
@@ -102,6 +110,10 @@ listed above; retain your source checkout and any unrelated menu entries.
 
 ## Documentation
 
+- [Fedora installation](docs/installation.md): tested source installation,
+  staging, dependency checks, and removal.
+- [Performance and footprint](docs/performance.md): optimization settings,
+  latency measurements, private memory, and stability checks.
 - [File previews](docs/previews.md): supported content, scrolling, encoding,
   resource limits, and fallback behavior.
 - [Dolphin integration](docs/dolphin-integration.md): shortcut setup, desktop

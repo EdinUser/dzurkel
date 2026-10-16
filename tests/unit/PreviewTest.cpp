@@ -39,12 +39,32 @@ private slots:
     void dismissalPreventsResurrection();
     void textAndPdfChildrenDoNotConsumeDismissal();
     void repeatedlyReplacesAndReleasesProviders();
+    void retainedPdfRuntimeStillReleasesEachDocument();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
 };
+
+void PreviewTest::retainedPdfRuntimeStillReleasesEachDocument()
+{
+    const QString file = makePdf();
+    PreviewController controller;
+    for (int i = 0; i < 8; ++i) {
+        QString error;
+        QVERIFY2(controller.show(file, error), qPrintable(error));
+        QTRY_VERIFY(!controller.loading());
+        QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
+        auto *view = controller.window()->findChild<QPdfView *>();
+        QVERIFY(view);
+        QPointer<QPdfDocument> previous = view->document();
+        QVERIFY(previous);
+        controller.hide();
+        QTRY_VERIFY(previous.isNull());
+        QVERIFY(!controller.window()->findChild<QPdfView *>());
+    }
+}
 
 void PreviewTest::initTestCase()
 {

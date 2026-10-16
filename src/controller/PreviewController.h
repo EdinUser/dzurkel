@@ -26,6 +26,9 @@ private:
     struct Job { FileResource resource; QSize target; quint64 generation; };
     void startPending();
     void cancelAndClear();
+    // Empty document keeps Qt's PDF runtime initialized after the first PDF.
+    // Declare before the window so its runtime outlives any displayed document.
+    std::unique_ptr<QPdfDocument> pdfRuntime_;
     PreviewWindow window_;
     QThreadPool pool_;
     QPointer<QFutureWatcher<PreviewData>> watcher_;

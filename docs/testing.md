@@ -5,26 +5,29 @@
 Validated on 2026-10-16 with Fedora 44 KDE, Plasma 6.7.5, Dolphin 26.08.1,
 Qt 6.11.2, CMake 4.3.0, and GCC 16.2.1. The desktop session uses Wayland.
 
-## Milestone 3 automated checks
+## Milestone 4 automated checks
 
 Configure and build using the README, then run:
 
 ```bash
-ctest --test-dir build --output-on-failure
+cmake --preset compact
+cmake --build --preset compact
+ctest --preset compact
 ```
 
-Four suites pass:
+Five suites pass:
 
 - Qt Test: 22 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
   Space/Escape dismissal with child focus, Shift+Space dismissal, Ctrl+Space
   preservation, 85% initial geometry, enlargement beyond the default, resize
   retention on reopening, and live light/dark palette propagation.
-- Preview providers: 22 checks including setup/cleanup cover PNG/JPEG/BMP,
+- Preview providers: 23 checks including setup/cleanup cover PNG/JPEG/BMP,
   orientation, image budgets, UTF-8/16/32 and Latin-1, newline normalization,
   text truncation/binary fallback, multipage/encrypted/damaged/oversized PDFs,
   directories/links/FIFOs, safe file replacement, bounded request coalescing,
-  cancellation, child-widget dismissal, and repeated provider/document release.
+  cancellation, child-widget dismissal, and repeated provider/document release,
+  including actual-document release with the retained empty PDF runtime.
 - Isolated D-Bus: eight checks including setup/cleanup, absent-instance no-ops,
   headless secondary forwarding, caller-relative paths, visibility-based Toggle,
   resource errors, ten show/hide cycles, eight simultaneous startup contenders,
@@ -33,6 +36,9 @@ Four suites pass:
   without changing the previous preview.
 - Headless CLI: 12 cases covering help/version, conflicting commands, unexpected
   file arguments, missing arguments/files, and unsupported schemes/options.
+- Staged installation: exact three-file manifest, desktop permissions and IDs,
+  stripped binary version, and Show/Hide/Quit through headless secondary commands
+  against the installed executable on its own session bus.
 
 D-Bus tests use `dbus-run-session` and Qt's offscreen backend. They require local
 Unix sockets; restricted sandboxes may need permission to create a test bus.
@@ -47,7 +53,7 @@ were visually inspected; these do not verify Breeze theme switching on Plasma.
 
 ## Sanitizers and PDF cleanup
 
-An AddressSanitizer/UndefinedBehaviorSanitizer build passes all four suites with
+An AddressSanitizer/UndefinedBehaviorSanitizer build passes all five suites with
 leak detection enabled and a narrow Qt PDF suppression:
 
 ```bash
@@ -73,6 +79,29 @@ The PDF widget explicitly stops and releases renderer threads through the public
 render-mode setter before deletion, avoiding the installed Qt version's viewer
 thread leak. Document and backing-file ownership are tested across replacements.
 
+## Fedora packaging and optimization
+
+Release and MinSizeRel/LTO builds pass all five suites. The Fedora script was
+also run from a fresh build directory with prefix `/opt/Dzurkel test` and a
+checkout-local `DESTDIR`. Build, tests, desktop validation, and stripped install
+succeeded without writing to `/opt` or modifying the source. A fresh Fedora VM
+has not been tested; the declared package preflight was checked on the environment
+above. This is a source installation script, not an RPM or byte-identical build
+guarantee. See [installation](installation.md).
+
+The repeatable [performance harness](performance.md) records ready-state latency,
+RSS, PSS, private pages, threads, and repeated-provider stability. Its raw reports
+live in ignored build directories. Reported latency excludes any claim about
+first-painted-frame timing. The performance document records measured results
+and distinguishes shared dependency size from the installed executable.
+
+The final compact run completed 2,000 previews and clean shutdown. Hidden private
+memory varied by only 4 KiB during the final 100 cycles. A separate native Wayland
+run completed 40 previews; native private memory was 39.5 MiB after ten cycles.
+Thirty repeated PDF reloads also exited cleanly under ASan/UBSan with leak
+detection enabled. See the performance report for fixture details and limits;
+the offscreen plateau does not establish a native long-run memory plateau.
+
 ## Native Wayland lifecycle and memory
 
 An isolated-bus native Wayland check successfully cycled through image, PDF,
@@ -95,7 +124,7 @@ or screen transfer through Dolphin: those interactions remain manual below.
 
 ## Dolphin acceptance remains manual
 
-Version 0.4.0 is installed locally with the executable, service menu, and hidden
+Version 0.5.0's compact stripped build is installed locally with the executable, service menu, and hidden
 application identity. The user confirmed that resizing works and reported that
 the window "kind of remembers the size." Size retention is process-local and
 may be reduced to fit a smaller display; full cross-monitor retention remains

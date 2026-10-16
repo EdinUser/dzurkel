@@ -1,0 +1,39 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release baseline",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "$env{HOME}/.local",
+        "BUILD_TESTING": "ON",
+        "DZURKEL_BUILD_BENCHMARKS": "ON",
+        "DZURKEL_ENABLE_IPO": "OFF",
+        "DZURKEL_GC_SECTIONS": "OFF"
+      }
+    },
+    {
+      "name": "compact",
+      "displayName": "Size-focused application with LTO",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build-compact",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "DZURKEL_ENABLE_IPO": "ON",
+        "DZURKEL_GC_SECTIONS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release", "jobs": 2 },
+    { "name": "compact", "configurePreset": "compact", "jobs": 2 }
+  ],
+  "testPresets": [
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "compact", "configurePreset": "compact", "output": { "outputOnFailure": true } }
+  ]
+}

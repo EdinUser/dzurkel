@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.4.0 LANGUAGES CXX)
+project(Dzurkel VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,28 @@ add_executable(dzurkel src/main.cpp)
 target_link_libraries(dzurkel PRIVATE dzurkel_core)
 target_compile_definitions(dzurkel PRIVATE DZURKEL_VERSION="${PROJECT_VERSION}")
 
+option(DZURKEL_ENABLE_IPO "Enable link-time optimization for optimized app builds" OFF)
+option(DZURKEL_GC_SECTIONS "Remove unused application code/data sections on Linux" OFF)
+if(DZURKEL_ENABLE_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error LANGUAGES CXX)
+    if(NOT ipo_supported)
+        message(FATAL_ERROR "Requested link-time optimization is unavailable: ${ipo_error}")
+    endif()
+    set_target_properties(dzurkel_core dzurkel PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+        INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE
+        INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+endif()
+if(DZURKEL_GC_SECTIONS)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "Section removal requires the supported Linux GCC/Clang toolchain")
+    endif()
+    target_compile_options(dzurkel_core PRIVATE -ffunction-sections -fdata-sections)
+    target_compile_options(dzurkel PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(dzurkel PRIVATE -Wl,--gc-sections)
+endif()
+
 # Escape the executable for both desktop-entry string and Exec parsing rules.
 set(DZURKEL_EXEC "${CMAKE_INSTALL_FULL_BINDIR}/dzurkel")
 string(REPLACE "\\" "\\\\\\\\" DZURKEL_EXEC "${DZURKEL_EXEC}")
@@ -57,6 +79,18 @@ install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/dzurkel.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/kio/servicemenus)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-application.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications RENAME dzurkel.desktop)
+
+option(DZURKEL_BUILD_BENCHMARKS "Build the isolated-session latency and stability tool" OFF)
+if(DZURKEL_BUILD_BENCHMARKS)
+    add_executable(dzurkel_benchmark tests/performance/PreviewBenchmark.cpp)
+    target_link_libraries(dzurkel_benchmark PRIVATE Qt6::Gui Qt6::DBus)
+    target_compile_definitions(dzurkel_benchmark PRIVATE
+        DZURKEL_EXECUTABLE="$<TARGET_FILE:dzurkel>" DZURKEL_VERSION="${PROJECT_VERSION}")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(dzurkel_benchmark PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_dependencies(dzurkel_benchmark dzurkel)
+endif()
 
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
@@ -78,5 +112,15 @@ if(BUILD_TESTING)
     set_tests_properties(dzurkel_dbus PROPERTIES TIMEOUT 60)
     add_test(NAME dzurkel_cli COMMAND ${CMAKE_COMMAND}
         -DDZURKEL=$<TARGET_FILE:dzurkel>
+        -DEXPECTED_VERSION=${PROJECT_VERSION}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/CommandLine.cmake)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME dzurkel_install COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/InstallTest.py
+        --build-dir ${CMAKE_CURRENT_BINARY_DIR}
+        --cmake ${CMAKE_COMMAND}
+        --bindir ${CMAKE_INSTALL_FULL_BINDIR}
+        --datadir ${CMAKE_INSTALL_FULL_DATADIR}
+        --version ${PROJECT_VERSION})
+    set_tests_properties(dzurkel_install PROPERTIES TIMEOUT 60)
 endif()

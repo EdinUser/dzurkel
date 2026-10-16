@@ -5,6 +5,7 @@
 #include <QImageReader>
 #include <QLabel>
 #include <QLayout>
+#include <QPdfDocument>
 #include <QTimer>
 #include <QtConcurrentRun>
 
@@ -60,6 +61,11 @@ void PreviewController::startPending()
             && data.kind != PreviewKind::Cancelled) {
             kind_ = data.kind;
             loading_ = false;
+            // Repeatedly initializing/destroying PDFium is costly and grows
+            // allocator retention on Qt 6.11. Keep only its runtime alive;
+            // each actual document and backing file still dies on dismissal.
+            if (data.kind == PreviewKind::Pdf && !pdfRuntime_)
+                pdfRuntime_ = std::make_unique<QPdfDocument>();
             window_.setContent(PreviewRegistry::createWidget(data, nullptr));
             window_.setStatus(data.kind == PreviewKind::Information ? QString()
                 : (data.message.isEmpty() ? data.detail : data.message));
