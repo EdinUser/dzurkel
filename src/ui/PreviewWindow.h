@@ -37,6 +37,9 @@ private:
     bool trackingScreen_ = false;
     bool informationMode_ = false;
     bool informationRestorePending_ = false;
+    bool mappingResizePending_ = false;
+    QSize mappedWindowSize_;
+    QSize requestedWindowSize_;
     QSize previewWindowSize_;
     QSize previewContentSize_;
     Qt::WindowStates previewWindowState_;

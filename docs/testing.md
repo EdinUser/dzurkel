@@ -25,7 +25,7 @@ Five suites pass:
   keyboard behavior and dialog reuse, shortcut backup/restore with alternate
   bindings and unrelated toolbar edits preserved, malformed/custom-scheme
   rejection, and refusal to overwrite newer managed-shortcut changes.
-- Preview providers: 25 checks including setup/cleanup cover PNG/JPEG/BMP,
+- Preview providers: 26 checks including setup/cleanup cover PNG/JPEG/BMP,
   orientation, image budgets, UTF-8/16/32 and Latin-1, newline normalization,
   text truncation/binary fallback, multipage/encrypted/damaged/oversized PDFs,
   directories/links/FIFOs, safe file replacement, bounded request coalescing,
@@ -130,7 +130,7 @@ or screen transfer through Dolphin: those interactions remain manual below.
 
 ## Dolphin acceptance remains manual
 
-Version 0.5.2's compact stripped build is installed locally with the executable, service menu, and hidden
+Version 0.5.3's compact stripped build is installed locally with the executable, service menu, and hidden
 application identity. The user confirmed that resizing works and reported that
 the window "kind of remembers the size." Size retention is process-local and
 may be reduced to fit a smaller display; full cross-monitor retention remains
@@ -146,9 +146,12 @@ to the user's Dolphin configuration. Opening Settings performs no writes. The
 dialog screenshot was inspected; end-to-end setup, restart, Space invocation and
 Restore through the real Dolphin installation remain manual checks.
 
-Temporary compact information-window sizing and restoration also passed two
-targeted native Wayland tests. The compact metadata screenshot was visually
-inspected. This does not resolve the separate Dolphin shortcut acceptance checks.
+Temporary compact information-window sizing and restoration passed three
+targeted native Wayland tests, including four cold-information/PDF close/reopen
+cycles with content teardown and late compositor-configure checks. Captures show
+the icon and metadata immediately in the compact view and a restored large PDF
+view. Initial native attempts encountered exposure timeouts; standalone reruns
+passed. This does not resolve the separate Dolphin shortcut acceptance checks.
 
 `desktop-file-validate` flags `MimeType` and `Actions` for KDE's documented
 `Type=Service`: its freedesktop schema does not recognize that KDE combination.

@@ -97,6 +97,7 @@ void PreviewWindow::setContent(QWidget *content)
     if (content_) {
         content_->setParent(contentHost_);
         contentLayout_->addWidget(content_);
+        content_->show();
         if (settings_ && settings_->isVisible()) return;
         if (content_->focusProxy() || content_->focusPolicy() != Qt::NoFocus)
             content_->setFocus(Qt::OtherFocusReason);
@@ -134,6 +135,7 @@ void PreviewWindow::setInformationMode(bool information)
     } else {
         informationMode_ = false;
         informationRestorePending_ = false;
+        requestedWindowSize_ = previewWindowSize_;
         resize(previewWindowSize_);
         setWindowState(previewWindowState_ | minimized);
     }
@@ -144,7 +146,9 @@ void PreviewWindow::setInformationMode(bool information)
 }
 void PreviewWindow::fitInformation()
 {
+    contentLayout_->activate();
     layout()->invalidate();
+    layout()->activate();
     const int width = std::clamp(content_ ? content_->sizeHint().width() + 40 : 480, 380, 560);
     const int height = std::max(layout()->totalHeightForWidth(width), layout()->minimumSize().height());
     resize(width, height);
@@ -153,6 +157,21 @@ void PreviewWindow::fitInformation()
 void PreviewWindow::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
+    if (mappingResizePending_ && event->spontaneous()) {
+        mappingResizePending_ = false;
+        if (event->size() == mappedWindowSize_) {
+            // A late initial configure can restore the size used when mapping,
+            // superseding a provider's subsequent compact/restore request.
+            QTimer::singleShot(0, this, [this] {
+                if (!isVisible() || isMaximized() || isFullScreen()) return;
+                if (informationMode_) fitInformation();
+                else {
+                    resize(requestedWindowSize_);
+                    fitScreen(screen());
+                }
+            });
+        }
+    }
     if (informationRestorePending_ && event->spontaneous() && !isMaximized() && !isFullScreen()) {
         informationRestorePending_ = false;
         // Wayland's restore configure can supersede the initial resize. Fit
@@ -180,6 +199,9 @@ void PreviewWindow::showEvent(QShowEvent *event)
             if (!isMaximized()) move(area.center() - rect().center());
             shown_ = true;
             watchScreen(target);
+            mappedWindowSize_ = size();
+            requestedWindowSize_ = size();
+            mappingResizePending_ = true;
         }
     }
     QWidget::showEvent(event);
@@ -234,6 +256,7 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 }
 void PreviewWindow::hideEvent(QHideEvent *event)
 {
+    mappingResizePending_ = false;
     if (settings_) settings_->hide();
     QWidget::hideEvent(event);
     emit dismissed();

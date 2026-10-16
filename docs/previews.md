@@ -9,6 +9,8 @@ temporary: a supported content preview restores the previous preview dimensions
 and maximized state, fitting the current display. Resizing an information window
 does not replace the remembered content-preview size. Repeated information views
 remain compact, and image decoding still targets the larger preview size.
+The icon and metadata appear without manual resizing, including on first open;
+closing an information view does not make the next PDF preview compact.
 
 ## Supported content
 

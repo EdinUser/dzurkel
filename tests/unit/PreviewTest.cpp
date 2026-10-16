@@ -14,6 +14,7 @@
 #include <QSemaphore>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QScreen>
 #include <QtEndian>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -42,12 +43,52 @@ private slots:
     void retainedPdfRuntimeStillReleasesEachDocument();
     void informationFallbackTemporarilyCompactsWindow();
     void informationFallbackRestoresMaximizedPreview();
+    void coldInformationThenReopenedPdfKeepsContentAndSize();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
 };
+
+void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
+{
+    const QString unsupported = write(QStringLiteral("cold-information.zip"), QByteArray::fromHex("504b030400010203ff"));
+    const QString pdf = makePdf();
+    PreviewController controller;
+    QString error;
+    for (int cycle = 0; cycle < 4; ++cycle) {
+        QVERIFY(controller.show(unsupported, error));
+        QTRY_VERIFY(!controller.loading());
+        auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        // Allow a late compositor configure to arrive after provider completion.
+        QTest::qWait(100);
+        auto *info = window->findChild<QWidget *>(QStringLiteral("fileInfoPreview"));
+        QVERIFY(info);
+        QTRY_VERIFY(info->isVisible());
+        QTRY_VERIFY(info->height() >= 150);
+        QTRY_VERIFY(window->height() >= 280);
+        QVERIFY(window->width() <= 560);
+        QVERIFY(window->height() < 500);
+        if (cycle == 3) QVERIFY(window->grab().save(QStringLiteral("preview-cold-information.png")));
+        controller.hide();
+        // Match user dismissal: allow content teardown before another CLI show.
+        QTRY_VERIFY(!window->findChild<QWidget *>(QStringLiteral("fileInfoPreview")));
+        QVERIFY(controller.show(pdf, error));
+        QTRY_VERIFY(!controller.loading());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTest::qWait(100);
+        QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
+        const QSize area = window->screen()->availableGeometry().size();
+        QTRY_VERIFY(window->width() >= area.width() * 80 / 100);
+        QTRY_VERIFY(window->height() >= area.height() * 80 / 100);
+        QVERIFY(window->findChild<QPdfView *>()->isVisible());
+        if (cycle == 3) QVERIFY(window->grab().save(QStringLiteral("preview-reopened-pdf.png")));
+        controller.hide();
+        QTRY_VERIFY(!window->findChild<QPdfView *>());
+    }
+}
 
 void PreviewTest::informationFallbackTemporarilyCompactsWindow()
 {
