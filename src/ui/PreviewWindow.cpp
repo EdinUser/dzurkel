@@ -1,20 +1,18 @@
 #include "PreviewWindow.h"
 #include "resources/FileResource.h"
-
+#include <QApplication>
 #include <QCursor>
-#include <QTextStream>
 #include <QEvent>
 #include <QFileInfo>
-#include <QGuiApplication>
+#include <QHideEvent>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QScreen>
-#include <QShortcut>
+#include <QTextStream>
 #include <QVBoxLayout>
-
 #include <algorithm>
 
 namespace dzurkel {
-
 PreviewWindow::PreviewWindow(bool diagnostics)
     : QWidget(nullptr, Qt::Window | Qt::FramelessWindowHint), diagnostics_(diagnostics)
 {
@@ -22,10 +20,9 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     setAccessibleName(windowTitle());
     setFocusPolicy(Qt::StrongFocus);
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(24, 24, 24, 24);
-    layout->setSpacing(16);
-
-    auto addLabel = [this, layout](const QString &text) {
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(10);
+    const auto addLabel = [this, layout](const QString &text) {
         auto *label = new QLabel(text, this);
         label->setTextFormat(Qt::PlainText);
         label->setWordWrap(true);
@@ -33,45 +30,36 @@ PreviewWindow::PreviewWindow(bool diagnostics)
         layout->addWidget(label);
         return label;
     };
-    auto *name = addLabel(QString());
+    auto *name = addLabel({});
     name->setObjectName(QStringLiteral("fileName"));
-    QFont font = name->font();
+    auto font = name->font();
     font.setBold(true);
-    font.setPointSizeF(font.pointSizeF() * 1.3);
     name->setFont(font);
-    auto *path = addLabel(QString());
-    path->setObjectName(QStringLiteral("filePath"));
-    layout->addStretch();
+    addLabel({})->setObjectName(QStringLiteral("filePath"));
+    contentHost_ = new QWidget(this);
+    contentHost_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    contentLayout_ = new QVBoxLayout(contentHost_);
+    contentLayout_->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(contentHost_, 1);
+    status_ = addLabel({});
+    status_->setObjectName(QStringLiteral("previewStatus"));
+    status_->hide();
     addLabel(QStringLiteral("Space or Escape to close"));
-
-    for (const auto key : {Qt::Key_Space, Qt::Key_Escape}) {
-        auto *shortcut = new QShortcut(QKeySequence(key), this);
-        shortcut->setContext(Qt::WindowShortcut);
-        shortcut->setAutoRepeat(false);
-        connect(shortcut, &QShortcut::activated, this, &QWidget::close);
-    }
-
+    qApp->installEventFilter(this);
     QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
-    if (!screen) {
-        screen = QGuiApplication::primaryScreen();
-    }
+    if (!screen) screen = QGuiApplication::primaryScreen();
     if (screen) {
         const QRect area = screen->availableGeometry();
-        const QSize limit(std::max(1, area.width() * 4 / 5),
-                          std::max(1, area.height() * 4 / 5));
+        const QSize limit(std::max(1, area.width() * 4 / 5), std::max(1, area.height() * 4 / 5));
         setMaximumSize(limit);
-        resize(QSize(560, 240).boundedTo(limit));
-        // Wayland compositors may choose the final top-level position.
+        resize(QSize(800, 640).boundedTo(limit));
         move(area.center() - rect().center());
     }
 }
-
-PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics)
-    : PreviewWindow(diagnostics)
+PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics) : PreviewWindow(diagnostics)
 {
     setResource(resource);
 }
-
 void PreviewWindow::setResource(const FileResource &resource)
 {
     const QString name = QFileInfo(resource.path).fileName();
@@ -80,13 +68,48 @@ void PreviewWindow::setResource(const FileResource &resource)
     findChild<QLabel *>(QStringLiteral("fileName"))->setText(name);
     findChild<QLabel *>(QStringLiteral("filePath"))->setText(resource.path);
 }
-
+void PreviewWindow::setContent(QWidget *content)
+{
+    delete content_;
+    content_ = content;
+    if (content_) {
+        content_->setParent(contentHost_);
+        contentLayout_->addWidget(content_);
+        content_->setFocus(Qt::OtherFocusReason);
+    }
+}
+void PreviewWindow::setStatus(const QString &status)
+{
+    status_->setText(status);
+    status_->setVisible(!status.isEmpty());
+}
+QSize PreviewWindow::previewSize() const
+{
+    return (contentHost_->size() * devicePixelRatioF()).boundedTo(QSize(2048, 2048)).expandedTo(QSize(1, 1));
+}
+bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    auto *target = qobject_cast<QWidget *>(watched);
+    if (isVisible() && target && target->window() == this
+        && (event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride)) {
+        auto *key = static_cast<QKeyEvent *>(event);
+        if (key->modifiers() == Qt::NoModifier && (key->key() == Qt::Key_Space || key->key() == Qt::Key_Escape)) {
+            key->accept();
+            if (event->type() == QEvent::KeyPress && !key->isAutoRepeat()) close();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+void PreviewWindow::hideEvent(QHideEvent *event)
+{
+    QWidget::hideEvent(event);
+    emit dismissed();
+}
 void PreviewWindow::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
-    if (diagnostics_ && event->type() == QEvent::ActivationChange) {
+    if (diagnostics_ && event->type() == QEvent::ActivationChange)
         QTextStream(stderr) << "Dzurkel window active: " << isActiveWindow() << '\n';
-    }
 }
-
 } // namespace dzurkel

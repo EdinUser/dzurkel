@@ -5,11 +5,12 @@
 Dzurkel (Дзъркел, Bulgarian slang for “eye”) is a standalone C++20 / Qt 6
 Widgets file-preview application for Fedora KDE Wayland.
 
-## Current scope: Milestone 1
+## Current scope: Milestone 2
 
-Dzurkel displays the filename and absolute path for one readable local file or
-`file://` URL. One primary process owns the session-bus service and reuses one
-preview window. Later CLI invocations forward their commands to that process.
+Dzurkel previews images, PDFs, and plain text for local paths or `file://` URLs.
+Unsupported files, directories, links, and special objects get an information
+view. One primary process owns the session-bus service and reuses one preview
+window. Later CLI invocations forward their commands to that process.
 
 - `dzurkel <file>` or `dzurkel --show <file>` opens or replaces the preview.
 - `dzurkel --hide` dismisses it while the service stays resident.
@@ -20,25 +21,27 @@ preview window. Later CLI invocations forward their commands to that process.
 Space, Escape, and ordinary window close hide the preview. Hide/Quit with no
 running instance succeed without starting one. Relative paths resolve against
 the invoking client's directory. Invalid requests leave the current preview
-unchanged. Image, PDF, and text rendering remain planned for Milestone 2.
+unchanged. Content loads asynchronously, and newer requests supersede unfinished
+previews. See [supported formats and limits](docs/previews.md).
 
 ## Build and run
 
 On Fedora:
 
 ```bash
-sudo dnf install gcc-c++ cmake make qt6-qtbase-devel
+sudo dnf install gcc-c++ cmake make qt6-qtbase-devel qt6-qtpdf-devel
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/dzurkel --show "README.md"
 ```
 
-CMake 3.22+ and Qt 6.4+ Core, Gui, Widgets, DBus, and Test are required. The
-minimum Qt version is a configured baseline, not a compatibility certification;
-see the [test report](docs/testing.md) for the version actually tested. Tests also
-require `dbus-run-session` (Fedora package `dbus-daemon`). No PDF or KDE Frameworks
-development packages are needed for this milestone.
+CMake 3.22+ and Qt 6.4+ Core, Gui, Widgets, DBus, Concurrent, Pdf, PdfWidgets,
+and Test are required. The minimum Qt version is a configured baseline, not a
+compatibility certification; see the [test report](docs/testing.md) for the
+version actually tested. Tests also require `dbus-run-session` (Fedora package
+`dbus-daemon`). KDE Frameworks development packages are not required. The
+optional `qt6-qtimageformats` package enables additional image readers.
 
 ```bash
 ./build/dzurkel --help
@@ -50,10 +53,10 @@ development packages are needed for this milestone.
 ./build/dzurkel --quit
 ```
 
-Remote URLs and directories are rejected. File contents are never executed or
-modified. Diagnostic logging is opt-in for a new primary process and reports its
-PID, Qt platform, and activation changes. It does not reconfigure an existing
-service.
+Remote URLs are rejected. Directories and symbolic links show information only.
+File contents are never executed or modified. Diagnostic logging is opt-in for a
+new primary process and reports its PID, Qt platform, and activation changes. It
+does not reconfigure an existing service.
 
 ## Dolphin integration
 
@@ -73,9 +76,9 @@ before building rather than overriding it at install time. With a custom
 
 Right-click one local file in Dolphin and choose **Dzurkel**. If needed, enable
 it under Dolphin's context-menu settings and reopen Dolphin. In Dolphin 26.04+,
-open **Configure Keyboard Shortcuts**, search for **Dzurkel**, and assign
-Space manually. Review any conflict before changing an existing binding. If
-Space conflicts or does not work, test Shift+Space and record the result.
+open **Configure Keyboard Shortcuts**, search for **Dzurkel**, and assign Space
+manually. Review any conflict before changing an existing binding. If Space
+conflicts or does not work, test Shift+Space and record the result.
 
 Follow [the integration checklist](docs/dolphin-integration.md) to validate
 shortcut and focus behavior on your desktop. Installing the menu does not assign
@@ -90,6 +93,8 @@ listed above; retain your source checkout and any unrelated menu entries.
 
 ## Documentation
 
+- [File previews](docs/previews.md): supported content, scrolling, encoding,
+  resource limits, and fallback behavior.
 - [Dolphin integration](docs/dolphin-integration.md): shortcut setup, desktop
   checks, and Wayland focus limitations.
 - [D-Bus API](docs/dbus-api.md): control Dzurkel independently of Dolphin,

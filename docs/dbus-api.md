@@ -1,4 +1,4 @@
-# Dzurkel D-Bus API (Milestone 1)
+# Dzurkel D-Bus API (Milestone 2)
 
 Dzurkel owns one service on the user session bus:
 
@@ -6,14 +6,13 @@ Dzurkel owns one service on the user session bus:
 - Object: `/io/github/EdinUser/Dzurkel/Previewer`
 - Interface: `io.github.EdinUser.Dzurkel.Previewer1`
 
-These project identifiers replace the original specification's provisional
-QuickLook names. They remain provisional until the first public release.
+These project identifiers remain provisional until the first public release.
 
 ## Methods
 
 | Method | Behavior |
 | --- | --- |
-| `Show(string url)` | Show or replace the current filename preview. |
+| `Show(string url)` | Show or replace the current content preview. |
 | `Hide()` | Hide the window while keeping the service resident. |
 | `Toggle(string url)` | Hide a visible window; otherwise show the supplied URL. |
 | `Quit()` | Acknowledge the request and gracefully terminate the service. |
@@ -22,10 +21,17 @@ QuickLook names. They remain provisional until the first public release.
 ignores its unused URL, including invalid URLs. Invalid Show requests or Toggle
 requests while hidden return an error and preserve the previous preview/state.
 
-Read-only properties `Visible` (boolean) and `FileUrl` (string) expose window
-visibility and the last successfully displayed URL through standard D-Bus
-Properties.Get. `FileUrl` remains available while hidden. Properties do not
-currently emit change notifications.
+Read-only properties are available through standard D-Bus Properties.Get:
+
+- `Visible` (boolean): whether the window is shown, including its loading state.
+- `FileUrl` (string): the last accepted URL; retained while hidden.
+- `Loading` (boolean): whether the current preview is being prepared.
+- `PreviewKind` (string): `loading`, `image`, `pdf`, `text`, `information`, or
+  `none` (hidden/cleared).
+
+Decoder failure produces an `information` preview with an explanation.
+Directory, link, and special-object requests are accepted as metadata-only
+previews. Properties do not currently emit change notifications.
 
 ## Errors
 
@@ -34,12 +40,12 @@ Errors use the prefix `io.github.EdinUser.Dzurkel.Error.`:
 - `InvalidUrl`: malformed/relative URLs, remote file hosts, queries, or fragments.
 - `UnsupportedScheme`: non-file URL schemes.
 - `NotFound`: the local file does not exist.
-- `NotRegularFile`: a directory or other non-regular resource.
 - `NotReadable`: permissions or file-open failure.
 
-Only lightweight validation and filename replacement happen synchronously.
-There is no file decoding in this milestone. Future providers must keep command
-acknowledgements responsive and discard obsolete asynchronous results.
+Only lightweight resource validation and the loading view happen before command
+acknowledgement. Image/text/PDF loading runs on a bounded worker queue. New
+requests and dismissal invalidate obsolete results. Decoding errors after
+acceptance appear as a fallback view, rather than a delayed D-Bus error reply.
 
 ## Example
 
@@ -52,8 +58,8 @@ gdbus call --session \
   --method io.github.EdinUser.Dzurkel.Previewer1.Hide
 ```
 
-There is no D-Bus auto-activation file yet. CLI Show/Toggle can create the primary
-instance. Hide/Quit against an absent service are successful CLI no-ops.
+There is no D-Bus auto-activation file yet. CLI Show/Toggle can create the
+primary instance. Hide/Quit against an absent service are successful CLI no-ops.
 
 ## Ownership and delivery
 
@@ -64,6 +70,7 @@ retrying a potentially applied Toggle. An owner disappearing before delivery can
 trigger another ownership attempt. The resident process retains one window;
 Space, Escape, and ordinary window close dismiss it without ending the service.
 
-[Qt service-name ownership](https://doc.qt.io/qt-6/qdbusconnectioninterface.html)
-and [D-Bus error replies](https://doc.qt.io/qt-6/qdbuscontext.html) describe the
-public APIs used here.
+[Qt service-name
+ownership](https://doc.qt.io/qt-6/qdbusconnectioninterface.html) and [D-Bus
+error replies](https://doc.qt.io/qt-6/qdbuscontext.html) describe the public
+APIs used here.

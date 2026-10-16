@@ -6,7 +6,7 @@ Build and install using the README. Select exactly one local regular file in
 Dolphin. The service menu restricts selection to one URL and the `file` protocol;
 `%u` passes that URL directly to the application, without a shell wrapper.
 
-The app displays the resolved filename and path. Check these against your
+The window displays the resolved filename and path above its content preview. Check these against your
 selection, especially when using spaces, Unicode, `#`, `%`, quotes, or `$` in a
 filename. Start a fresh primary with `--diagnostics` from a terminal to log the Qt
 platform, PID, and window activation changes. The displayed path and D-Bus
@@ -44,7 +44,7 @@ monitor/scaling, and desktop versions. Do not report the interaction as verified
 based only on an offscreen test or successful build.
 
 Milestone 0 is accepted only when selected-file delivery and repeated
-open/dismiss/return behavior are demonstrated on the target desktop. Milestone 1
+open/dismiss/return behavior are demonstrated on the target desktop. The app
 reuses the existing window and process across invocations. Test both
 fresh-process and resident-process launches; Wayland activation may differ.
 Quit any old resident binary before testing an updated installation.

@@ -14,10 +14,14 @@ class PreviewService : public QObject, protected QDBusContext {
     Q_CLASSINFO("D-Bus Interface", "io.github.EdinUser.Dzurkel.Previewer1")
     Q_PROPERTY(bool Visible READ isVisible)
     Q_PROPERTY(QString FileUrl READ fileUrl)
+    Q_PROPERTY(QString PreviewKind READ previewKind)
+    Q_PROPERTY(bool Loading READ loading)
 public:
     explicit PreviewService(PreviewController &controller);
     bool isVisible() const;
     QString fileUrl() const;
+    QString previewKind() const;
+    bool loading() const;
 public slots:
     void Show(const QString &url);
     void Hide();

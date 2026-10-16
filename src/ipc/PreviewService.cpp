@@ -8,6 +8,8 @@ namespace dzurkel {
 PreviewService::PreviewService(PreviewController &controller) : controller_(controller) {}
 bool PreviewService::isVisible() const { return controller_.isVisible(); }
 QString PreviewService::fileUrl() const { return controller_.fileUrl(); }
+QString PreviewService::previewKind() const { return controller_.previewKind(); }
+bool PreviewService::loading() const { return controller_.loading(); }
 
 void PreviewService::open(const QString &url, bool toggle)
 {
@@ -28,7 +30,6 @@ void PreviewService::open(const QString &url, bool toggle)
     switch (failure) {
     case ResourceError::UnsupportedScheme: suffix = QStringLiteral("UnsupportedScheme"); break;
     case ResourceError::NotFound: suffix = QStringLiteral("NotFound"); break;
-    case ResourceError::NotRegularFile: suffix = QStringLiteral("NotRegularFile"); break;
     case ResourceError::NotReadable: suffix = QStringLiteral("NotReadable"); break;
     default: suffix = QStringLiteral("InvalidUrl"); break;
     }

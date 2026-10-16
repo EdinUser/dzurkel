@@ -18,7 +18,7 @@ private slots:
     void resolvesRelativePaths();
     void rejectsInvalidResources_data();
     void rejectsInvalidResources();
-    void rejectsDirectories();
+    void describesDirectories();
     void rejectsUnreadableFiles();
     void dismissesWithKeyboard_data();
     void dismissesWithKeyboard();
@@ -143,13 +143,13 @@ void DzurkelTest::rejectsInvalidResources()
     QVERIFY(resource.path.isEmpty());
 }
 
-void DzurkelTest::rejectsDirectories()
+void DzurkelTest::describesDirectories()
 {
     QTemporaryDir directory;
     dzurkel::FileResource resource;
     QString error;
-    QVERIFY(!dzurkel::resolveFileResource(directory.path(), resource, error));
-    QVERIFY(error.contains(QStringLiteral("regular file")));
+    QVERIFY(dzurkel::resolveFileResource(directory.path(), resource, error));
+    QVERIFY(resource.informationOnly);
 }
 
 void DzurkelTest::rejectsUnreadableFiles()

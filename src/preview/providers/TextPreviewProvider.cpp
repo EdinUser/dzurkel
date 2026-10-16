@@ -1,0 +1,93 @@
+#include "TextPreviewProvider.h"
+#include <QFile>
+#include <QFontDatabase>
+#include <QPlainTextEdit>
+#include <QStringDecoder>
+
+namespace dzurkel {
+bool TextPreviewProvider::supports(const QMimeType &mime) const
+{
+    return mime.inherits(QStringLiteral("text/plain"))
+        || mime.inherits(QStringLiteral("application/json"))
+        || mime.inherits(QStringLiteral("application/xml"))
+        || mime.name().endsWith(QStringLiteral("+json"))
+        || mime.name().endsWith(QStringLiteral("+xml"));
+}
+PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData data,
+                                    const QSize &, const Cancellation &cancel) const
+{
+    QByteArray bytes = file->read(ByteLimit + 1);
+    if (file->error() != QFileDevice::NoError) {
+        data.message = QStringLiteral("Text could not be read: %1").arg(file->errorString());
+        return data;
+    }
+    data.truncated = bytes.size() > ByteLimit;
+    bytes.truncate(ByteLimit);
+    auto encoding = QStringConverter::encodingForData(bytes).value_or(QStringConverter::Utf8);
+    const auto flags = data.truncated ? QStringConverter::Flag::Default : QStringConverter::Flag::Stateless;
+    QStringDecoder decoder(encoding, flags);
+    QString text = decoder(bytes);
+    data.detail = QString::fromLatin1(QStringConverter::nameForEncoding(encoding));
+    if (decoder.hasError()) {
+        if (encoding != QStringConverter::Utf8) {
+            data.message = QStringLiteral("The declared text encoding is damaged.");
+            return data;
+        }
+        text = QString::fromLatin1(bytes);
+        data.detail = QStringLiteral("Latin-1 fallback; encoding not detected");
+    }
+    int controls = 0;
+    for (const auto character : text) {
+        if (character.isNull()) {
+            data.message = QStringLiteral("Binary data detected; no text preview is available.");
+            return data;
+        }
+        if ((character.category() == QChar::Other_Control) && character != QChar('\n') && character != QChar('\r')
+            && character != QChar('\t') && character != QChar('\f')) ++controls;
+    }
+    if (controls > qMax(1, int(text.size() / 100))) {
+        data.message = QStringLiteral("Binary control characters detected; no text preview is available.");
+        return data;
+    }
+    // QPlainTextEdit treats these as paragraph breaks too. Normalize them
+    // before applying the line budget, including standalone classic-Mac CR.
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    text.replace(QChar('\r'), QChar('\n'));
+    text.replace(QChar::LineSeparator, QChar('\n'));
+    text.replace(QChar::ParagraphSeparator, QChar('\n'));
+    QString bounded;
+    bounded.reserve(text.size());
+    int lines = 1;
+    int column = 0;
+    for (auto character : text) {
+        if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
+        if (character == QChar('\n')) {
+            if (++lines > LineLimit) { data.truncated = true; break; }
+            column = 0;
+            bounded += character;
+        } else if (++column <= LineLengthLimit) {
+            if ((character.category() == QChar::Other_Control) && character != QChar('\r') && character != QChar('\t')
+                && character != QChar('\f')) character = QChar::ReplacementCharacter;
+            bounded += character;
+        } else if (column == LineLengthLimit + 1) {
+            bounded += QStringLiteral(" … [line shortened]");
+            data.truncated = true;
+        }
+    }
+    data.text = std::move(bounded);
+    data.kind = PreviewKind::Text;
+    data.message.clear();
+    if (data.truncated) data.message = QStringLiteral("Partial preview — limited to 2 MiB, 20,000 lines, and 16,384 characters per line.");
+    return data;
+}
+QWidget *TextPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const
+{
+    auto *view = new QPlainTextEdit(parent);
+    view->setObjectName(QStringLiteral("textPreview"));
+    view->setReadOnly(true);
+    view->setLineWrapMode(QPlainTextEdit::NoWrap);
+    view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    view->setPlainText(data.text);
+    return view;
+}
+} // namespace dzurkel

@@ -12,7 +12,7 @@ function(check_cli expected_code expected_text)
 endfunction()
 
 check_cli(0 "Usage:" --help)
-check_cli(0 "dzurkel 0.2.0" --version)
+check_cli(0 "dzurkel 0.3.0" --version)
 check_cli(2 "exactly one local file")
 check_cli(2 "exactly one local file" first second)
 check_cli(2 "Choose exactly one command" --hide --quit)

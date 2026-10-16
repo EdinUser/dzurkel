@@ -88,6 +88,7 @@ void DBusTest::startPrimary()
     QVERIFY(primary_.waitForStarted());
     QTRY_VERIFY_WITH_TIMEOUT(registered(), 5000);
     QTRY_VERIFY(property(QStringLiteral("Visible")).toBool());
+    QTRY_VERIFY(!property(QStringLiteral("Loading")).toBool());
 }
 void DBusTest::initTestCase()
 {
@@ -157,8 +158,7 @@ void DBusTest::returnsResourceErrors()
         {QStringLiteral("https://example.com/file"), QStringLiteral("UnsupportedScheme")},
         {QStringLiteral("file:///tmp/invalid%ZZ"), QStringLiteral("InvalidUrl")},
         {QStringLiteral("file://remote/tmp/test"), QStringLiteral("InvalidUrl")},
-        {QUrl::fromLocalFile(directory_.filePath(QStringLiteral("missing"))).toString(), QStringLiteral("NotFound")},
-        {QUrl::fromLocalFile(directory_.path()).toString(), QStringLiteral("NotRegularFile")}
+        {QUrl::fromLocalFile(directory_.filePath(QStringLiteral("missing"))).toString(), QStringLiteral("NotFound")}
     };
     for (const auto &entry : cases) {
         const auto reply = call(QStringLiteral("Show"), {entry.first});

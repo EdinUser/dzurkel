@@ -1,0 +1,5 @@
+# Qt 6.11.2: failed/password-protected loads allocate FPDFAvail, but
+# QPdfDocument::close() returns early when its document pointer is null.
+# This narrowly suppresses that dependency allocation, not Dzurkel objects.
+# https://github.com/qt/qtwebengine/blob/v6.11.2/src/pdf/qpdfdocument.cpp#L729
+leak:FPDFAvail_Create

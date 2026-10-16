@@ -4,8 +4,35 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace dzurkel {
+
+bool openPreviewFile(const FileResource &resource, QFile &file, QString &error)
+{
+    const QByteArray path = QFile::encodeName(resource.path);
+    const int descriptor = ::open(path.constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0) {
+        error = QStringLiteral("File is not readable: %1 (%2)").arg(resource.path, QString::fromLocal8Bit(std::strerror(errno)));
+        return false;
+    }
+    struct stat status {};
+    if (::fstat(descriptor, &status) != 0 || !S_ISREG(status.st_mode)) {
+        ::close(descriptor);
+        error = QStringLiteral("Resource changed or is not a regular file; content was not opened.");
+        return false;
+    }
+    if (!file.open(descriptor, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle)) {
+        ::close(descriptor);
+        error = file.errorString();
+        return false;
+    }
+    return true;
+}
 
 bool resolveFileResource(const QString &argument, FileResource &resource, QString &error,
                          ResourceError *failure)
@@ -55,21 +82,22 @@ bool resolveFileResource(const QString &argument, FileResource &resource, QStrin
         return false;
     }
     const QFileInfo info(QDir::current().absoluteFilePath(path));
-    if (!info.exists()) {
+    if (!info.exists() && !info.isSymLink()) {
         if (failure) *failure = ResourceError::NotFound;
         error = QStringLiteral("File does not exist: %1").arg(info.absoluteFilePath());
         return false;
     }
-    if (!info.isFile()) {
-        if (failure) *failure = ResourceError::NotRegularFile;
-        error = QStringLiteral("Expected a regular file: %1").arg(info.absoluteFilePath());
-        return false;
-    }
-    QFile file(info.absoluteFilePath());
-    if (!info.isReadable() || !file.open(QIODevice::ReadOnly)) {
-        if (failure) *failure = ResourceError::NotReadable;
-        error = QStringLiteral("File is not readable: %1").arg(info.absoluteFilePath());
-        return false;
+    resource.path = info.absoluteFilePath();
+    resource.url = QUrl::fromLocalFile(resource.path);
+    resource.informationOnly = info.isSymLink() || !info.isFile();
+    if (!resource.informationOnly) {
+        QFile file;
+        if (!info.isReadable() || !openPreviewFile(resource, file, error)) {
+            if (failure) *failure = ResourceError::NotReadable;
+            if (error.isEmpty()) error = QStringLiteral("File is not readable: %1").arg(resource.path);
+            resource = {};
+            return false;
+        }
     }
     if (failure) *failure = ResourceError::None;
     resource.path = info.absoluteFilePath();
