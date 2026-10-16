@@ -13,7 +13,8 @@ public:
     using Loader = std::function<PreviewData(const FileResource &, const QSize &, const Cancellation &)>;
     explicit PreviewController(bool diagnostics = false, Loader loader = {});
     ~PreviewController() override;
-    bool show(const QString &url, QString &error, ResourceError *failure = nullptr);
+    bool show(const QString &url, QString &error, ResourceError *failure = nullptr,
+              const QString &activationToken = {});
     void hide();
     bool toggle(const QString &url, QString &error);
     bool isVisible() const;

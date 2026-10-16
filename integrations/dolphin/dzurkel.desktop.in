@@ -1,6 +1,8 @@
 [Desktop Entry]
 Type=Service
 Name=Dzurkel
+Icon=preview
+StartupNotify=true
 MimeType=application/octet-stream;
 Actions=dzurkel;
 X-KDE-Protocols=file

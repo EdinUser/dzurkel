@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.3.0 LANGUAGES CXX)
+project(Dzurkel VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,10 +10,15 @@ include(CTest)
 
 # Bounded worker-thread decoding with native Qt widgets and PDF rendering.
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus Concurrent Pdf PdfWidgets)
+option(DZURKEL_WITH_KDE_ACTIVATION "Use KDE's public Wayland activation support" ON)
+if(DZURKEL_WITH_KDE_ACTIVATION)
+    find_package(KF6WindowSystem 6.0 REQUIRED)
+endif()
 add_library(dzurkel_core STATIC
     src/application/CommandLine.cpp
     src/application/InstanceCoordinator.cpp
     src/controller/PreviewController.cpp
+    src/desktop/DesktopIntegration.cpp
     src/ipc/PreviewService.cpp
     src/preview/PreviewRegistry.cpp
     src/preview/providers/ImagePreviewProvider.cpp
@@ -25,6 +30,10 @@ add_library(dzurkel_core STATIC
 )
 target_include_directories(dzurkel_core PUBLIC src)
 target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets)
+if(DZURKEL_WITH_KDE_ACTIVATION)
+    target_link_libraries(dzurkel_core PRIVATE KF6::WindowSystem)
+    target_compile_definitions(dzurkel_core PRIVATE DZURKEL_KDE_ACTIVATION)
+endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dzurkel_core PUBLIC -Wall -Wextra -Wpedantic)
 endif()
@@ -41,10 +50,13 @@ string(REPLACE "$" "\\\\$" DZURKEL_EXEC "${DZURKEL_EXEC}")
 string(REPLACE "`" "\\\\`" DZURKEL_EXEC "${DZURKEL_EXEC}")
 string(REPLACE "%" "%%" DZURKEL_EXEC "${DZURKEL_EXEC}")
 configure_file(integrations/dolphin/dzurkel.desktop.in dzurkel.desktop @ONLY)
+configure_file(integrations/desktop/dzurkel.desktop.in dzurkel-application.desktop @ONLY)
 install(TARGETS dzurkel RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # Executable permission authorizes a user-local KDE service menu.
 install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/dzurkel.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/kio/servicemenus)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-application.desktop"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications RENAME dzurkel.desktop)
 
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)

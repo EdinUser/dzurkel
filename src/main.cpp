@@ -1,6 +1,7 @@
 #include "application/CommandLine.h"
 #include "application/InstanceCoordinator.h"
 #include "controller/PreviewController.h"
+#include "desktop/DesktopIntegration.h"
 #include "ipc/PreviewService.h"
 #include "resources/FileResource.h"
 
@@ -26,6 +27,7 @@ int main(int argc, char *argv[])
         commandLine.setApplicationName(QStringLiteral("dzurkel"));
         commandLine.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
         if (!dzurkel::parseCommandLine(commandLine.arguments(), request, error)) return fail(error, 2);
+        request.activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN");
         if (request.command == dzurkel::Command::Help) {
             QTextStream(stdout) << dzurkel::commandLineHelp();
             return 0;
@@ -48,10 +50,14 @@ int main(int argc, char *argv[])
         if (!dzurkel::resolveFileResource(request.url, resource, error)) return fail(error);
     }
 
+    // KDE consumes the saved token on the actual show request. Avoid also
+    // consuming it through Qt's implicit startup activation.
+    if (dzurkel::supportsActivationTokens()) qunsetenv("XDG_ACTIVATION_TOKEN");
     QApplication application(argc, argv);
     application.setApplicationName(QStringLiteral("dzurkel"));
     application.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
     application.setApplicationDisplayName(QStringLiteral("Dzurkel"));
+    application.setDesktopFileName(QStringLiteral("dzurkel"));
     application.setQuitOnLastWindowClosed(false);
     dzurkel::PreviewController controller(request.diagnostics);
     dzurkel::PreviewService service(controller);
@@ -60,7 +66,7 @@ int main(int argc, char *argv[])
         const auto claim = instance.claim(service, error);
         if (claim == dzurkel::InstanceCoordinator::ClaimResult::Failed) return fail(error);
         if (claim == dzurkel::InstanceCoordinator::ClaimResult::Primary) {
-            if (!controller.show(request.url, error)) return fail(error);
+            if (!controller.show(request.url, error, nullptr, request.activationToken)) return fail(error);
             if (request.diagnostics) {
                 QTextStream(stderr) << "Dzurkel primary PID: " << application.applicationPid()
                     << " platform: " << application.platformName() << '\n';

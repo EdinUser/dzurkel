@@ -1,4 +1,5 @@
 #include "PreviewWindow.h"
+#include "desktop/DesktopIntegration.h"
 #include "resources/FileResource.h"
 #include <QApplication>
 #include <QCursor>
@@ -8,13 +9,15 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QScreen>
+#include <QShowEvent>
 #include <QTextStream>
 #include <QVBoxLayout>
+#include <QWindow>
 #include <algorithm>
 
 namespace dzurkel {
 PreviewWindow::PreviewWindow(bool diagnostics)
-    : QWidget(nullptr, Qt::Window | Qt::FramelessWindowHint), diagnostics_(diagnostics)
+    : QWidget(nullptr, Qt::Window), diagnostics_(diagnostics)
 {
     setWindowTitle(QStringLiteral("Dzurkel"));
     setAccessibleName(windowTitle());
@@ -46,15 +49,6 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     status_->hide();
     addLabel(QStringLiteral("Space or Escape to close"));
     qApp->installEventFilter(this);
-    QScreen *screen = QGuiApplication::screenAt(QCursor::pos());
-    if (!screen) screen = QGuiApplication::primaryScreen();
-    if (screen) {
-        const QRect area = screen->availableGeometry();
-        const QSize limit(std::max(1, area.width() * 4 / 5), std::max(1, area.height() * 4 / 5));
-        setMaximumSize(limit);
-        resize(QSize(800, 640).boundedTo(limit));
-        move(area.center() - rect().center());
-    }
 }
 PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics) : PreviewWindow(diagnostics)
 {
@@ -68,6 +62,11 @@ void PreviewWindow::setResource(const FileResource &resource)
     findChild<QLabel *>(QStringLiteral("fileName"))->setText(name);
     findChild<QLabel *>(QStringLiteral("filePath"))->setText(resource.path);
 }
+void PreviewWindow::present(const QString &activationToken)
+{
+    show();
+    activatePreview(windowHandle(), activationToken, diagnostics_);
+}
 void PreviewWindow::setContent(QWidget *content)
 {
     delete content_;
@@ -75,7 +74,9 @@ void PreviewWindow::setContent(QWidget *content)
     if (content_) {
         content_->setParent(contentHost_);
         contentLayout_->addWidget(content_);
-        content_->setFocus(Qt::OtherFocusReason);
+        if (content_->focusProxy() || content_->focusPolicy() != Qt::NoFocus)
+            content_->setFocus(Qt::OtherFocusReason);
+        else setFocus(Qt::OtherFocusReason);
     }
 }
 void PreviewWindow::setStatus(const QString &status)
@@ -87,13 +88,66 @@ QSize PreviewWindow::previewSize() const
 {
     return (contentHost_->size() * devicePixelRatioF()).boundedTo(QSize(2048, 2048)).expandedTo(QSize(1, 1));
 }
+void PreviewWindow::showEvent(QShowEvent *event)
+{
+    if (!event->spontaneous()) {
+        QScreen *target = QGuiApplication::screenAt(QCursor::pos());
+        if (!target) target = screen();
+        if (!target) target = QGuiApplication::primaryScreen();
+        if (target) {
+            setScreen(target);
+            const QRect area = target->availableGeometry();
+            // Logical screen coordinates already account for display scaling.
+            const QSize initial(std::max(1, area.width() * 85 / 100),
+                                std::max(1, area.height() * 85 / 100));
+            // Keep a user's size across hide/reopen; fit a smaller new monitor.
+            if (!shown_) resize(initial);
+            else if (!isMaximized()) resize(size().boundedTo(area.size()));
+            if (!isMaximized()) move(area.center() - rect().center());
+            shown_ = true;
+            watchScreen(target);
+        }
+    }
+    QWidget::showEvent(event);
+    if (!trackingScreen_ && windowHandle()) {
+        trackingScreen_ = true;
+        connect(windowHandle(), &QWindow::screenChanged, this, [this](QScreen *target) {
+            watchScreen(target);
+            fitScreen(target);
+        });
+    }
+}
+void PreviewWindow::watchScreen(QScreen *target)
+{
+    disconnect(screenGeometryConnection_);
+    if (!target) return;
+    screenGeometryConnection_ = connect(target, &QScreen::availableGeometryChanged,
+        this, [this, target] { fitScreen(target); });
+}
+void PreviewWindow::fitScreen(QScreen *target)
+{
+    if (!target || isMaximized() || isFullScreen()) return;
+    const QRect area = target->availableGeometry();
+    if (area.isEmpty()) return;
+    const QSize decoration = frameGeometry().size() - size();
+    const QSize limit = (area.size() - decoration).expandedTo(QSize(1, 1));
+    resize(size().boundedTo(limit));
+    const QRect frame = frameGeometry();
+    const QPoint position(std::clamp(frame.x(), area.left(), std::max(area.left(), area.right() - frame.width() + 1)),
+                          std::clamp(frame.y(), area.top(), std::max(area.top(), area.bottom() - frame.height() + 1)));
+    // The compositor decides final placement on Wayland.
+    move(pos() + position - frame.topLeft());
+}
 bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 {
     auto *target = qobject_cast<QWidget *>(watched);
     if (isVisible() && target && target->window() == this
         && (event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride)) {
         auto *key = static_cast<QKeyEvent *>(event);
-        if (key->modifiers() == Qt::NoModifier && (key->key() == Qt::Key_Space || key->key() == Qt::Key_Escape)) {
+        const bool dismiss = (key->key() == Qt::Key_Space
+            && (key->modifiers() == Qt::NoModifier || key->modifiers() == Qt::ShiftModifier))
+            || (key->key() == Qt::Key_Escape && key->modifiers() == Qt::NoModifier);
+        if (dismiss) {
             key->accept();
             if (event->type() == QEvent::KeyPress && !key->isAutoRepeat()) close();
             return true;

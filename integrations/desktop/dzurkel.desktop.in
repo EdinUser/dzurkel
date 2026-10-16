@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Dzurkel
+Comment=Peek-a-Dzurkel!
+Icon=preview
+Exec="@DZURKEL_EXEC@" --show -- %u
+Terminal=false
+NoDisplay=true
+StartupNotify=true
+Categories=Utility;

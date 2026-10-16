@@ -5,7 +5,7 @@
 Dzurkel (Дзъркел, Bulgarian slang for “eye”) is a standalone C++20 / Qt 6
 Widgets file-preview application for Fedora KDE Wayland.
 
-## Current scope: Milestone 2
+## Current scope: Milestone 3
 
 Dzurkel previews images, PDFs, and plain text for local paths or `file://` URLs.
 Unsupported files, directories, links, and special objects get an information
@@ -18,18 +18,24 @@ window. Later CLI invocations forward their commands to that process.
 - `dzurkel --quit` gracefully stops the resident process.
 - `dzurkel --help` and `dzurkel --version` work without starting a GUI.
 
-Space, Escape, and ordinary window close hide the preview. Hide/Quit with no
+Space, Shift+Space, Escape, and ordinary window close hide the preview. Hide/Quit with no
 running instance succeed without starting one. Relative paths resolve against
 the invoking client's directory. Invalid requests leave the current preview
 unchanged. Content loads asynchronously, and newer requests supersede unfinished
 previews. See [supported formats and limits](docs/previews.md).
+
+The preview initially fills 85% of the usable screen width and height. Drag its
+window borders to resize, or maximize it using the KDE title bar. Your chosen
+size is retained across previews until the process exits; reopening on a smaller
+screen fits it to that screen. Images retain their proportions as the window
+changes size, and PDF pages scale to the available width.
 
 ## Build and run
 
 On Fedora:
 
 ```bash
-sudo dnf install gcc-c++ cmake make qt6-qtbase-devel qt6-qtpdf-devel
+sudo dnf install gcc-c++ cmake make qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
@@ -40,7 +46,9 @@ CMake 3.22+ and Qt 6.4+ Core, Gui, Widgets, DBus, Concurrent, Pdf, PdfWidgets,
 and Test are required. The minimum Qt version is a configured baseline, not a
 compatibility certification; see the [test report](docs/testing.md) for the
 version actually tested. Tests also require `dbus-run-session` (Fedora package
-`dbus-daemon`). KDE Frameworks development packages are not required. The
+`dbus-daemon`). KDE WindowSystem provides Wayland activation-token support. A
+Qt-only build is available with `-DDZURKEL_WITH_KDE_ACTIVATION=OFF`; activation
+of an existing window is then best effort without token forwarding to KDE. The
 optional `qt6-qtimageformats` package enables additional image readers.
 
 ```bash
@@ -66,7 +74,8 @@ After building, install into the prefix configured above:
 cmake --install build
 ```
 
-This installs `~/.local/bin/dzurkel` and an executable service menu at
+This installs `~/.local/bin/dzurkel`, a hidden application identity at
+`~/.local/share/applications/dzurkel.desktop`, and an executable service menu at
 `~/.local/share/kio/servicemenus/dzurkel.desktop` (assuming default XDG data
 locations). Its generated command uses the absolute installed executable path,
 so Dolphin does not depend on your shell's PATH. Configure a different prefix
@@ -88,7 +97,7 @@ Before updating or removing an installed running service, run `dzurkel --quit`
 (or `~/.local/bin/dzurkel --quit`). New CLI commands otherwise continue reaching
 the old resident process.
 
-To remove this user-local installation, remove only the two installed files
+To remove this user-local installation, remove only the three installed files
 listed above; retain your source checkout and any unrelated menu entries.
 
 ## Documentation

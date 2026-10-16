@@ -26,6 +26,7 @@ Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 - [ ] Press Space again; the window closes and Dolphin is usable immediately.
 - [ ] Repeat with Escape and Alt+F4 for dismissal.
 - [ ] Repeat the open/dismiss cycle at least 20 times with different files.
+- [ ] Resize from each border, maximize/restore, and reopen: chosen size persists.
 - [ ] Test light/dark themes, scaling, and each monitor in a multi-screen setup.
 - [ ] If Space is unreliable, test Shift+Space and record the exact limitation.
 
@@ -33,17 +34,29 @@ Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 
 The preview is an ordinary reusable top-level Qt window. Dismissal now hides
 it while the primary process remains resident; `dzurkel --quit` ends the service.
-It requests a position near the pointer's screen and limits its size to 80% of available geometry. The Wayland
+It requests a position near the pointer's screen and starts at 85% of available
+screen width and height. Standard window borders allow resizing and maximizing;
+the initial size is not a maximum. A resized window keeps its size across previews
+within the running process, fitting a smaller screen on reopening. Screen and
+available-geometry changes also fit a normal window to its current display. The Wayland
 compositor controls final placement and activation; positioning is best effort.
 The app does not force focus, stay on top, inject global keys, inspect Dolphin,
 or change its settings. Closing the window lets the compositor restore focus.
 
+KDE builds forward the launcher's `XDG_ACTIVATION_TOKEN` to the resident window
+through KDE WindowSystem's public activation API. A hidden application desktop
+entry supplies the Wayland identity `dzurkel`; it does not add a file association
+or assign shortcuts. Existing service-menu filename and action IDs are retained
+so user-assigned shortcuts keep their identity. Tokenless launches and Qt-only
+builds have best-effort activation. The compositor can refuse any focus request.
+
 If a window opens without focus, Space/Escape cannot dismiss it until focused.
+Use the title-bar close control in that case.
 Record how it was launched, shortcut conflicts, activation diagnostic output,
 monitor/scaling, and desktop versions. Do not report the interaction as verified
 based only on an offscreen test or successful build.
 
-Milestone 0 is accepted only when selected-file delivery and repeated
+Desktop integration is accepted only when selected-file delivery and repeated
 open/dismiss/return behavior are demonstrated on the target desktop. The app
 reuses the existing window and process across invocations. Test both
 fresh-process and resident-process launches; Wayland activation may differ.
@@ -54,3 +67,4 @@ Quit any old resident binary before testing an updated installation.
 - [KDE service-menu format and authorization](https://develop.kde.org/docs/apps/dolphin/service-menus/)
 - [Dolphin 26.04 service-menu shortcut support](https://blogs.kde.org/2026/05/03/dolphin-26.04-release/)
 - [Qt top-level window behavior](https://doc.qt.io/qt-6/qwidget.html)
+- [KDE activation API](https://api.kde.org/kwindowsystem.html)

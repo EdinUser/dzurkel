@@ -39,11 +39,17 @@ InstanceCoordinator::ForwardResult InstanceCoordinator::forward(const Request &r
     case Command::Quit: method = QStringLiteral("Quit"); break;
     default: error = QStringLiteral("Invalid service command."); return ForwardResult::Failed;
     }
+    const bool opens = request.command == Command::Show || request.command == Command::Toggle;
+    if (opens && !request.activationToken.isEmpty()) method += QStringLiteral("WithOptions");
     // Pin the request to a unique owner so a restart cannot duplicate Toggle.
     auto message = QDBusMessage::createMethodCall(owner.value(), QString::fromLatin1(ObjectPath),
                                                  QString::fromLatin1(InterfaceName), method);
     message.setAutoStartService(false);
-    if (request.command == Command::Show || request.command == Command::Toggle) message << request.url;
+    if (opens) {
+        message << request.url;
+        if (!request.activationToken.isEmpty())
+            message << QVariantMap{{QStringLiteral("activation-token"), request.activationToken}};
+    }
     const auto reply = connection_.call(message, QDBus::Block, 5000);
     if (reply.type() != QDBusMessage::ErrorMessage) return ForwardResult::Delivered;
     if (reply.errorName() == QStringLiteral("org.freedesktop.DBus.Error.ServiceUnknown")

@@ -3,6 +3,7 @@
 
 class QLabel;
 class QVBoxLayout;
+class QScreen;
 namespace dzurkel {
 struct FileResource;
 class PreviewWindow : public QWidget {
@@ -11,6 +12,7 @@ public:
     explicit PreviewWindow(bool diagnostics = false);
     explicit PreviewWindow(const FileResource &resource, bool diagnostics = false);
     void setResource(const FileResource &resource);
+    void present(const QString &activationToken = {});
     // Takes ownership; replacing content destroys its widgets/documents.
     void setContent(QWidget *content);
     void setStatus(const QString &status);
@@ -20,9 +22,15 @@ signals:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void hideEvent(QHideEvent *event) override;
+    void showEvent(QShowEvent *event) override;
     void changeEvent(QEvent *event) override;
 private:
+    void watchScreen(QScreen *screen);
+    void fitScreen(QScreen *screen);
     bool diagnostics_;
+    bool shown_ = false;
+    bool trackingScreen_ = false;
+    QMetaObject::Connection screenGeometryConnection_;
     QWidget *contentHost_;
     QWidget *content_ = nullptr;
     QVBoxLayout *contentLayout_;

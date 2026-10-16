@@ -23,6 +23,7 @@ public:
         view_->setZoomMode(QPdfView::ZoomMode::FitToWidth);
         view_->setDocument(document_.get());
         layout->addWidget(view_);
+        setFocusProxy(view_);
     }
     ~PdfWidget() override
     {

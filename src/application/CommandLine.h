@@ -6,6 +6,7 @@ enum class Command { Show, Hide, Toggle, Quit, Help, Version };
 struct Request {
     Command command = Command::Show;
     QString url;
+    QString activationToken;
     bool diagnostics = false;
 };
 bool parseCommandLine(const QStringList &arguments, Request &request, QString &error);

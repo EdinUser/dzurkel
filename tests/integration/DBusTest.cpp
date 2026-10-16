@@ -11,6 +11,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
+#include <QScopeGuard>
 
 #include <memory>
 #include <vector>
@@ -21,6 +22,20 @@ const QString path = QStringLiteral("/io/github/EdinUser/Dzurkel/Previewer");
 const QString interface = QStringLiteral("io.github.EdinUser.Dzurkel.Previewer1");
 }
 
+class ActivationProbe : public QObject {
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "io.github.EdinUser.Dzurkel.Previewer1")
+public:
+    QString url;
+    QVariantMap options;
+    QString method;
+public slots:
+    void ShowWithOptions(const QString &value, const QVariantMap &data)
+    { url = value; options = data; method = QStringLiteral("ShowWithOptions"); }
+    void ToggleWithOptions(const QString &value, const QVariantMap &data)
+    { url = value; options = data; method = QStringLiteral("ToggleWithOptions"); }
+};
+
 class DBusTest : public QObject {
     Q_OBJECT
 private slots:
@@ -30,6 +45,8 @@ private slots:
     void reusesPrimaryAndWindowLifecycle();
     void returnsResourceErrors();
     void handlesStartupRacesAndCrashRecovery();
+    void forwardsActivationTokensWithoutGui();
+    void validatesActivationOptions();
 private:
     bool registered() const;
     uint ownerPid() const;
@@ -42,6 +59,52 @@ private:
     QString second_;
     QProcess primary_;
 };
+
+void DBusTest::forwardsActivationTokensWithoutGui()
+{
+    ActivationProbe probe;
+    auto bus = QDBusConnection::sessionBus();
+    QVERIFY(bus.registerObject(path, &probe, QDBusConnection::ExportAllSlots));
+    const auto removeObject = qScopeGuard([&] { bus.unregisterObject(path); });
+    QVERIFY(bus.registerService(service));
+    const auto removeService = qScopeGuard([&] { bus.unregisterService(service); });
+    for (const QString &command : {QStringLiteral("--show"), QStringLiteral("--toggle")}) {
+        QProcess process;
+        auto env = QProcessEnvironment::systemEnvironment();
+        env.insert(QStringLiteral("XDG_ACTIVATION_TOKEN"), QStringLiteral("synthetic-test-token"));
+        env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("dzurkel_invalid_backend"));
+        process.setProcessEnvironment(env);
+        process.start(QStringLiteral(DZURKEL_EXECUTABLE), {command, first_});
+        QVERIFY(process.waitForStarted());
+        // Dispatch incoming calls while the CLI waits for its reply.
+        QTRY_COMPARE_WITH_TIMEOUT(process.state(), QProcess::NotRunning, 7000);
+        QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(process.exitCode(), 0);
+        QCOMPARE(probe.url, QUrl::fromLocalFile(first_).toString(QUrl::FullyEncoded));
+        QCOMPARE(probe.options.value(QStringLiteral("activation-token")).toString(), QStringLiteral("synthetic-test-token"));
+        QCOMPARE(probe.method, command == QStringLiteral("--show")
+            ? QStringLiteral("ShowWithOptions") : QStringLiteral("ToggleWithOptions"));
+    }
+}
+
+void DBusTest::validatesActivationOptions()
+{
+    startPrimary();
+    const QString previous = property(QStringLiteral("FileUrl")).toString();
+    const QString next = QUrl::fromLocalFile(second_).toString(QUrl::FullyEncoded);
+    for (const QVariant &invalid : {QVariant(123), QVariant(QString(16385, 'x'))}) {
+        const auto reply = call(QStringLiteral("ShowWithOptions"),
+            {next, QVariantMap{{QStringLiteral("activation-token"), invalid}}});
+        QCOMPARE(reply.type(), QDBusMessage::ErrorMessage);
+        QCOMPARE(reply.errorName(), QStringLiteral("org.freedesktop.DBus.Error.InvalidArgs"));
+        QCOMPARE(property(QStringLiteral("FileUrl")).toString(), previous);
+    }
+    QCOMPARE(call(QStringLiteral("ShowWithOptions"), {next, QVariantMap{}}).type(), QDBusMessage::ReplyMessage);
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), next);
+    // A visible Toggle still dismisses regardless of unused options or URL.
+    QCOMPARE(call(QStringLiteral("ToggleWithOptions"), {QString(), QVariantMap{}}).type(), QDBusMessage::ReplyMessage);
+    QVERIFY(!property(QStringLiteral("Visible")).toBool());
+}
 
 bool DBusTest::registered() const
 {

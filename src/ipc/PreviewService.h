@@ -1,6 +1,7 @@
 #pragma once
 #include <QDBusContext>
 #include <QObject>
+#include <QVariantMap>
 
 namespace dzurkel {
 class PreviewController;
@@ -24,11 +25,13 @@ public:
     bool loading() const;
 public slots:
     void Show(const QString &url);
+    void ShowWithOptions(const QString &url, const QVariantMap &options);
     void Hide();
     void Toggle(const QString &url);
+    void ToggleWithOptions(const QString &url, const QVariantMap &options);
     void Quit();
 private:
-    void open(const QString &url, bool toggle);
+    void open(const QString &url, bool toggle, const QVariantMap &options = {});
     PreviewController &controller_;
 };
 } // namespace dzurkel

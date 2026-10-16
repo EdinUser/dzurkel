@@ -5,7 +5,7 @@
 Validated on 2026-10-16 with Fedora 44 KDE, Plasma 6.7.5, Dolphin 26.08.1,
 Qt 6.11.2, CMake 4.3.0, and GCC 16.2.1. The desktop session uses Wayland.
 
-## Milestone 2 automated checks
+## Milestone 3 automated checks
 
 Configure and build using the README, then run:
 
@@ -15,18 +15,22 @@ ctest --test-dir build --output-on-failure
 
 Four suites pass:
 
-- Qt Test: 19 checks including setup/cleanup, resource validation, special and
+- Qt Test: 22 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
-  Space/Escape dismissal with child focus.
+  Space/Escape dismissal with child focus, Shift+Space dismissal, Ctrl+Space
+  preservation, 85% initial geometry, enlargement beyond the default, resize
+  retention on reopening, and live light/dark palette propagation.
 - Preview providers: 22 checks including setup/cleanup cover PNG/JPEG/BMP,
   orientation, image budgets, UTF-8/16/32 and Latin-1, newline normalization,
   text truncation/binary fallback, multipage/encrypted/damaged/oversized PDFs,
   directories/links/FIFOs, safe file replacement, bounded request coalescing,
   cancellation, child-widget dismissal, and repeated provider/document release.
-- Isolated D-Bus: six checks including setup/cleanup, absent-instance no-ops,
+- Isolated D-Bus: eight checks including setup/cleanup, absent-instance no-ops,
   headless secondary forwarding, caller-relative paths, visibility-based Toggle,
   resource errors, ten show/hide cycles, eight simultaneous startup contenders,
-  graceful Quit, and restart after a killed primary.
+  graceful Quit, restart after a killed primary, exact synthetic activation-token
+  forwarding for Show/Toggle without a GUI backend, and invalid-option rejection
+  without changing the previous preview.
 - Headless CLI: 12 cases covering help/version, conflicting commands, unexpected
   file arguments, missing arguments/files, and unsupported schemes/options.
 
@@ -34,6 +38,12 @@ D-Bus tests use `dbus-run-session` and Qt's offscreen backend. They require loca
 Unix sockets; restricted sandboxes may need permission to create a test bus.
 Tests never use the desktop's normal session bus. Offscreen dismissal cannot
 prove Wayland focus restoration to Dolphin.
+
+The default KDE WindowSystem build and a separate Qt-only build both compile.
+The application desktop entry passes `desktop-file-validate`. A staged install
+contains the executable, executable Dolphin service menu, and hidden application
+identity with the configured absolute command. Light/dark offscreen captures
+were visually inspected; these do not verify Breeze theme switching on Plasma.
 
 ## Sanitizers and PDF cleanup
 
@@ -77,9 +87,16 @@ These process RSS samples include Qt/PDF/font/platform caches and are not privat
 heap usage or a sustained leak/performance benchmark. The parser limitation
 above is independent of these samples.
 
+The Milestone 3 native Wayland run repeated the same image/PDF/text/information
+lifecycle successfully with KDE activation enabled; diagnostics reported active
+windows. Its hidden RSS sample was 113,588 KiB. Screen inventory showed two
+1920×1080 displays at scale 1. This does not establish resizing, focus restoration,
+or screen transfer through Dolphin: those interactions remain manual below.
+
 ## Dolphin acceptance remains manual
 
-The user-local executable and service menu are installed. Shortcut assignment,
+Version 0.4.0 is installed locally with the executable, service menu, and hidden
+application identity. Shortcut assignment,
 selected-file delivery through Dolphin, keyboard focus restoration, display
 scaling, multiple monitors, and themes still require the
 [desktop acceptance checklist](dolphin-integration.md). No existing shortcut has

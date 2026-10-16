@@ -1,4 +1,4 @@
-# Dzurkel D-Bus API (Milestone 2)
+# Dzurkel D-Bus API (Milestone 3)
 
 Dzurkel owns one service on the user session bus:
 
@@ -13,13 +13,24 @@ These project identifiers remain provisional until the first public release.
 | Method | Behavior |
 | --- | --- |
 | `Show(string url)` | Show or replace the current content preview. |
+| `ShowWithOptions(string url, dict options)` | Show with optional launch context. |
 | `Hide()` | Hide the window while keeping the service resident. |
 | `Toggle(string url)` | Hide a visible window; otherwise show the supplied URL. |
+| `ToggleWithOptions(string url, dict options)` | Toggle with optional launch context. |
 | `Quit()` | Acknowledge the request and gracefully terminate the service. |
 
 `url` must be a fully encoded absolute local `file://` URL. A visible Toggle
 ignores its unused URL, including invalid URLs. Invalid Show requests or Toggle
 requests while hidden return an error and preserve the previous preview/state.
+
+`options` is an `a{sv}` dictionary. The optional `activation-token` string carries
+the caller's Wayland launch token. The CLI forwards `XDG_ACTIVATION_TOKEN` through
+these additive methods; the original methods remain supported. KDE builds pass
+the token to the compositor when presenting the window. Tokens are never logged
+or reused when content loading completes. The compositor decides whether to grant
+focus. Unknown option keys are ignored; a non-string token or one exceeding
+16,384 characters returns `org.freedesktop.DBus.Error.InvalidArgs`. Visible
+Toggle ignores its unused options as well as its URL.
 
 Read-only properties are available through standard D-Bus Properties.Get:
 

@@ -22,7 +22,8 @@ PreviewController::~PreviewController()
     if (watcher_) disconnect(watcher_, nullptr, this, nullptr);
     pool_.waitForDone();
 }
-bool PreviewController::show(const QString &url, QString &error, ResourceError *failure)
+bool PreviewController::show(const QString &url, QString &error, ResourceError *failure,
+                             const QString &activationToken)
 {
     FileResource resource;
     if (!resolveFileResource(url, resource, error, failure)) return false;
@@ -36,7 +37,7 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     label->setAlignment(Qt::AlignCenter);
     window_.setContent(label);
     window_.setStatus({});
-    window_.show();
+    window_.present(activationToken);
     window_.layout()->activate();
     pending_ = Job{resource, window_.previewSize(), generation_};
     if (!watcher_) startPending();

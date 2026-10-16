@@ -8,6 +8,9 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QDir>
+#include <QScreen>
+#include <QPlainTextEdit>
+#include <QScopeGuard>
 
 class DzurkelTest : public QObject {
     Q_OBJECT
@@ -22,7 +25,69 @@ private slots:
     void rejectsUnreadableFiles();
     void dismissesWithKeyboard_data();
     void dismissesWithKeyboard();
+    void windowStartsLargeAndRetainsResizing();
+    void shiftSpaceDismissesButControlSpaceDoesNot();
+    void followsLightAndDarkPalettes();
 };
+
+void DzurkelTest::shiftSpaceDismissesButControlSpaceDoesNot()
+{
+    dzurkel::PreviewWindow window;
+    auto *editor = new QPlainTextEdit;
+    window.setContent(editor);
+    window.show();
+    QTest::keyClick(editor, Qt::Key_Space, Qt::ControlModifier);
+    QVERIFY(window.isVisible());
+    QTest::keyClick(editor, Qt::Key_Space, Qt::ShiftModifier);
+    QVERIFY(!window.isVisible());
+}
+
+void DzurkelTest::followsLightAndDarkPalettes()
+{
+    const QPalette original = QApplication::palette();
+    // Restore the global palette even if a test assertion fails.
+    const auto restore = qScopeGuard([original] { QApplication::setPalette(original); });
+    dzurkel::PreviewWindow window;
+    auto *editor = new QPlainTextEdit(QStringLiteral("Peek-a-Dzurkel!"));
+    window.setContent(editor);
+    window.show();
+    for (const bool dark : {false, true}) {
+        QPalette palette = original;
+        const QColor background = dark ? QColor(35, 35, 35) : QColor(245, 245, 245);
+        const QColor foreground = dark ? QColor(240, 240, 240) : QColor(20, 20, 20);
+        palette.setColor(QPalette::Window, background);
+        palette.setColor(QPalette::Base, background);
+        palette.setColor(QPalette::WindowText, foreground);
+        palette.setColor(QPalette::Text, foreground);
+        QApplication::setPalette(palette);
+        QCoreApplication::processEvents();
+        QCOMPARE(window.palette().color(QPalette::Window), background);
+        QCOMPARE(editor->palette().color(QPalette::Base), background);
+        QCOMPARE(editor->palette().color(QPalette::Text), foreground);
+        QVERIFY(window.grab().save(dark ? QStringLiteral("desktop-dark.png") : QStringLiteral("desktop-light.png")));
+    }
+}
+
+void DzurkelTest::windowStartsLargeAndRetainsResizing()
+{
+    dzurkel::PreviewWindow window;
+    QVERIFY(!window.windowFlags().testFlag(Qt::FramelessWindowHint));
+    window.show();
+    QCoreApplication::processEvents();
+    const QSize area = window.screen()->availableGeometry().size();
+    QCOMPARE(window.size(), QSize(area.width() * 85 / 100, area.height() * 85 / 100));
+
+    // The initial percentage is not a maximum: the user can grow the window.
+    const QSize larger(area.width() * 95 / 100, area.height() * 95 / 100);
+    window.resize(larger);
+    QCoreApplication::processEvents();
+    QCOMPARE(window.size(), larger);
+    window.hide();
+    window.show();
+    QCOMPARE(window.size(), larger);
+    window.resize(window.size() - QSize(30, 30));
+    QCOMPARE(window.size(), larger - QSize(30, 30));
+}
 
 void DzurkelTest::preservesSpecialCharacters()
 {
@@ -182,7 +247,7 @@ void DzurkelTest::dismissesWithKeyboard()
     QVERIFY(label);
     QCOMPARE(label->text(), path);
     QCOMPARE(label->textFormat(), Qt::PlainText);
-    QVERIFY(window.windowFlags().testFlag(Qt::FramelessWindowHint));
+    QVERIFY(!window.windowFlags().testFlag(Qt::FramelessWindowHint));
     QVERIFY(!window.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
     window.show();
     window.activateWindow();
