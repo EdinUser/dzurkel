@@ -97,6 +97,12 @@ its stripped executable is 196,160 bytes (191.6 KiB), with no additional shared
 library dependency. The figures below are retained as the 0.5.0 optimization
 baseline; the long-run measurements have not been repeated for 0.5.1.
 
+Version 0.6.0's redesigned settings and graceful Dolphin restart use the existing
+Qt libraries. Its installed stripped executable is 229,248 bytes (223.9 KiB).
+Process discovery and polling occur only during an explicit shortcut change;
+there is no added background watcher. The long-run memory/latency benchmark has
+not been repeated for this version.
+
 Fedora 44, Qt 6.11.2, GCC 16.2.1; shared system libraries and KDE activation
 enabled. The original Debug executable was 6,258,680 bytes. The size-focused
 stripped executable is **133,504 bytes (130.4 KiB)**; including both desktop

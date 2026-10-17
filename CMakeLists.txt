@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.5.4 LANGUAGES CXX)
+project(Dzurkel VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,7 @@ add_library(dzurkel_core STATIC
     src/controller/PreviewController.cpp
     src/desktop/DesktopIntegration.cpp
     src/desktop/DolphinShortcuts.cpp
+    src/desktop/DolphinSession.cpp
     src/ipc/PreviewService.cpp
     src/preview/PreviewRegistry.cpp
     src/preview/providers/ImagePreviewProvider.cpp
@@ -112,6 +113,10 @@ if(BUILD_TESTING)
     add_dependencies(dzurkel_dbus_tests dzurkel)
     add_test(NAME dzurkel_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_dbus_tests>)
     set_tests_properties(dzurkel_dbus PROPERTIES TIMEOUT 60)
+    add_executable(dzurkel_settings_tests tests/integration/SettingsTest.cpp)
+    target_link_libraries(dzurkel_settings_tests PRIVATE dzurkel_core Qt6::Test)
+    add_test(NAME dzurkel_settings COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_settings_tests>)
+    set_tests_properties(dzurkel_settings PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
     add_test(NAME dzurkel_cli COMMAND ${CMAKE_COMMAND}
         -DDZURKEL=$<TARGET_FILE:dzurkel>
         -DEXPECTED_VERSION=${PROJECT_VERSION}

@@ -15,7 +15,7 @@ cmake --build --preset compact
 ctest --preset compact
 ```
 
-Five suites pass:
+Six suites pass:
 
 - Qt Test: 25 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
@@ -45,6 +45,13 @@ Five suites pass:
 - Staged installation: exact three-file manifest, desktop permissions and IDs,
   stripped binary version, and Show/Hide/Quit through headless secondary commands
   against the installed executable on its own session bus.
+- Settings on an isolated bus: information-button keyboard accessibility and
+  persistent details, apply/restore with Dolphin closed, restart cancellation,
+  waiting for every window before applying or restoring, refused-close timeout,
+  unreachable/new-process rejection, and reporting a reopen failure while
+  retaining the applied change and backup. All configuration paths are temporary.
+  An additional opt-in check gracefully closed a real installed Dolphin on a
+  separate bus with temporary XDG configuration; it is skipped by default.
 
 D-Bus tests use `dbus-run-session` and Qt's offscreen backend. They require local
 Unix sockets; restricted sandboxes may need permission to create a test bus.
@@ -59,7 +66,7 @@ were visually inspected; these do not verify Breeze theme switching on Plasma.
 
 ## Sanitizers and PDF cleanup
 
-An AddressSanitizer/UndefinedBehaviorSanitizer build passes all five suites with
+An AddressSanitizer/UndefinedBehaviorSanitizer build passes all six suites with
 leak detection enabled and a narrow Qt PDF suppression:
 
 ```bash
@@ -130,21 +137,29 @@ or screen transfer through Dolphin: those interactions remain manual below.
 
 ## Dolphin acceptance remains manual
 
-Version 0.5.4's compact stripped build is installed locally with the executable, service menu, and hidden
+Version 0.6.0's compact stripped build is installed locally with the executable, service menu, and hidden
 application identity. The user confirmed that resizing works and reported that
 the window "kind of remembers the size." Size retention is process-local and
 may be reduced to fit a smaller display; full cross-monitor retention remains
 unverified. Shortcut assignment,
 selected-file delivery through Dolphin, keyboard focus restoration, display
 scaling, multiple monitors, and themes still require the
-[desktop acceptance checklist](dolphin-integration.md). No existing shortcut has
-been changed by the implementation.
+[desktop acceptance checklist](dolphin-integration.md). Automated validation has
+not changed the user's Dolphin shortcut configuration.
 
 The preview now has a Settings link and a desktop setup dialog. Automated setup
 tests use temporary configuration/backup paths; the agent did not apply shortcuts
 to the user's Dolphin configuration. Opening Settings performs no writes. The
-dialog screenshot was inspected; end-to-end setup, restart, Space invocation and
-Restore through the real Dolphin installation remain manual checks.
+redesigned dialog was captured and inspected with the native KDE theme. Hover
+details also open as keyboard-accessible persistent information dialogs. A
+running Dolphin triggers explicit restart confirmation for both setup and
+restore; its graceful D-Bus quit was verified against an isolated real Dolphin.
+Native Wayland tests also exercised setup/restore with two simulated windows;
+the enabled-state and restart-confirmation captures were inspected. Tests force
+Qt-owned modal widgets so they can answer prompts; production retains the
+platform's dialog backend.
+User-session window/tab restoration, Space invocation and Restore through the
+real Dolphin installation remain manual checks.
 
 Temporary compact information-window sizing and restoration passed three
 targeted native Wayland tests, including four cold-information/PDF close/reopen

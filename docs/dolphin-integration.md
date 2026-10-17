@@ -16,8 +16,18 @@ Dolphin supplied the right URL: verify the path shown by the actual menu action.
 ## Desktop acceptance checklist
 
 The preview's bottom-right **Settings** link opens desktop setup and the current
-preview-support list. For automatic Space setup, close Dolphin, choose **Use
-Space in Dolphin**, then reopen Dolphin. This changes per-user bindings only;
+preview-support list. Information icons provide hover tooltips and clickable,
+keyboard-accessible explanations. Choose **Enable Space shortcut…** to configure
+Space. If Dolphin is running, confirm **Restart Dolphin and apply**; Dzurkel
+requests a normal close for every detected window, waits up to 30 seconds for
+all Dolphin processes to exit, then updates the shortcut file and reopens it.
+Respond to any close prompts in Dolphin. Cancellation, a refused close, an
+unreachable process, or a newly detected process leaves shortcut files unchanged.
+No process is killed. Dolphin's startup settings control window/tab restoration;
+the confirmation explains that all previous views may not return. A launch
+failure is reported with instructions to open Dolphin manually.
+
+Restoring uses the same restart flow. This changes per-user bindings only;
 it neither needs sudo nor runs automatically when Settings opens. It removes
 unmodified Space (including sequences beginning with Space) from explicit
 conflicting bindings and overrides Dolphin's default selection binding, keeping
@@ -48,6 +58,9 @@ Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 - [ ] Paths containing spaces and Unicode survive menu invocation unchanged.
 - [ ] The Dzurkel action is available in Dolphin's shortcut configuration.
 - [ ] Assign Space using Settings or Dolphin's shortcut editor; verify backup/restore.
+- [ ] Cancel restart: no Dolphin window closes and no shortcut configuration changes.
+- [ ] Confirm restart with multiple windows/tabs; respond to close prompts and check startup restoration.
+- [ ] Refuse a Dolphin close prompt; after the timeout, shortcut files remain unchanged.
 - [ ] Select a file and press Space; preview opens and receives keyboard focus.
 - [ ] Press Space again; the window closes and Dolphin is usable immediately.
 - [ ] Repeat with Escape and Alt+F4 for dismissal.

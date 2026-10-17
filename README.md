@@ -34,10 +34,14 @@ Opening an image, PDF, or text preview restores your previous preview size and
 maximized state.
 
 Click **Settings** at the bottom right of the preview to open desktop setup and
-see available preview support. **Use Space in Dolphin** backs up the affected
+see available preview support. Hover over an information icon or click it for
+details. **Enable Space shortcut…** backs up the affected
 bindings and reassigns Space; **Restore previous shortcuts** undoes that setup
-while preserving unrelated settings. Close Dolphin before applying or restoring,
-then reopen it. Opening Settings alone changes nothing and needs no sudo.
+while preserving unrelated settings. If Dolphin is running, Dzurkel asks to
+restart it, waits for all its processes to close normally, applies the change,
+and reopens it. If it stays open, no shortcut files are changed. Window and tab
+restoration follows Dolphin's startup settings. Opening Settings alone changes
+nothing and needs no sudo.
 
 ## Build and run
 
