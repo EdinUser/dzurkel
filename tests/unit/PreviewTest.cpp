@@ -3,9 +3,16 @@
 #include "preview/providers/ImagePreviewProvider.h"
 #include "preview/providers/TextPreviewProvider.h"
 #include "ui/ZoomPreview.h"
+#include "desktop/DesktopIntegration.h"
 #include <QFile>
 #include <QEvent>
 #include <QElapsedTimer>
+#include <QApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusReply>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QImageReader>
 #include <QLabel>
 #include <QPushButton>
@@ -18,8 +25,10 @@
 #include <QSemaphore>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QTemporaryFile>
 #include <QTest>
 #include <QScreen>
+#include <QWindow>
 #include <QtEndian>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -68,12 +77,98 @@ private slots:
     void coldInformationMapsAtCompactSize();
     void hideBeforeFirstMappingPreventsResurrection();
     void newestRequestBeforeFirstMappingWins();
+    void visiblePreviewReactivatesOnExplicitShow();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
 };
+
+void PreviewTest::visiblePreviewReactivatesOnExplicitShow()
+{
+    if (!qEnvironmentVariableIsSet("DZURKEL_TEST_NATIVE_FOCUS")
+        || !QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
+        QSKIP("Opt-in focus check on the real KDE Wayland desktop");
+    const QString first = write(QStringLiteral("focus-first.txt"), "First preview\n");
+    const QString second = write(QStringLiteral("focus-second.txt"), "Second preview\n");
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(first, error));
+    QTRY_VERIFY(!controller.loading());
+    auto *preview = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(preview));
+    auto *surface = preview->windowHandle();
+    const auto nativeId = preview->winId();
+    QSignalSpy dismissed(preview, &PreviewWindow::dismissed);
+    QWidget caller;
+    caller.setWindowTitle(QStringLiteral("Dzurkel native focus test caller"));
+    caller.resize(320, 180);
+    caller.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&caller));
+    const auto bus = QDBusConnection::sessionBus();
+    const auto call = [&bus](const QString &path, const QString &method, const QVariantList &arguments) {
+        auto message = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"), path,
+            path == QStringLiteral("/Scripting") ? QStringLiteral("org.kde.kwin.Scripting")
+                                                : QStringLiteral("org.kde.kwin.Script"), method);
+        message.setArguments(arguments);
+        return bus.call(message, QDBus::Block, 2000);
+    };
+    const auto activateCaller = [&]() {
+        // Arrange focus only on this test's caller. The preview must gain focus
+        // through its real activation request, never through this KWin script.
+        const QJsonObject target{{QStringLiteral("pid"), QCoreApplication::applicationPid()},
+                                 {QStringLiteral("title"), caller.windowTitle()}};
+        QTemporaryFile script;
+        if (!script.open()) return false;
+        const QByteArray source = "const p = " + QJsonDocument(target).toJson(QJsonDocument::Compact)
+            + "; workspace.stackingOrder.forEach(function(w) { if (w.pid === p.pid && "
+              "w.caption.indexOf(p.title) === 0) workspace.activeWindow = w; });";
+        if (script.write(source) != source.size() || !script.flush()) return false;
+        const QString plugin = QStringLiteral("dzurkel-native-focus-test-%1").arg(QCoreApplication::applicationPid());
+        const QDBusReply<int> loaded = call(QStringLiteral("/Scripting"), QStringLiteral("loadScript"),
+                                            {script.fileName(), plugin});
+        bool ran = false;
+        if (loaded.isValid() && loaded.value() >= 0)
+            ran = call(QStringLiteral("/Scripting/Script%1").arg(loaded.value()),
+                       QStringLiteral("run"), {}).type() != QDBusMessage::ErrorMessage;
+        call(QStringLiteral("/Scripting"), QStringLiteral("unloadScript"), {plugin});
+        return ran;
+    };
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        if (attempt == 2) {
+            preview->showMinimized();
+            QTRY_VERIFY(preview->isMinimized());
+        }
+        QVERIFY(activateCaller());
+        QTRY_VERIFY(caller.isActiveWindow());
+        QTRY_VERIFY(!preview->isActiveWindow());
+        QVERIFY(preview->isVisible());
+        const int dismissalsBeforeShow = dismissed.count();
+        auto token = settingsActivationToken(caller.windowHandle());
+        QTRY_VERIFY(token.isFinished());
+        QVERIFY(!token.result().isEmpty());
+        QVERIFY(controller.show(attempt == 0 ? first : second, error, nullptr, token.result()));
+        QTRY_VERIFY(preview->isActiveWindow());
+        QTRY_VERIFY(!controller.loading());
+        QVERIFY(!preview->isMinimized());
+        QCOMPARE(preview->windowHandle(), surface);
+        QCOMPARE(preview->winId(), nativeId);
+        QCOMPARE(dismissed.count(), dismissalsBeforeShow);
+    }
+    // A navigation request may finish after the user switches away. Updating
+    // its content must not behave like another explicit launcher invocation.
+    emit preview->navigateRequested(-1);
+    QVERIFY(activateCaller());
+    QTRY_VERIFY(caller.isActiveWindow());
+    QTRY_COMPARE(controller.fileUrl(), QUrl::fromLocalFile(first).toString(QUrl::FullyEncoded));
+    QTRY_VERIFY(!controller.loading());
+    QTest::qWait(200);
+    QVERIFY(caller.isActiveWindow());
+    QVERIFY(!preview->isActiveWindow());
+    QTest::keyClick(preview, Qt::Key_Escape);
+    QVERIFY(!controller.isVisible());
+}
 
 void PreviewTest::coldInformationMapsAtCompactSize_data()
 {

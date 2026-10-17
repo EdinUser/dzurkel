@@ -166,9 +166,10 @@ void PreviewWindow::setResource(const FileResource &resource)
 }
 void PreviewWindow::present(const QString &activationToken)
 {
-    if (isVisible()) return;
-    show();
-    activatePreview(windowHandle(), activationToken, diagnostics_);
+    if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
+    if (!isVisible()) show();
+    if (!isActiveWindow() || !activationToken.isEmpty())
+        activatePreview(windowHandle(), activationToken, diagnostics_);
 }
 void PreviewWindow::setContent(QWidget *content)
 {

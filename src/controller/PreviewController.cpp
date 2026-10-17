@@ -38,7 +38,7 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
                 navigationNotice_.isEmpty() ? position : position + QStringLiteral(" · ") + navigationNotice_);
             if (!selected.isEmpty()) {
                 QString error;
-                if (!show(selected, error)) window_.setNavigation(false, false, error);
+                if (!show(selected, error, nullptr, {}, false)) window_.setNavigation(false, false, error);
             }
         });
     connect(&window_, &PreviewWindow::navigateRequested, this, [this](int direction) {
@@ -61,7 +61,7 @@ PreviewController::~PreviewController()
     pool_.waitForDone();
 }
 bool PreviewController::show(const QString &url, QString &error, ResourceError *failure,
-                             const QString &activationToken)
+                             const QString &activationToken, bool requestActivation)
 {
     FileResource resource;
     if (!parseFileResource(url, resource, error, failure)) return false;
@@ -95,7 +95,9 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     // Slow loads still present a loading window through the timer below.
     presentationPending_ = !window_.isVisible() && !loader_;
     if (!window_.isVisible()) window_.preparePresentation();
-    if (!presentationPending_ && !window_.isVisible()) window_.present(activationToken);
+    // Explicit Show requests must reactivate an already mapped preview too.
+    // Folder navigation preserves focus and never requests it asynchronously.
+    if (!presentationPending_ && requestActivation) window_.present(activationToken);
     window_.layout()->activate();
     pending_ = Job{resource, window_.previewSize(), generation_, activationToken};
     // Preserve compact first-map placement for fast information results, but

@@ -44,6 +44,7 @@ private slots:
     void cleanup();
     void absentInstanceControlsAreHeadless();
     void settingsStartsWithoutFileAndReusesOwner();
+    void visibleShowRequestsFreshActivation();
     void reusesPrimaryAndWindowLifecycle();
     void returnsResourceErrors();
     void handlesStartupRacesAndCrashRecovery();
@@ -231,6 +232,31 @@ void DBusTest::settingsStartsWithoutFileAndReusesOwner()
     const auto invalid = call(QStringLiteral("ShowSettings"),
         {QVariantMap{{QStringLiteral("activation-token"), 123}}});
     QCOMPARE(invalid.errorName(), QStringLiteral("org.freedesktop.DBus.Error.InvalidArgs"));
+}
+void DBusTest::visibleShowRequestsFreshActivation()
+{
+    auto env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    primary_.setProcessEnvironment(env);
+    primary_.start(QStringLiteral(DZURKEL_EXECUTABLE), {QStringLiteral("--diagnostics"), first_});
+    QVERIFY(primary_.waitForStarted());
+    QTRY_VERIFY_WITH_TIMEOUT(registered(), 5000);
+    QTRY_VERIFY(property(QStringLiteral("Visible")).toBool());
+    QTRY_VERIFY(!property(QStringLiteral("Loading")).toBool());
+    const uint pid = ownerPid();
+    primary_.readAllStandardError();
+    const auto reply = call(QStringLiteral("ShowWithOptions"),
+        {QUrl::fromLocalFile(second_).toString(QUrl::FullyEncoded),
+         QVariantMap{{QStringLiteral("activation-token"), QStringLiteral("synthetic-refocus-token")}}});
+    QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+    QByteArray log;
+    QTRY_VERIFY((log += primary_.readAllStandardError()).contains("activation requested; token present: 1"));
+    QCOMPARE(ownerPid(), pid);
+    QTRY_VERIFY(!property(QStringLiteral("Loading")).toBool());
+    QTest::qWait(200);
+    log += primary_.readAllStandardError();
+    // Loading completion must not replay the launch token and steal focus later.
+    QCOMPARE(log.count("activation requested; token present: 1"), 1);
 }
 void DBusTest::reusesPrimaryAndWindowLifecycle()
 {

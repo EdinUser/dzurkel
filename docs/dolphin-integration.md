@@ -114,6 +114,13 @@ or assign shortcuts. Existing service-menu filename and action IDs are retained
 so user-assigned shortcuts keep their identity. Tokenless launches and Qt-only
 builds have best-effort activation. The compositor can refuse any focus request.
 
+An explicit Show request, including Dolphin's Space action, requests activation
+even when the preview is already visible behind another window. A minimized
+preview is restored while retaining its normal/maximized state. Activation for
+an already-mapped window happens when the request arrives; content loading does
+not replay its token later. Asynchronous folder navigation preserves focus
+rather than requesting it again. Clicking elsewhere does not dismiss Dzurkel.
+
 If a window opens without focus, Space/Escape cannot dismiss it until focused.
 Use the title-bar close control in that case.
 Record how it was launched, shortcut conflicts, activation diagnostic output,

@@ -15,8 +15,9 @@ public:
     using Loader = std::function<PreviewData(const FileResource &, const QSize &, const Cancellation &)>;
     explicit PreviewController(bool diagnostics = false, Loader loader = {});
     ~PreviewController() override;
+    // Folder navigation suppresses activation when updating a mapped preview.
     bool show(const QString &url, QString &error, ResourceError *failure = nullptr,
-              const QString &activationToken = {});
+              const QString &activationToken = {}, bool requestActivation = true);
     void hide();
     void showSettings(const QString &activationToken = {}) { window_.showSettings(activationToken); }
     bool toggle(const QString &url, QString &error);

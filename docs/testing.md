@@ -584,3 +584,40 @@ retained throughout the switch.
 The intermittent loss of Dolphin's live Space binding remains open as
 [issue #4](https://github.com/EdinUser/dzurkel/issues/4). Successful setup does not
 resolve that issue. See the [documented workaround](dolphin-integration.md#space-stops-working-while-the-context-menu-works).
+
+## Reactivating an already-open preview
+
+`DBusTest::visibleShowRequestsFreshActivation` checks that an explicit Show with
+fresh activation context requests activation for an already-visible preview,
+reuses the resident process, and does not replay the token after loading. It
+failed with the original controller/window visibility guards and passed after
+the fix. The ordinary D-Bus suite runs this regression in CI on an isolated bus.
+
+`PreviewTest::visiblePreviewReactivatesOnExplicitShow` is an opt-in test on a
+real KDE Wayland session:
+
+```bash
+QT_QPA_PLATFORM=wayland DZURKEL_TEST_NATIVE_FOCUS=1 \
+  ./build/dzurkel_preview_tests visiblePreviewReactivatesOnExplicitShow
+```
+
+It creates its own preview and caller windows, uses a temporary KWin script to
+focus only the caller, and obtains fresh activation tokens through the existing
+KDE API. The preview must reactivate through the application request, not through
+the script. It checks same-file and replacement-file requests, minimized-window
+restoration, stable native window identity, no extra dismissal during Show,
+Escape dismissal, and focus preservation when asynchronous folder navigation
+finishes after switching to the caller. Temporary scripts are unloaded.
+
+The native focus regression passed, as did the existing small-first compositor
+placement run: eleven checks retained focus and one native window without
+unmapping. Reports are in the ignored `build/` directory. The native regression
+is skipped in offscreen CI because a compositor is required. It does not
+synthesize actual Dolphin keyboard input; the installed Dolphin Space workflow
+still requires user acceptance. Tokenless requests remain subject to compositor
+focus policy. This fix does not resolve Dolphin's separate shortcut-loss issue.
+
+All ten suites passed in the optimized Fedora build (29.31s), and the native
+focus regression passed against both Debug and optimized builds. The user-local
+installation was updated; its executable matched the stripped optimized build
+byte-for-byte. The existing draft RPM was not rebuilt as part of this fix.
