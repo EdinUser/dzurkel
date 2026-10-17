@@ -30,7 +30,7 @@ jobs:
           rpm-build redhat-rpm-config pkgconf-pkg-config libzip-devel
           qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
           qt6-qtwayland dbus-daemon python3 desktop-file-utils
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build binary and source RPMs; run CTest
@@ -73,7 +73,7 @@ jobs:
           test -x /usr/bin/dzurkel
           test -x /usr/share/kio/servicemenus/dzurkel.desktop
           test -f /usr/share/applications/dzurkel-settings.desktop
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Exercise installed preview on an isolated bus
@@ -102,7 +102,7 @@ jobs:
           dnf install -y git tar gzip clang cmake make pkgconf-pkg-config
           libzip-devel qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
           dbus-daemon python3 desktop-file-utils
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Configure and build
