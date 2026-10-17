@@ -74,7 +74,8 @@ jobs:
           rpm -V dzurkel
           dzurkel --version
           test -x /usr/bin/dzurkel
-          test -x /usr/share/kio/servicemenus/dzurkel.desktop
+          # System service menus are trusted by location; RPM normalizes .desktop permissions.
+          test -f /usr/share/kio/servicemenus/dzurkel.desktop
           test -f /usr/share/applications/dzurkel-settings.desktop
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

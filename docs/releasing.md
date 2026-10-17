@@ -17,6 +17,11 @@ This is a container-based build, not a Mock buildroot. A future Copr/Mock pipeli
 can consume the same spec and SRPM. The clean installation check catches missing
 runtime requirements independently of the development packages used to compile.
 
+Fedora normalizes packaged `.desktop` files to mode 0644. This is valid for the
+system service menu in `/usr/share/kio/servicemenus`: KDE trusts that location.
+The source installer retains executable permission for user-local menus, which
+need separate authorization. See [KDE's service-menu documentation](https://develop.kde.org/docs/apps/dolphin/service-menus/).
+
 Download `fedora-44-x86_64` from a successful workflow run for testing. Artifacts
 expire after 14 days; published releases are the durable download location.
 Actions are pinned to commit SHAs and Dependabot checks updates monthly.
