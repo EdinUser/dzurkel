@@ -559,3 +559,21 @@ changed. CI and RPM validation results are recorded in the GitHub workflow runs.
 
 The README table screenshot was captured from the real Qt preview using a
 synthetic CSV listing supported formats; it contains no personal files or paths.
+
+## RPM desktop acceptance (2026-10-17)
+
+The user installed `dzurkel-0.6.0-1.fc44.x86_64.rpm` after backing up and
+removing the user-local installation. RPM verification passed. The first Settings
+launch reached an old resident user-local process, which rejected the new
+`ShowSettings` method. After stopping that process, the installed
+`/usr/bin/dzurkel` started on the native Wayland backend.
+
+The user confirmed that Settings opened, the Space binding was saved correctly,
+and the application worked as expected. This establishes basic packaged desktop
+operation and shortcut setup; it does not establish exhaustive format coverage,
+long-session shortcut reliability, mixed-DPI behavior, or package upgrade/removal
+on the real desktop. Those checks remain separate.
+
+The intermittent loss of Dolphin's live Space binding remains open as
+[issue #4](https://github.com/EdinUser/dzurkel/issues/4). Successful setup does not
+resolve that issue. See the [documented workaround](dolphin-integration.md#space-stops-working-while-the-context-menu-works).
