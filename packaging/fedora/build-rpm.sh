@@ -7,7 +7,8 @@ spec_version=$(awk '/^Version:/ {print $2}' packaging/fedora/dzurkel.spec)
 [[ -n "$version" && "$version" == "$spec_version" ]] || {
     echo 'CMake and RPM versions must match.' >&2; exit 1;
 }
-if [[ -n $(git status --porcelain --untracked-files=normal) ]]; then
+checkout_status=$(git status --porcelain --untracked-files=normal)
+if [[ -n "$checkout_status" ]]; then
     echo 'Commit source changes before packaging; the source archive uses HEAD.' >&2
     exit 1
 fi

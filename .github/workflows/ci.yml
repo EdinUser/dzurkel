@@ -30,13 +30,15 @@ jobs:
           rpm-build redhat-rpm-config pkgconf-pkg-config libzip-devel
           qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
           qt6-qtwayland dbus-daemon python3 desktop-file-utils
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build binary and source RPMs; run CTest
-        run: bash packaging/fedora/build-rpm.sh
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash packaging/fedora/build-rpm.sh
       - name: Upload RPMs and checksums
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fedora-44-x86_64
           path: build-rpm/artifacts/*
@@ -44,7 +46,7 @@ jobs:
           retention-days: 14
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rpm-test-logs
           path: build-rpm/BUILD/**/Testing/Temporary/*.log
@@ -57,7 +59,7 @@ jobs:
     container: fedora:44
     timeout-minutes: 15
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fedora-44-x86_64
           path: packages
@@ -73,7 +75,7 @@ jobs:
           test -x /usr/bin/dzurkel
           test -x /usr/share/kio/servicemenus/dzurkel.desktop
           test -f /usr/share/applications/dzurkel-settings.desktop
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Exercise installed preview on an isolated bus
@@ -102,7 +104,7 @@ jobs:
           dnf install -y git tar gzip clang cmake make pkgconf-pkg-config
           libzip-devel qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
           dbus-daemon python3 desktop-file-utils
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Configure and build
@@ -113,7 +115,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clang-test-logs
           path: build/Testing/Temporary/*.log
@@ -127,7 +129,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fedora-44-x86_64
           path: packages
