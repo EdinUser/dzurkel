@@ -27,6 +27,10 @@ No process is killed. Dolphin's startup settings control window/tab restoration;
 the confirmation explains that all previous views may not return. A launch
 failure is reported with instructions to open Dolphin manually.
 
+Known limitation in 0.6.0: the reopened Dolphin can take focus and cover Dzurkel
+Settings. Switch back to Dzurkel to continue; automatic focus restoration after
+the restart has not been implemented.
+
 Restoring uses the same restart flow. This changes per-user bindings only;
 it neither needs sudo nor runs automatically when Settings opens. It removes
 unmodified Space (including sequences beginning with Space) from explicit

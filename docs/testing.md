@@ -161,6 +161,11 @@ platform's dialog backend.
 User-session window/tab restoration, Space invocation and Restore through the
 real Dolphin installation remain manual checks.
 
+The user confirmed that the 0.6.0 settings work, and reported that the reopened
+Dolphin takes focus and covers Dzurkel Settings. Automatic focus restoration
+after restart is not implemented. This feedback does not establish exact
+window/tab restoration or complete the other desktop acceptance checks.
+
 Temporary compact information-window sizing and restoration passed three
 targeted native Wayland tests, including four cold-information/PDF close/reopen
 cycles with content teardown and late compositor-configure checks. Captures show
