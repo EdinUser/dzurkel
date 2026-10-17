@@ -571,8 +571,15 @@ launch reached an old resident user-local process, which rejected the new
 The user confirmed that Settings opened, the Space binding was saved correctly,
 and the application worked as expected. This establishes basic packaged desktop
 operation and shortcut setup; it does not establish exhaustive format coverage,
-long-session shortcut reliability, mixed-DPI behavior, or package upgrade/removal
+long-session shortcut reliability, mixed-DPI behavior, or package upgrades
 on the real desktop. Those checks remain separate.
+
+The user subsequently removed the RPM. The package and all four installed
+application/menu files were verified absent. The current source checkout was
+rebuilt and restored into `~/.local` with the Fedora installer; all ten suites
+passed (30.31s). The restored application desktop entries and executable service
+menu matched the generated files. Per-user settings and shortcut backups were
+retained throughout the switch.
 
 The intermittent loss of Dolphin's live Space binding remains open as
 [issue #4](https://github.com/EdinUser/dzurkel/issues/4). Successful setup does not
