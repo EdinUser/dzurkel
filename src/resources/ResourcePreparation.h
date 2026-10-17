@@ -25,6 +25,9 @@ private:
     bool finished_ = false;
 };
 
+// Resolve through the existing desktop backend. May block; helper processes only.
+bool resolveDesktopPath(const FileResource &resource, QString &path, QString &error);
+
 // Internal command-line entry point; no QApplication or preview window needed.
 int prepareResourceSnapshot(const QString &url, const QString &directory);
 } // namespace dzurkel

@@ -16,7 +16,7 @@ void configure(QCommandLineParser &parser)
     parser.addOption({QStringLiteral("toggle"), QStringLiteral("Hide a visible preview, or show the supplied file.")});
     parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running service.")});
     parser.addOption({QStringLiteral("diagnostics"), QStringLiteral("Log startup and focus information for a new primary instance.")});
-    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("One local path, file:// or smb:// URL for Show/Toggle."), QStringLiteral("[file]"));
+    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("One local path, file:// or smb:// URL; sftp:// requires the experimental setting."), QStringLiteral("[file]"));
 }
 }
 

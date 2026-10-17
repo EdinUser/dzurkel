@@ -10,6 +10,8 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QCheckBox>
+#include "resources/ResourceAccessPolicy.h"
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
@@ -36,9 +38,11 @@ public slots:
 class SettingsTest : public QObject {
     Q_OBJECT
 private slots:
+    void initTestCase();
     void init();
     void cleanup();
     void informationIsAccessibleAndClickable();
+    void experimentalSftpIsExplicitAndPersistent();
     void appliesAndRestoresWhenDolphinIsClosed();
     void cancellationLeavesConfigurationUntouched();
     void waitsForEveryWindowBeforeApplying();
@@ -59,8 +63,15 @@ private:
     QTemporaryDir directory_;
     QString service_ = QStringLiteral("org.kde.dolphin-DzurkelTest");
 };
+void SettingsTest::initTestCase()
+{
+    QVERIFY(directory_.isValid());
+    qputenv("XDG_CONFIG_HOME", directory_.filePath(QStringLiteral("config")).toUtf8());
+}
 void SettingsTest::init()
 {
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(false, policyError), qPrintable(policyError));
     first_.alive = true; second_.alive = true;
     first_.permit = second_.permit = true;
     first_.requests = second_.requests = 0;
@@ -73,6 +84,26 @@ void SettingsTest::init()
     QVERIFY(bus.registerService(service_));
     QVERIFY(bus.registerObject(QStringLiteral("/dolphin/Dolphin_1"), &first_, QDBusConnection::ExportAllSlots));
     QVERIFY(bus.registerObject(QStringLiteral("/dolphin/Dolphin_2"), &second_, QDBusConnection::ExportAllSlots));
+}
+void SettingsTest::experimentalSftpIsExplicitAndPersistent()
+{
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
+    auto *option = dialog.findChild<QCheckBox *>(QStringLiteral("experimentalSftp"));
+    QVERIFY(option);
+    QVERIFY(!option->isChecked());
+    QVERIFY(!ResourceAccessPolicy::experimentalSftpEnabled());
+    dialog.show();
+    option->setFocus();
+    QTest::keyClick(option, Qt::Key_Space);
+    QVERIFY(option->isChecked());
+    QVERIFY(ResourceAccessPolicy::experimentalSftpEnabled());
+    SettingsDialog reopened(nullptr, shortcuts(), session(), [] { return true; });
+    QVERIFY(reopened.findChild<QCheckBox *>(QStringLiteral("experimentalSftp"))->isChecked());
+    QTest::keyClick(option, Qt::Key_Space);
+    QVERIFY(!ResourceAccessPolicy::experimentalSftpEnabled());
+    reopened.show();
+    QVERIFY(!reopened.findChild<QCheckBox *>(QStringLiteral("experimentalSftp"))->isChecked());
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-sftp.png")));
 }
 void SettingsTest::cleanup()
 {
@@ -109,7 +140,7 @@ void SettingsTest::informationIsAccessibleAndClickable()
 {
     SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
     dialog.show();
-    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo"}) {
+    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo", "sftpInfo"}) {
         auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY(button);
         QVERIFY(!button->toolTip().isEmpty());

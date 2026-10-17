@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
         assert "StartupNotify=true" in text
         assert "helpers/" not in text
     assert "Actions=dzurkel;" in menu.read_text()
-    assert "X-KDE-Protocols=file,smb" in menu.read_text()
+    assert "X-KDE-Protocols=file,smb,sftp" in menu.read_text()
     assert "[Desktop Action dzurkel]" in menu.read_text()
     assert "NoDisplay=true" in application.read_text()
     env = {**os.environ, "QT_QPA_PLATFORM": "dzurkel_invalid_backend"}

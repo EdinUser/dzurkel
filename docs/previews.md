@@ -8,7 +8,7 @@ Information-only views automatically shrink to fit their icon and text. This is
 temporary: a supported content preview restores the previous preview dimensions
 and maximized state, fitting the current display. Resizing an information window
 does not replace the remembered content-preview size. Repeated information views
-remain compact, and image decoding still targets the larger preview size.
+remain compact; image decoding retains bounded detail for zoom.
 The icon and metadata appear without manual resizing, including on first open.
 The first information-only preview is sized before mapping so Wayland can place
 the compact window correctly. Initial provider selection runs asynchronously;
@@ -28,8 +28,15 @@ Wayland can place the full preview within the screen.
 | Directories, links, special objects | Information only; contents/targets are not opened. |
 
 Image capability is checked against the actual reader, not just the extension.
-Images retain their aspect ratio and supported orientation metadata. Animated
-formats show a static frame; animation playback is outside this version's scope.
+Images retain their aspect ratio and supported orientation metadata. Animated GIFs play automatically, with a **Pause/Play** button (`P`) and **Replay**
+for animations that finish. Playback follows the file's loop count. Frames decode
+on the worker before playback; the GUI only presents retained frames. GIF decoding
+is limited to 300 frames, 64 MiB of retained frame pixels, and five seconds of
+cooperative decoding work. Exceeding a limit or a later-frame decode failure shows
+the first frame with an explanation. One frame can transiently be decoded before
+its retained-byte check; native Qt allocation/cancellation limits still apply.
+Delays are bounded to 20 ms–60 seconds. Dismissal/replacement releases animation
+frames and stops playback. Other animated image formats still show a static frame.
 Optional formats such as WebP, GIF, and TIFF require the matching Qt runtime
 plugins (Fedora's `qt6-qtimageformats` provides additional readers).
 
@@ -43,12 +50,61 @@ can identify UTF-16/UTF-32. Invalid UTF-8 may use a labeled Latin-1 fallback;
 unknown legacy encodings are not reliably detected. Binary data receives an
 information view rather than a text dump.
 
+## Zoom and file navigation
+
+- Wheel/touchpad scrolling moves within the current image, PDF, or text.
+- Ctrl+wheel, `+`/`=` and `-` zoom images/PDFs in steps of 10 percentage points around the
+  viewport center. `0` and the visible **Fit** button reset to fit-to-window for
+  images and fit-to-width for PDF. Image fit shrinks large images but never enlarges
+  small ones above 100%; deliberate zoom can still enlarge them. The displayed
+  percentage reflects actual scale. From 121%, zoom out goes to 120%, 110%, 100%;
+  zoom in goes to 130%. Fit percentages can fall between those steps.
+- Manual zoom normally ranges from 10% to 800%. PDF manual zoom has a lower
+  ceiling when necessary to keep a rendered page within 16 million physical
+  pixels and an 8192-pixel edge, accounting for display scaling. The percentage
+  tooltip explains that ceiling. Qt manages PDF page caching; this is a per-page
+  manual-zoom limit, not a total process-memory guarantee or a new fit-mode limit.
+- Image zoom scales the retained decoded pixels. Images larger than the bounded
+  decode do not regain full source detail at higher zoom; the percentage tooltip
+  explains this. No zoom-sized image bitmap is allocated. Text font zoom is deferred.
+- Opening/replacing a file resets zoom to fit; resizing while fitted recomputes fit.
+- **Previous**/**Next** and Alt+arrows browse sibling files for every provider.
+  Plain Left/Right also browse images and information views. Plain Up/Down browse
+  fitted images and information views; in manually zoomed images they scroll.
+  Text and PDF keep their normal unmodified arrow behavior. Holding a navigation key does not skip
+  through multiple files automatically. Space/Shift+Space/Escape still dismiss.
+
+Sibling order uses case-insensitive natural filename comparison with numeric
+ordering and a case-sensitive tie-break. It does not reproduce Dolphin's current
+sort. Navigation includes non-hidden regular files and unsupported formats, which
+show information views; it excludes directories, links, and special objects.
+An explicitly opened hidden file is included as the current ordering anchor.
+Navigation does not wrap, and buttons disable at the beginning/end. Browsing
+changes Dzurkel’s preview; it does not move Dolphin’s selection.
+
+Directory listing runs in a cancellable helper, using the same local/mounted or
+KIO-FUSE route as resource preparation. It reads names and metadata without
+opening sibling contents or prefetching. Each listing examines at most 10,000
+entries (including excluded entries), allows five seconds of enumeration/sorting
+work, limits its response to 2 MiB, and has a 30-second overall deadline. Exceeding
+these limits disables navigation with an explanation; no partial order is shown.
+At most two listing helpers can exist while cancellation is being reaped, separate
+from the two content-preparation helpers. The kernel-stuck I/O limitation applies
+to both. Dismissal/replacement cancels listing and discards obsolete results.
+
+Navigation refreshes the listing before choosing the next file, skipping entries
+that have disappeared and reporting folder changes. A file can still change after
+the listing; normal preview validation then reports the failure. Current directory,
+link, and special-object previews have navigation disabled. A listing failure does
+not prevent the selected file from being previewed. SMB and opt-in SFTP use the
+same ordering and limits; broader real-server acceptance remains separate.
+
 ## Resource limits
 
 Limits are configured in the provider source files:
 
 - Images: 64 MiB source-copy limit and 64 MiB Qt image-allocation budget; decoded previews are bounded to
-  2,048 pixels per axis. Readers without native scaled decoding reject originals
+  4,096 pixels per axis, retained for zoom without reopening the source on the UI thread. Readers without native scaled decoding reject originals
   exceeding the pixel budget before loading. Qt's `QT_IMAGEIO_MAXALLOC`
   environment setting can override its library allocation limit.
 - Text: at most 2 MiB of source bytes, 20,000 lines, and 16,384 characters per line.
@@ -67,11 +123,13 @@ sandbox. Dedicated decoder isolation remains future work.
 
 ## Filesystem policy
 
-Local paths, `file://` URLs and `smb://` URLs are accepted. Relative paths use
+Local paths, `file://` URLs and `smb://` URLs are accepted by default; SFTP requires
+the [experimental opt-in](compatibility.md#trying-experimental-sftp). Relative paths use
 the caller's working directory. Local/mounted filesystem checks run in a
 separate resource helper, keeping slow mounts away from the UI thread.
 Every symbolic link, including broken/cyclic links, receives information only;
-targets are not opened. Directories are not enumerated; FIFOs, sockets and
+targets are not opened. Directory previews remain metadata-only; navigation lists
+the parent of a selected regular file separately. FIFOs, sockets and
 devices are never opened for content. Regular files are opened with
 nonblocking/no-follow flags and checked by descriptor.
 
@@ -102,6 +160,15 @@ setup/authentication guidance. No KIO development library is required. This rout
 is available in Qt-only builds too when the service exists; it is not a claim of
 GNOME integration. Transport caching and actual network transfer volume depend
 on KIO-FUSE, so the snapshot limit is not a network-bandwidth guarantee.
+
+### Experimental SFTP
+
+Settings offers **Experimental SFTP previews**, disabled by default. Enabling it
+allows `sftp://[user@]host[:port]/absolute/path` through the same resource helper,
+readers and limits; it does not enable other direct protocols. Verify the host key
+and authenticate in Dolphin first. New requests use the current preference
+without restarting the app. See [compatibility and validation](compatibility.md)
+for the evidence gaps, URL rules, controlled-server harness and tester checklist.
 
 Preparation times out after 30 seconds (the mount call can time out earlier).
 Hide/replacement kills the helper without waiting on the UI thread. At most two

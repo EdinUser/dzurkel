@@ -12,6 +12,7 @@
 #include <QTest>
 #include <QUrl>
 #include <QScopeGuard>
+#include <QSettings>
 
 #include <memory>
 #include <vector>
@@ -47,6 +48,7 @@ private slots:
     void handlesStartupRacesAndCrashRecovery();
     void forwardsActivationTokensWithoutGui();
     void validatesActivationOptions();
+    void experimentalSftpPolicyAppliesToResidentService();
 private:
     bool registered() const;
     uint ownerPid() const;
@@ -105,6 +107,30 @@ void DBusTest::validatesActivationOptions()
     QCOMPARE(call(QStringLiteral("ToggleWithOptions"), {QString(), QVariantMap{}}).type(), QDBusMessage::ReplyMessage);
     QVERIFY(!property(QStringLiteral("Visible")).toBool());
 }
+void DBusTest::experimentalSftpPolicyAppliesToResidentService()
+{
+    startPrimary();
+    const QString previous = property(QStringLiteral("FileUrl")).toString();
+    const QString remote = QStringLiteral("sftp://user@127.0.0.1:9/file.txt");
+    QCOMPARE(call(QStringLiteral("Show"), {remote}).errorName(),
+        QStringLiteral("io.github.EdinUser.Dzurkel.Error.UnsupportedScheme"));
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), previous);
+    QSettings configuration(QSettings::IniFormat, QSettings::UserScope,
+        QStringLiteral("dzurkel"), QStringLiteral("dzurkel"));
+    configuration.setValue(QStringLiteral("resources/experimentalSftp"), true);
+    configuration.sync();
+    QCOMPARE(configuration.status(), QSettings::NoError);
+    QCOMPARE(call(QStringLiteral("Show"), {remote}).type(), QDBusMessage::ReplyMessage);
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), remote);
+    QCOMPARE(call(QStringLiteral("Hide")).type(), QDBusMessage::ReplyMessage);
+    configuration.setValue(QStringLiteral("resources/experimentalSftp"), false);
+    configuration.sync();
+    QCOMPARE(cli({first_}), 0);
+    const auto reply = call(QStringLiteral("Show"), {remote});
+    QCOMPARE(reply.errorName(), QStringLiteral("io.github.EdinUser.Dzurkel.Error.UnsupportedScheme"));
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), previous);
+    QVERIFY(property(QStringLiteral("Visible")).toBool());
+}
 
 bool DBusTest::registered() const
 {
@@ -156,6 +182,7 @@ void DBusTest::startPrimary()
 void DBusTest::initTestCase()
 {
     QVERIFY(directory_.isValid());
+    qputenv("XDG_CONFIG_HOME", directory_.filePath(QStringLiteral("config")).toUtf8());
     QVERIFY(QDBusConnection::sessionBus().isConnected());
     QVERIFY(!registered());
     first_ = directory_.filePath(QStringLiteral("first.txt"));

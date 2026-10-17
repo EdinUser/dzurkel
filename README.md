@@ -11,6 +11,9 @@ Dzurkel previews images, PDFs, and plain text from local paths, `file://` URLs,
 and direct `smb://` URLs through the desktop KIO-FUSE service. Mounted shares
 continue to work as filesystem paths. Direct SMB requires desktop authentication;
 see [remote resources](docs/previews.md#smb-resources).
+SFTP URLs can be enabled through **Experimental SFTP previews** in Settings;
+they are off by default and await real-server validation. See the
+[compatibility matrix and testing guide](docs/compatibility.md).
 Unsupported files, directories, links, and special objects get an information
 view. One primary process owns the session-bus service and reuses one preview
 window. Later CLI invocations forward their commands to that process.
@@ -149,3 +152,12 @@ listed above; retain your source checkout and any unrelated menu entries.
   inspect preview state, and handle errors.
 - [Testing and validation](docs/testing.md): supported test environment,
   automated checks, memory measurements, and pending desktop verification.
+
+## Zoom and browsing files
+
+Use Ctrl+wheel or `+`/`-` to zoom images and PDFs; `0` or **Fit** restores fit.
+Plain wheel scrolls content. Zoom snaps to 10 percentage-point steps, and image
+fit does not enlarge small images above 100%. GIFs play with Pause/Play controls.
+**Previous**/**Next** and Alt+arrows browse files in natural filename order;
+images/information views also accept plain Left/Right. Up/Down browse fitted
+images/information views and scroll zoomed images, PDFs and text. See [preview controls and limits](docs/previews.md#zoom-and-file-navigation).

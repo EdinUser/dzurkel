@@ -1,4 +1,5 @@
 #include "FileResource.h"
+#include "ResourceAccessPolicy.h"
 
 #include <QDir>
 #include <QFile>
@@ -41,7 +42,7 @@ bool parseFileResource(const QString &argument, FileResource &resource, QString 
     if (failure) *failure = ResourceError::InvalidUrl;
     error.clear();
     if (argument.isEmpty()) {
-        error = QStringLiteral("A file path, file URL or SMB URL is required.");
+        error = QStringLiteral("A file path or supported resource URL is required.");
         return false;
     }
     if (argument.size() > 16384 || argument.contains(QChar::Null)) {
@@ -56,6 +57,26 @@ bool parseFileResource(const QString &argument, FileResource &resource, QString 
         if (!url.isValid()) {
             error = QStringLiteral("Malformed URL: %1").arg(url.errorString());
             return false;
+        }
+        if (url.scheme() == QStringLiteral("sftp")) {
+            if (url.host().isEmpty() || !url.path().startsWith(QChar('/'))
+                || url.userInfo(QUrl::FullyEncoded).contains(QChar(':'))
+                || url.hasQuery() || url.hasFragment() || url.path().contains(QChar::Null)
+                || url.port() == 0) {
+                error = QStringLiteral("Expected sftp://[user@]host[:port]/absolute/path without passwords, query or fragment.");
+                return false;
+            }
+            if (!ResourceAccessPolicy::experimentalSftpEnabled()) {
+                if (failure) *failure = ResourceError::UnsupportedScheme;
+                error = QStringLiteral("SFTP previews are experimental and disabled. Enable Experimental SFTP in Dzurkel Settings to try them.");
+                return false;
+            }
+            // Preserve remote path components: resolving '..' lexically can
+            // change meaning when a server-side ancestor is a symbolic link.
+            resource.url = url;
+            resource.path = url.path();
+            if (failure) *failure = ResourceError::None;
+            return true;
         }
         if (url.scheme().compare(QStringLiteral("smb"), Qt::CaseInsensitive) == 0) {
             if (url.host().isEmpty() || url.path().section('/', 1, 1).isEmpty()

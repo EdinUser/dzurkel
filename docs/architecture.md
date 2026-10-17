@@ -12,7 +12,7 @@ file-manager integration; rendering does not depend on Dolphin internals.
 | `src/application/` | CLI parsing, caller-relative paths, single-instance ownership and forwarding. |
 | `src/ipc/` | Public D-Bus methods, options, resource errors and preview-state properties. |
 | `src/controller/` | Request generations, bounded worker queue, content replacement and visibility. |
-| `src/resources/` | URL syntax checks, isolated resource preparation, SMB resolution and bounded snapshots. |
+| `src/resources/` | URL admission/policy, isolated preparation, desktop remote resolution and bounded snapshots. |
 | `src/preview/` | MIME/reader selection, bounded decoding, metadata and GUI-widget construction. |
 | `src/ui/` | Preview geometry, dismissal, Settings link and setup dialog. |
 | `src/desktop/` | Activation support, Dolphin shortcut backup/restore and explicit restart lifecycle. |
@@ -22,6 +22,12 @@ There is no separate application facade class or D-Bus adaptor layer: startup
 is in `main.cpp`, and `PreviewService` is explicitly exported on the bus.
 
 ## Request and presentation lifecycle
+
+`ResourceAccessPolicy` stores the explicit per-user SFTP experiment preference.
+CLI, resident service and resource helper consult it during URL admission;
+Settings reads it without writing and persists only explicit checkbox changes.
+File/mounted-path and SMB input remain enabled. SFTP uses the existing remote
+adapter after opt-in rather than a separate broker or new preview provider.
 
 URL syntax validation happens before accepting a Show request; filesystem
 validation does not. A QProcess helper (an internal mode of the same installed

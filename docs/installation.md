@@ -22,6 +22,10 @@ are separate from this source-build procedure.
 
 ## Optional SMB runtime support
 
+The same optional packages provide the experimental SFTP route, which must also
+be enabled in Settings. See [compatibility](compatibility.md). OpenSSH server and
+bubblewrap are optional testing tools, not application requirements.
+
 Direct `smb://` previews use the desktop's KIO-FUSE service and SMB worker:
 
 ```bash
@@ -41,7 +45,7 @@ Run from a source checkout as your regular user:
 ```
 
 The script configures `build-fedora/` with `MinSizeRel`, link-time optimization,
-and unused-section removal, then builds, runs all seven test suites, validates the
+and unused-section removal, then builds, runs all eight test suites, validates the
 application desktop entry, and installs a stripped executable. A failed build or
 test stops before the live installation is changed. If the target already has
 Dzurkel installed, the script first requests shutdown through the current user's

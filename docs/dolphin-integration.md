@@ -128,8 +128,21 @@ Quit any old resident binary before testing an updated installation.
 
 ## Direct SMB locations
 
-The service menu accepts `file` and `smb` URLs. Open an `smb://` location in Dolphin
+The service menu lists `file`, `smb` and `sftp` URLs; SFTP is rejected until
+**Experimental SFTP previews** is enabled in Dzurkel Settings. This static menu
+listing is not a support/availability guarantee. See [compatibility](compatibility.md).
+Open an `smb://` location in Dolphin
 and authenticate first, then use the same preview action/shortcut. Dzurkel resolves
 the original URL through KIO-FUSE rather than mapping it to an existing `/mnt`
 configuration. See [SMB requirements and limits](previews.md#smb-resources).
 Native authenticated-share acceptance remains recorded in [testing](testing.md).
+
+## Space stops working while the context menu works
+
+The user observed this on Dolphin 26.08.1 and confirmed that closing all Dolphin
+windows and reopening restored Space. Dzurkel remained responsive on D-Bus and
+its saved Space binding was present. This resembles the upstream report of
+[service-menu shortcuts stopping during use](https://bugs.kde.org/show_bug.cgi?id=525749);
+the precise trigger has not been reproduced here. Reinstallation or killing
+Dzurkel is unnecessary for this observed failure. Settings says **Space shortcut
+configured** because it checks saved configuration, not Dolphin's active binding.

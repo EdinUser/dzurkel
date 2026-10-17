@@ -5,6 +5,7 @@
 class QLabel;
 class QVBoxLayout;
 class QScreen;
+class QPushButton;
 namespace dzurkel {
 struct FileResource;
 class SettingsDialog;
@@ -23,8 +24,11 @@ public:
     void setStatus(const QString &status);
     void setInformationMode(bool information);
     QSize previewSize() const;
+    void setNavigation(bool previous, bool next, const QString &status);
+    void setArrowNavigation(bool enabled) { arrowNavigation_ = enabled; }
 signals:
     void dismissed();
+    void navigateRequested(int direction);
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void hideEvent(QHideEvent *event) override;
@@ -33,9 +37,17 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 private:
     void fitInformation();
+    void updateZoomControls();
     void watchScreen(QScreen *screen);
     void fitScreen(QScreen *screen);
+    bool arrowNavigation_ = false;
+    int wheelRemainder_ = 0;
     bool diagnostics_;
+    QPushButton *previous_;
+    QPushButton *next_;
+    QLabel *navigationStatus_;
+    QWidget *zoomControls_;
+    QLabel *zoomStatus_;
     bool shown_ = false;
     bool presentationPrepared_ = false;
     bool trackingScreen_ = false;

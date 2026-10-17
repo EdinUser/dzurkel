@@ -5,6 +5,7 @@
 #include "ipc/PreviewService.h"
 #include "resources/FileResource.h"
 #include "resources/ResourcePreparation.h"
+#include "resources/FolderNavigation.h"
 
 #include <QApplication>
 #include <QTextStream>
@@ -27,6 +28,10 @@ int main(int argc, char *argv[])
         QCoreApplication commandLine(argc, argv);
         commandLine.setApplicationName(QStringLiteral("dzurkel"));
         commandLine.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
+        if (commandLine.arguments().value(1) == QStringLiteral("--internal-list-folder")) {
+            if (commandLine.arguments().size() != 4) return 2;
+            return dzurkel::enumerateResourceFolder(commandLine.arguments().at(2), commandLine.arguments().at(3) == QStringLiteral("navigate"));
+        }
         if (commandLine.arguments().value(1) == QStringLiteral("--internal-prepare-resource")) {
             if (commandLine.arguments().size() != 4) return 2;
             return dzurkel::prepareResourceSnapshot(commandLine.arguments().at(2), commandLine.arguments().at(3));

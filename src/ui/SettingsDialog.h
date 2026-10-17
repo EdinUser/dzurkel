@@ -9,6 +9,7 @@
 class QLabel;
 class QPushButton;
 class QDialogButtonBox;
+class QCheckBox;
 namespace dzurkel {
 class SettingsDialog : public QDialog {
     Q_OBJECT
@@ -39,5 +40,6 @@ private:
     QLabel *status_;
     QPushButton *apply_;
     QPushButton *restore_;
+    QCheckBox *experimentalSftp_;
 };
 } // namespace dzurkel

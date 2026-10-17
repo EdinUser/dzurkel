@@ -27,8 +27,11 @@ add_library(dzurkel_core STATIC
     src/preview/providers/PdfPreviewProvider.cpp
     src/preview/providers/TextPreviewProvider.cpp
     src/preview/providers/FileInfoProvider.cpp
+    src/resources/FolderNavigation.cpp
     src/resources/FileResource.cpp
+    src/resources/ResourceAccessPolicy.cpp
     src/resources/ResourcePreparation.cpp
+    src/ui/ZoomPreview.h
     src/ui/PreviewWindow.cpp
     src/ui/SettingsDialog.cpp
 )
@@ -125,6 +128,12 @@ if(BUILD_TESTING)
     add_dependencies(dzurkel_resource_tests dzurkel)
     add_test(NAME dzurkel_resources COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_resource_tests>)
     set_tests_properties(dzurkel_resources PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_executable(dzurkel_interaction_tests tests/integration/InteractionTest.cpp)
+    target_link_libraries(dzurkel_interaction_tests PRIVATE dzurkel_core Qt6::Test)
+    target_compile_definitions(dzurkel_interaction_tests PRIVATE DZURKEL_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_dependencies(dzurkel_interaction_tests dzurkel)
+    add_test(NAME dzurkel_interactions COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_interaction_tests>)
+    set_tests_properties(dzurkel_interactions PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
     add_test(NAME dzurkel_cli COMMAND ${CMAKE_COMMAND}
         -DDZURKEL=$<TARGET_FILE:dzurkel>
         -DEXPECTED_VERSION=${PROJECT_VERSION}

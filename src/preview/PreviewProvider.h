@@ -25,9 +25,14 @@ struct PreviewData {
     QString message;
     QString detail;
     QImage image;
+    QSize imageSize; // Oriented source dimensions; decoded pixels remain bounded.
+    QList<QImage> animationFrames;
+    QList<int> animationDelays;
+    int animationLoops = 0; // Additional loops; -1 means repeat indefinitely.
     QString text;
     bool truncated = false;
     std::shared_ptr<QPdfDocument> pdf;
+    QList<QSizeF> pdfPageSizes;
 };
 
 class PreviewProvider {

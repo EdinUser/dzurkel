@@ -3,23 +3,58 @@
 #include "preview/providers/FileInfoProvider.h"
 #include "preview/providers/ImagePreviewProvider.h"
 #include "resources/ResourcePreparation.h"
+#include "resources/FolderNavigation.h"
 #include <QImageReader>
 #include <QLabel>
 #include <QLayout>
 #include <QPdfDocument>
 #include <QTimer>
+#include <QSet>
 #include <QtConcurrentRun>
 
 namespace dzurkel {
 PreviewController::PreviewController(bool diagnostics, Loader loader)
     : window_(diagnostics), loader_(std::move(loader))
 {
+    navigation_ = new FolderNavigation(this);
+    connect(navigation_, &FolderNavigation::ready, this,
+        [this](const QStringList &urls, int index, const QString &message, const QString &selected) {
+            if (!isVisible()) return;
+            if (index < 0) {
+                window_.setNavigation(false, false, message);
+                return;
+            }
+            const QSet<QString> listed(urls.begin(), urls.end());
+            for (const auto &old : navigationUrls_) {
+                if (!listed.contains(old) && !QUrl(old).fileName().startsWith('.')) {
+                    navigationNotice_ = QStringLiteral("Folder changed; unavailable entries were skipped.");
+                    break;
+                }
+            }
+            navigationUrls_ = urls;
+            if (!message.isEmpty()) navigationNotice_ = message;
+            const auto position = QStringLiteral("%1 / %2").arg(index + 1).arg(urls.size());
+            window_.setNavigation(index > 0, index + 1 < urls.size(),
+                navigationNotice_.isEmpty() ? position : position + QStringLiteral(" · ") + navigationNotice_);
+            if (!selected.isEmpty()) {
+                QString error;
+                if (!show(selected, error)) window_.setNavigation(false, false, error);
+            }
+        });
+    connect(&window_, &PreviewWindow::navigateRequested, this, [this](int direction) {
+        FileResource resource;
+        QString error;
+        if (!isVisible() || !parseFileResource(fileUrl_, resource, error)) return;
+        window_.setNavigation(false, false, QStringLiteral("Checking folder…"));
+        navigation_->start(resource, direction);
+    });
     pool_.setMaxThreadCount(1);
     QImageReader::setAllocationLimit(ImagePreviewProvider::AllocationLimitMiB);
     connect(&window_, &PreviewWindow::dismissed, this, &PreviewController::cancelAndClear);
 }
 PreviewController::~PreviewController()
 {
+    navigation_->cancel();
     if (preparation_) delete preparation_;
     if (cancellation_) cancellation_->store(true);
     if (watcher_) disconnect(watcher_, nullptr, this, nullptr);
@@ -35,6 +70,15 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
         preparation_ = nullptr;
     }
     if (cancellation_) cancellation_->store(true);
+    const auto parent = resource.url.adjusted(QUrl::RemoveFilename).toString(QUrl::FullyEncoded);
+    if (parent != navigationParent_) {
+        navigationParent_ = parent;
+        navigationUrls_.clear();
+        navigationNotice_.clear();
+    }
+    navigation_->cancel();
+    window_.setArrowNavigation(false);
+    window_.setNavigation(false, false, QStringLiteral("Checking folder…"));
     ++generation_;
     fileUrl_ = resource.url.toString(QUrl::FullyEncoded);
     loading_ = true;
@@ -62,6 +106,7 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
         });
     }
     if (!watcher_) startPending();
+    if (!loader_) navigation_->start(resource);
     return true;
 }
 void PreviewController::startPending()
@@ -102,6 +147,7 @@ void PreviewController::startPending()
             window_.setContent(PreviewRegistry::createWidget(data, nullptr));
             window_.setStatus(data.kind == PreviewKind::Information ? QString()
                 : (data.message.isEmpty() ? data.detail : data.message));
+            window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information);
             window_.setInformationMode(data.kind == PreviewKind::Information);
             if (presentationPending_) {
                 presentationPending_ = false;
@@ -132,6 +178,12 @@ void PreviewController::startPending()
 }
 void PreviewController::cancelAndClear()
 {
+    navigation_->cancel();
+    navigationUrls_.clear();
+    navigationNotice_.clear();
+    navigationParent_.clear();
+    window_.setNavigation(false, false, {});
+    window_.setArrowNavigation(false);
     ++generation_;
     if (cancellation_) cancellation_->store(true);
     if (preparation_) {

@@ -1,5 +1,7 @@
 #include "SettingsDialog.h"
 #include "desktop/DesktopIntegration.h"
+#include "resources/ResourceAccessPolicy.h"
+#include <QCheckBox>
 #include <QEvent>
 #include <QDialogButtonBox>
 #include <QFutureWatcher>
@@ -12,6 +14,7 @@
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QShowEvent>
+#include <QSignalBlocker>
 #include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -69,7 +72,7 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     heading->addWidget(title);
     heading->addStretch();
     heading->addWidget(information(this, QStringLiteral("shortcutInfo"), QStringLiteral("Dolphin shortcut"),
-        QStringLiteral("Preview selected files with Space in Dolphin 26.04 or newer. This replaces Space selection and conflicting Space shortcuts; alternate bindings are kept. Restore previous shortcuts uses the backup to undo only Dzurkel’s changes, preserving unrelated toolbar and menu edits.")));
+        QStringLiteral("Preview selected files with Space in Dolphin 26.04 or newer. If Space stops working while the context-menu action still works, close all Dolphin windows and reopen Dolphin. This replaces Space selection and conflicting Space shortcuts; alternate bindings are kept. Restore previous shortcuts uses the backup to undo only Dzurkel’s changes, preserving unrelated toolbar and menu edits.")));
     layout->addLayout(heading);
     status_ = label(this, {});
     status_->setObjectName(QStringLiteral("shortcutStatus"));
@@ -120,6 +123,30 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     support->setColumnStretch(1, 1);
     layout->addLayout(support);
     layout->addWidget(label(this, QStringLiteral("Other files show an icon and file information."), true));
+    auto *locationsTitle = label(this, QStringLiteral("File locations"));
+    locationsTitle->setFont(font);
+    layout->addWidget(locationsTitle);
+    layout->addWidget(label(this, QStringLiteral("Local paths, mounted shares and SMB URLs are enabled.")));
+    auto *experimental = new QHBoxLayout;
+    experimentalSftp_ = new QCheckBox(QStringLiteral("Experimental SFTP previews"), this);
+    experimentalSftp_->setObjectName(QStringLiteral("experimentalSftp"));
+    experimentalSftp_->setToolTip(QStringLiteral("Allow sftp:// URLs for new preview requests. Disabled by default; compatibility testing is incomplete."));
+    experimental->addWidget(experimentalSftp_);
+    experimental->addStretch();
+    experimental->addWidget(information(this, QStringLiteral("sftpInfo"), QStringLiteral("Experimental SFTP"),
+        QStringLiteral("SFTP is optional and experimental. It reuses the same image, PDF and text readers and preview limits. "
+            "Open the location in Dolphin first to verify its host key and authenticate. KIO-FUSE and the SFTP worker are required. "
+            "Passwords in URLs are not accepted. This setting applies to new CLI and Dolphin requests without restarting Dzurkel; "
+            "an already accepted preview may finish after you turn it off. Other direct protocols are not enabled.")));
+    layout->addLayout(experimental);
+    connect(experimentalSftp_, &QCheckBox::toggled, this, [this](bool enabled) {
+        QString error;
+        if (!ResourceAccessPolicy::setExperimentalSftpEnabled(enabled, error)) {
+            const QSignalBlocker blocker(experimentalSftp_);
+            experimentalSftp_->setChecked(ResourceAccessPolicy::experimentalSftpEnabled());
+            QMessageBox::warning(this, QStringLiteral("SFTP preview setting"), error);
+        }
+    });
     buttons_ = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons_, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
     layout->addWidget(buttons_);
@@ -240,6 +267,10 @@ void SettingsDialog::finish(const QString &error)
 }
 void SettingsDialog::refresh()
 {
+    {
+        const QSignalBlocker blocker(experimentalSftp_);
+        experimentalSftp_->setChecked(ResourceAccessPolicy::experimentalSftpEnabled());
+    }
     const bool installed = !QStandardPaths::locate(QStandardPaths::GenericDataLocation,
         QStringLiteral("kio/servicemenus/dzurkel.desktop")).isEmpty();
     const bool active = shortcuts_.usesSpace();
@@ -247,7 +278,7 @@ void SettingsDialog::refresh()
     const bool backup = shortcuts_.hasBackup();
     status_->setText(!supported ? QStringLiteral("Custom shortcut scheme — use Dolphin’s shortcut editor.")
         : !installed ? QStringLiteral("Install the Dolphin integration to enable shortcut setup.")
-        : active ? QStringLiteral("Space shortcut enabled")
+        : active ? QStringLiteral("Space shortcut configured")
         : QStringLiteral("Space shortcut not enabled"));
     apply_->setVisible(!backup);
     apply_->setEnabled(supported && installed && !active && !backup);

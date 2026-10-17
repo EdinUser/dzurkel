@@ -19,8 +19,13 @@ These project identifiers remain provisional until the first public release.
 | `ToggleWithOptions(string url, dict options)` | Toggle with optional launch context. |
 | `Quit()` | Acknowledge the request and gracefully terminate the service. |
 
-`url` must be a fully encoded absolute `file://` or `smb://` URL. SMB URLs may
+By default, `url` must be a fully encoded absolute `file://` or `smb://` URL. SMB URLs may
 include a username, but not a password, explicit port, query or fragment.
+With **Experimental SFTP previews** enabled in Settings, absolute `sftp://` URLs
+are also accepted, with an optional username and port (1–65535). Passwords,
+queries and fragments remain invalid. The per-user preference is checked on
+each new request; a disabled SFTP request returns `UnsupportedScheme` and
+preserves the existing preview. Visible Toggle still ignores its unused URL.
 Resource arguments are limited to 16,384 characters. A visible Toggle ignores
 its unused URL, including invalid URLs. Malformed/unsupported Show requests or
 Toggle requests while hidden return an error and preserve the previous state.
@@ -28,7 +33,7 @@ Toggle requests while hidden return an error and preserve the previous state.
 A successful reply acknowledges the request before filesystem/network checks.
 Missing, unreadable or unavailable resources become an `information` preview
 with an explanation; they do not produce a delayed D-Bus error. The original
-SMB URL remains in `FileUrl`, never the temporary backing path.
+remote URL remains in `FileUrl`, never the temporary backing path.
 
 `options` is an `a{sv}` dictionary. The optional `activation-token` string carries
 the caller's Wayland launch token. The CLI forwards `XDG_ACTIVATION_TOKEN` through
@@ -58,7 +63,7 @@ previews. Properties do not currently emit change notifications.
 Errors use the prefix `io.github.EdinUser.Dzurkel.Error.`:
 
 - `InvalidUrl`: malformed/relative URLs, remote file hosts, queries, or fragments.
-- `UnsupportedScheme`: schemes other than file and smb.
+- `UnsupportedScheme`: an unimplemented scheme or experimental SFTP while disabled.
 
 `NotFound` and `NotReadable` were synchronous errors in earlier development
 builds; filesystem failures now appear asynchronously in the information view.

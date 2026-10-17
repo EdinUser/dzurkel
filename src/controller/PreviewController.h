@@ -9,6 +9,7 @@
 
 namespace dzurkel {
 class ResourcePreparation;
+class FolderNavigation;
 class PreviewController : public QObject {
 public:
     using Loader = std::function<PreviewData(const FileResource &, const QSize &, const Cancellation &)>;
@@ -31,6 +32,7 @@ private:
     // Declare before the window so its runtime outlives any displayed document.
     std::unique_ptr<QPdfDocument> pdfRuntime_;
     PreviewWindow window_;
+    FolderNavigation *navigation_;
     QThreadPool pool_;
     QPointer<QFutureWatcher<PreviewData>> watcher_;
     QPointer<ResourcePreparation> preparation_;
@@ -39,6 +41,9 @@ private:
     std::optional<Job> pending_;
     quint64 generation_ = 0;
     QString fileUrl_;
+    QString navigationParent_;
+    QStringList navigationUrls_;
+    QString navigationNotice_;
     PreviewKind kind_ = PreviewKind::Cancelled;
     bool loading_ = false;
     bool presentationPending_ = false;

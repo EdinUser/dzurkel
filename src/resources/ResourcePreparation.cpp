@@ -132,27 +132,38 @@ void ResourcePreparation::finish(const QString &error)
     emit ready(resource_);
 }
 
+bool resolveDesktopPath(const FileResource &resource, QString &path, QString &error)
+{
+    const auto fail = [&error](const QString &message) { error = message; return false; };
+    path = resource.path;
+    if (!resource.url.isLocalFile()) {
+        const auto protocol = resource.url.scheme().toUpper();
+        auto message = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KIOFuse"),
+            QStringLiteral("/org/kde/KIOFuse"), QStringLiteral("org.kde.KIOFuse.VFS"), QStringLiteral("mountUrl"));
+        message << resource.url.toString(QUrl::FullyEncoded);
+        const QDBusReply<QString> reply = QDBusConnection::sessionBus().call(message, QDBus::Block, 25000);
+        if (!reply.isValid())
+            return fail(QStringLiteral("%1 access failed. Ensure KIO-FUSE and the matching protocol worker are installed. "
+                "Open this location in Dolphin to verify access and authenticate, then retry. (%2)")
+                .arg(protocol, reply.error().name()));
+        path = reply.value();
+        if (!QDir::isAbsolutePath(path)) return fail(QStringLiteral("KIO-FUSE returned an invalid local path."));
+    }
+    return true;
+}
+
 int prepareResourceSnapshot(const QString &url, const QString &directory)
 {
     FileResource original;
     QString error;
     if (!parseFileResource(url, original, error)) return failure(error);
-    QString path = original.path;
-    if (!original.url.isLocalFile()) {
-        auto message = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KIOFuse"),
-            QStringLiteral("/org/kde/KIOFuse"), QStringLiteral("org.kde.KIOFuse.VFS"), QStringLiteral("mountUrl"));
-        message << original.url.toString(QUrl::FullyEncoded);
-        const QDBusReply<QString> reply = QDBusConnection::sessionBus().call(message, QDBus::Block, 25000);
-        if (!reply.isValid())
-            return failure(QStringLiteral("SMB access failed. Ensure KIO-FUSE and the SMB worker are installed, "
-                "open this location in Dolphin to authenticate, then retry. (%1)").arg(reply.error().name()));
-        path = reply.value();
-        if (!QDir::isAbsolutePath(path)) return failure(QStringLiteral("KIO-FUSE returned an invalid local path."));
-    }
+    QString path;
+    if (!resolveDesktopPath(original, path, error)) return failure(error);
     FileResource source;
     if (!resolveFileResource(QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded), source, error))
         return failure(original.url.isLocalFile() ? error : QStringLiteral(
-            "The SMB resource is not accessible. Open the location in Dolphin to check authentication and permissions, then retry."));
+            "The %1 resource is not accessible. Open the location in Dolphin to check authentication and permissions, then retry.")
+            .arg(original.url.scheme().toUpper()));
     auto data = FileInfoProvider::describe(source);
     auto object = metadata(data);
     object.insert(QStringLiteral("informationOnly"), true);

@@ -335,7 +335,8 @@ void PreviewTest::decodesImages()
     const auto data = load(path, QSize(100, 100));
     QCOMPARE(data.kind, PreviewKind::Image);
     QVERIFY(data.message.isEmpty());
-    QCOMPARE(data.image.size(), QSize(100, 50));
+    QCOMPARE(data.image.size(), QSize(400, 200)); // Retain source detail for zoom.
+    QCOMPARE(data.imageSize, QSize(400, 200));
     const auto color = data.image.pixelColor(50, 25);
     QVERIFY(color.red() <= 2 && color.green() <= 2 && color.blue() >= 253);
 }

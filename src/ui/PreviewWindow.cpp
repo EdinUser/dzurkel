@@ -1,5 +1,7 @@
 #include "PreviewWindow.h"
 #include "SettingsDialog.h"
+#include "ZoomPreview.h"
+#include <QWheelEvent>
 #include "desktop/DesktopIntegration.h"
 #include "resources/FileResource.h"
 #include <QApplication>
@@ -44,6 +46,45 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     font.setBold(true);
     name->setFont(font);
     addLabel({})->setObjectName(QStringLiteral("filePath"));
+    auto *controls = new QHBoxLayout;
+    auto button = [this](const QString &text, const QString &name, const QString &tip) {
+        auto *result = new QPushButton(text, this);
+        result->setObjectName(name);
+        result->setToolTip(tip);
+        result->setAccessibleName(tip);
+        result->setAutoDefault(false);
+        return result;
+    };
+    previous_ = button(QStringLiteral("Previous"), QStringLiteral("previousFile"), QStringLiteral("Previous file (Alt+Left)"));
+    next_ = button(QStringLiteral("Next"), QStringLiteral("nextFile"), QStringLiteral("Next file (Alt+Right)"));
+    controls->addWidget(previous_);
+    controls->addWidget(next_);
+    navigationStatus_ = new QLabel(this);
+    navigationStatus_->setObjectName(QStringLiteral("navigationStatus"));
+    navigationStatus_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    controls->addWidget(navigationStatus_, 1);
+    connect(previous_, &QPushButton::clicked, this, [this] { emit navigateRequested(-1); });
+    connect(next_, &QPushButton::clicked, this, [this] { emit navigateRequested(1); });
+    zoomControls_ = new QWidget(this);
+    auto *zoomLayout = new QHBoxLayout(zoomControls_);
+    zoomLayout->setContentsMargins(0, 0, 0, 0);
+    auto *out = button(QStringLiteral("−"), QStringLiteral("zoomOut"), QStringLiteral("Zoom out (- or Ctrl+wheel)"));
+    auto *in = button(QStringLiteral("+"), QStringLiteral("zoomIn"), QStringLiteral("Zoom in (+ or Ctrl+wheel)"));
+    auto *fit = button(QStringLiteral("Fit"), QStringLiteral("zoomFit"), QStringLiteral("Fit preview (0)"));
+    zoomStatus_ = new QLabel(zoomControls_);
+    zoomStatus_->setObjectName(QStringLiteral("zoomStatus"));
+    zoomStatus_->setMinimumWidth(80);
+    zoomLayout->addWidget(out);
+    zoomLayout->addWidget(zoomStatus_);
+    zoomLayout->addWidget(in);
+    zoomLayout->addWidget(fit);
+    controls->addWidget(zoomControls_);
+    connect(out, &QPushButton::clicked, this, [this] { if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) zoom->zoomBy(-1); });
+    connect(in, &QPushButton::clicked, this, [this] { if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) zoom->zoomBy(1); });
+    connect(fit, &QPushButton::clicked, this, [this] { if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) zoom->fit(); });
+    layout->addLayout(controls);
+    setNavigation(false, false, {});
+    zoomControls_->hide();
     contentHost_ = new QWidget(this);
     contentHost_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     contentLayout_ = new QVBoxLayout(contentHost_);
@@ -102,8 +143,12 @@ void PreviewWindow::present(const QString &activationToken)
 }
 void PreviewWindow::setContent(QWidget *content)
 {
+    wheelRemainder_ = 0;
     delete content_;
     content_ = content;
+    if (auto *zoom = qobject_cast<ZoomPreview *>(content_))
+        connect(zoom, &ZoomPreview::zoomChanged, this, &PreviewWindow::updateZoomControls);
+    updateZoomControls();
     if (content_) {
         content_->setParent(contentHost_);
         contentLayout_->addWidget(content_);
@@ -112,6 +157,26 @@ void PreviewWindow::setContent(QWidget *content)
         if (content_->focusProxy() || content_->focusPolicy() != Qt::NoFocus)
             content_->setFocus(Qt::OtherFocusReason);
         else setFocus(Qt::OtherFocusReason);
+    }
+}
+void PreviewWindow::setNavigation(bool previous, bool next, const QString &status)
+{
+    previous_->setEnabled(previous);
+    next_->setEnabled(next);
+    navigationStatus_->setText(status);
+    navigationStatus_->setToolTip(status);
+    navigationStatus_->setAccessibleName(status);
+}
+void PreviewWindow::updateZoomControls()
+{
+    auto *zoom = qobject_cast<ZoomPreview *>(content_);
+    zoomControls_->setVisible(zoom != nullptr);
+    if (zoom) {
+        zoomStatus_->setText(QStringLiteral("%1%2%")
+            .arg(zoom->isFit() ? QStringLiteral("Fit · ") : QString()).arg(qRound(zoom->zoomFactor() * 100)));
+        zoomStatus_->setToolTip(zoom->zoomHint());
+        findChild<QPushButton *>(QStringLiteral("zoomIn"))->setEnabled(zoom->zoomFactor() < zoom->maximumZoom() - .00001);
+        findChild<QPushButton *>(QStringLiteral("zoomOut"))->setEnabled(zoom->zoomFactor() > std::min(.1, zoom->maximumZoom()) + .00001);
     }
 }
 void PreviewWindow::setStatus(const QString &status)
@@ -255,9 +320,64 @@ void PreviewWindow::fitScreen(QScreen *target)
 bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 {
     auto *target = qobject_cast<QWidget *>(watched);
+    if (isVisible() && target && target->window() == this && event->type() == QEvent::Wheel) {
+        auto *wheel = static_cast<QWheelEvent *>(event);
+        if (wheel->modifiers() == Qt::ControlModifier) {
+            if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) {
+                // Angle deltas support high-resolution wheels without making
+                // every tiny touchpad event a full zoom step.
+                if (wheel->phase() == Qt::ScrollBegin) wheelRemainder_ = 0;
+                wheelRemainder_ += wheel->angleDelta().isNull()
+                    ? wheel->pixelDelta().y() * 3 : wheel->angleDelta().y();
+                const int steps = wheelRemainder_ / 120;
+                wheelRemainder_ %= 120;
+                if (steps) zoom->zoomBy(std::clamp(steps, -8, 8));
+                wheel->accept();
+                return true;
+            }
+        }
+    }
     if (isVisible() && target && target->window() == this
         && (event->type() == QEvent::KeyPress || event->type() == QEvent::ShortcutOverride)) {
         auto *key = static_cast<QKeyEvent *>(event);
+        const bool keyPress = event->type() == QEvent::KeyPress;
+        const auto modifiers = key->modifiers();
+        int direction = 0;
+        auto *zoom = qobject_cast<ZoomPreview *>(content_);
+        const bool verticalBrowsing = arrowNavigation_ && (!zoom || zoom->isFit());
+        if (modifiers == Qt::AltModifier || (arrowNavigation_ && modifiers == Qt::NoModifier)) {
+            if (key->key() == Qt::Key_Left) direction = -1;
+            if (key->key() == Qt::Key_Right) direction = 1;
+        }
+        if (modifiers == Qt::AltModifier || (verticalBrowsing && modifiers == Qt::NoModifier)) {
+            if (key->key() == Qt::Key_Up) direction = -1;
+            if (key->key() == Qt::Key_Down) direction = 1;
+        }
+        if (modifiers == Qt::NoModifier && arrowNavigation_ && zoom && !zoom->isFit()
+            && (key->key() == Qt::Key_Up || key->key() == Qt::Key_Down)) {
+            key->accept();
+            if (keyPress) zoom->scrollVertically(key->key() == Qt::Key_Up ? -1 : 1);
+            return true;
+        }
+        if (direction) {
+            key->accept();
+            if (keyPress && !key->isAutoRepeat() && (direction < 0 ? previous_->isEnabled() : next_->isEnabled()))
+                emit navigateRequested(direction);
+            return true;
+        }
+        if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) {
+            const bool zoomKey = (modifiers == Qt::NoModifier || modifiers == Qt::ShiftModifier)
+                && (key->key() == Qt::Key_Plus || key->key() == Qt::Key_Equal
+                    || key->key() == Qt::Key_Minus || key->key() == Qt::Key_0);
+            if (zoomKey) {
+                key->accept();
+                if (keyPress) {
+                    if (key->key() == Qt::Key_0) zoom->fit();
+                    else zoom->zoomBy(key->key() == Qt::Key_Minus ? -1 : 1);
+                }
+                return true;
+            }
+        }
         const bool dismiss = (key->key() == Qt::Key_Space
             && (key->modifiers() == Qt::NoModifier || key->modifiers() == Qt::ShiftModifier))
             || (key->key() == Qt::Key_Escape && key->modifiers() == Qt::NoModifier);

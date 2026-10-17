@@ -1,6 +1,10 @@
 # A broken QPA backend proves these commands do not initialize a GUI.
+set(cli_config "${CMAKE_CURRENT_BINARY_DIR}/cli-config")
+file(MAKE_DIRECTORY "${cli_config}")
+file(REMOVE "${cli_config}/dzurkel/dzurkel.ini")
 function(check_cli expected_code expected_text)
     execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+        "XDG_CONFIG_HOME=${cli_config}"
         QT_QPA_PLATFORM=dzurkel_nonexistent_platform "${DZURKEL}" ${ARGN}
         RESULT_VARIABLE code OUTPUT_VARIABLE output ERROR_VARIABLE errors)
     if(NOT "${code}" STREQUAL "${expected_code}")
@@ -17,6 +21,7 @@ check_cli(2 "exactly one file path or URL")
 check_cli(2 "exactly one file path or URL" first second)
 check_cli(2 "Choose exactly one command" --hide --quit)
 check_cli(1 "Unsupported URL scheme" --show https://example.com/file)
+check_cli(1 "experimental and disabled" --show sftp://server/file.txt)
 # Filesystem errors are asynchronous; syntax errors still fail without a GUI.
 check_cli(1 "without passwords" --show smb://user:password@server/share/file)
 

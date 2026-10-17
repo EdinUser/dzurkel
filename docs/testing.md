@@ -15,7 +15,7 @@ cmake --build --preset compact
 ctest --preset compact
 ```
 
-The current development checkout has seven suites:
+The current development checkout has eight suites:
 
 - Qt Test: 25 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
@@ -55,6 +55,13 @@ The current development checkout has seven suites:
   retaining the applied change and backup. All configuration paths are temporary.
   An additional opt-in check gracefully closed a real installed Dolphin on a
   separate bus with temporary XDG configuration; it is skipped by default.
+
+- Interactions on an isolated bus: image/PDF zoom, fit/reset, fractional
+  Ctrl+wheel input, ordinary image scrolling, bounded image detail, provider
+  replacement, native PDF/text arrows versus file-navigation shortcuts, previous/
+  next buttons and boundaries, natural filename ordering, hidden anchors,
+  directory/link/FIFO exclusion, deletion, listing budgets/cancellation, and
+  original SMB/SFTP URL preservation through a fake KIO-FUSE service.
 
 D-Bus tests use `dbus-run-session` and Qt's offscreen backend. They require local
 Unix sockets; restricted sandboxes may need permission to create a test bus.
@@ -282,3 +289,76 @@ Final resource-loading sanitizer check: ASan/UBSan builds compiled and the
 preview/resource suites both passed with leak detection and the existing narrow
 Qt PDF suppression (12.77 seconds). Other sanitizer suites were not rerun for
 this cycle. The final normal run passed all seven suites in 18.76 seconds.
+
+## Experimental SFTP follow-up
+
+The SFTP development changes build with KDE activation enabled and disabled.
+All seven normal suites pass (22.79 seconds). The resource suite parameterizes
+copy limits, snapshots, special objects, access failure, cancellation/replacement
+and timeout across SMB and opt-in SFTP using a fake KIO-FUSE service. It also
+checks default denial, optional ports/IPv6/Unicode, invalid URLs, CLI admission,
+policy reset and that other schemes stay disabled. The D-Bus suite verifies
+live enable/disable changes on the resident service and preservation of the
+previous preview when admission is denied. Configuration is isolated from the
+user's preferences.
+
+Settings tests verify keyboard toggling, persistence, reopening/external changes
+and the accessible SFTP information control. The new checkbox test also passed
+with real Wayland windows on an isolated bus. The generated `settings-sftp.png`
+layout was visually inspected. Resource and Settings suites passed ASan/UBSan
+with leak detection and the existing narrow Qt PDF suppression (14.29 seconds);
+other sanitizer suites were not rerun for this follow-up.
+
+The optional [real-server harness](../tests/integration/SftpSmoke.py) starts its
+temporary OpenSSH server but cannot create a private KIO-FUSE mount in this
+environment (`Operation not permitted`). It cleanly reports `unavailable` with
+exit status 77. This does not validate the actual SFTP worker/server transport,
+authentication or relative performance. See [compatibility](compatibility.md)
+for prerequisites, invocation and the outside-tester checklist. At the user's subsequent request, the Fedora installer rebuilt and installed
+this experimental version under `~/.local`, passing all seven suites in 21.30
+seconds. KDE's service cache was refreshed and the installed SFTP-capable menu
+verified. The SFTP preference was not enabled automatically; user field testing
+is pending.
+
+Subsequent user field feedback on 2026-10-17 confirmed direct SFTP previews on
+their normal Fedora KDE setup, and previews through a mounted S3 volume. Exact
+formats/authentication details and failure scenarios were not specified. The S3
+result is mounted-path access, not direct s3:// support. SFTP remains experimental
+while broader validation is incomplete.
+
+## Zoom and folder-navigation validation
+
+On 2026-10-17 the development build and all eight suites passed (12.45s).
+The interaction suite also passed ASan/UBSan with leak detection (2.41s), using
+only the existing narrow Qt PDF suppression. Native Wayland image zoom, PDF zoom
+and mixed-file navigation widget checks passed; a final PDF check additionally
+verified visible rendered page content after zoom/fit. Light/dark widget layouts
+were inspected. These checks use temporary files/configuration and an isolated
+session bus; they do not establish real file-manager focus or remote transport
+acceptance.
+
+Still verify the installed workflow manually: physical touchpad input, alternate
+keyboard layouts, high-DPI/multiple monitors, repeated previews, and sibling
+navigation over actual SMB/SFTP locations, including unavailable/changed folders.
+The controlled remote tests cover URL preservation and listing behavior through
+a fake KIO-FUSE service. Previously confirmed single-file SMB/SFTP access does
+not by itself verify the new sibling-navigation workflow.
+
+### Zoom, arrows and GIF follow-up
+
+The 2026-10-17 follow-up adds directional 10 percentage-point zoom steps, image
+fit capped at 100%, fitted-image/information Up/Down browsing, and zoomed-image
+Up/Down scrolling even when a toolbar button has focus. Alt+all arrows browse;
+PDF/text unmodified arrows remain native. Tests cover 121% snapping, exact-step
+floating-point boundaries, small-image size retention and deliberate enlargement.
+
+Synthetic GIFs verify three frame colors/delays, infinite and single-pass looping,
+actual visible frame changes, pause/resume, replay, zoom retention across frames,
+replacement/dismissal cleanup, and static fallback on frame-count/memory limits.
+Pillow generated the committed synthetic fixtures; it is not a test/runtime
+requirement. Main build and all eight suites pass (13.51s). Five relevant native
+Wayland widget cases plus setup/cleanup pass (2.648s). Physical input, real remote
+GIFs and broader desktop acceptance still require user testing.
+
+The expanded GIF/zoom/arrow interaction suite also passed ASan/UBSan with leak
+detection (3.87s), using only the existing narrow Qt PDF suppression.

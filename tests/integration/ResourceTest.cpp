@@ -1,4 +1,5 @@
 #include "resources/ResourcePreparation.h"
+#include "resources/ResourceAccessPolicy.h"
 #include "controller/PreviewController.h"
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/TextPreviewProvider.h"
@@ -16,6 +17,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QProcess>
 #include <sys/stat.h>
 
 using namespace dzurkel;
@@ -55,17 +57,26 @@ private slots:
     void initTestCase();
     void init();
     void parsesRemoteIdentityWithoutFilesystemAccess();
+    void experimentalSftpRequiresOptIn();
+    void parsesExperimentalSftpUrls();
+    void snapshotsSupportedRemoteFormats_data();
     void snapshotsSupportedRemoteFormats();
+    void boundsTextAndContentCopies_data();
     void boundsTextAndContentCopies();
+    void describesSpecialResourcesWithoutReadingThem_data();
     void describesSpecialResourcesWithoutReadingThem();
+    void reportsAccessFailure_data();
     void reportsAccessFailure();
     void missingLocalFileIsAnAsynchronousError();
+    void slowShareDoesNotBlockDismissalOrReplacement_data();
     void slowShareDoesNotBlockDismissalOrReplacement();
+    void slowShareTimesOut_data();
     void slowShareTimesOut();
     void liveAuthenticatedSmbPreview();
 private:
     FileResource prepare(const QString &url);
     QString write(const QString &name, const QByteArray &bytes);
+    QString remoteBase_;
     QTemporaryDir directory_;
     FakeFuse fuse_;
 };
@@ -74,6 +85,7 @@ void ResourceTest::initTestCase()
 {
     QVERIFY(directory_.isValid());
     if (!qEnvironmentVariableIsEmpty("DZURKEL_LIVE_SMB_URL")) return;
+    qputenv("XDG_CONFIG_HOME", directory_.filePath(QStringLiteral("config")).toUtf8());
     auto bus = QDBusConnection::sessionBus();
     QVERIFY(bus.registerService(QStringLiteral("org.kde.KIOFuse")));
     QVERIFY(bus.registerObject(QStringLiteral("/org/kde/KIOFuse"), &fuse_, QDBusConnection::ExportAllSlots));
@@ -83,6 +95,10 @@ void ResourceTest::init()
     fuse_.lastUrl.clear();
     fuse_.reject = false;
     fuse_.delay = 0;
+    if (qEnvironmentVariableIsEmpty("DZURKEL_LIVE_SMB_URL")) {
+        QString error;
+        QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(false, error), qPrintable(error));
+    }
 }
 QString ResourceTest::write(const QString &name, const QByteArray &bytes)
 {
@@ -128,8 +144,64 @@ void ResourceTest::parsesRemoteIdentityWithoutFilesystemAccess()
                                "smb://server:123/share/file", "smb://server/share/file%00.txt"})
         QVERIFY2(!parseFileResource(QString::fromLatin1(invalid), resource, error), invalid);
 }
+void ResourceTest::experimentalSftpRequiresOptIn()
+{
+    FileResource resource;
+    QString error;
+    ResourceError failure = ResourceError::None;
+    const auto url = QStringLiteral("sftp://user@offline.invalid:2222/file.txt");
+    QVERIFY(!ResourceAccessPolicy::experimentalSftpEnabled());
+    QVERIFY(!parseFileResource(url, resource, error, &failure));
+    QCOMPARE(failure, ResourceError::UnsupportedScheme);
+    QVERIFY(error.contains(QStringLiteral("experimental and disabled")));
+    QVERIFY(resource.url.isEmpty());
+    QVERIFY(fuse_.lastUrl.isEmpty());
+    QProcess cli;
+    cli.setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/dzurkel"));
+    cli.setArguments({QStringLiteral("--show"), url});
+    cli.start();
+    QTRY_COMPARE(cli.state(), QProcess::NotRunning);
+    QCOMPARE(cli.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(cli.exitCode(), 1);
+    QVERIFY(cli.readAllStandardError().contains("experimental and disabled"));
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(true, error));
+    QVERIFY(parseFileResource(url, resource, error));
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(false, error));
+    QVERIFY(!parseFileResource(url, resource, error, &failure));
+    QVERIFY(parseFileResource(QStringLiteral("smb://server/share/file.txt"), resource, error));
+}
+void ResourceTest::parsesExperimentalSftpUrls()
+{
+    QString error;
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(true, error));
+    FileResource resource;
+    const auto url = QStringLiteral("sftp://user@[::1]:2222/folder/%D0%BF%D1%80%D0%B8%D0%BC%D0%B5%D1%80%20%23%25.txt");
+    QVERIFY2(parseFileResource(url, resource, error), qPrintable(error));
+    QCOMPARE(resource.url.toString(QUrl::FullyEncoded), url);
+    QCOMPARE(resource.url.port(), 2222);
+    QVERIFY(resource.path.endsWith(QString::fromUtf8("пример #%.txt")));
+    QVERIFY(parseFileResource(QStringLiteral("sftp://server/a/../file.txt"), resource, error));
+    QCOMPARE(resource.url.path(), QStringLiteral("/a/../file.txt"));
+    for (const auto &invalid : {"sftp://", "sftp://server", "sftp://user:secret@server/file",
+                               "sftp://server/file?query", "sftp://server/file#fragment",
+                               "sftp://server:0/file", "sftp://server:65536/file", "sftp://server/file%00.txt"})
+        QVERIFY2(!parseFileResource(QString::fromLatin1(invalid), resource, error), invalid);
+    for (const auto &unsupported : {"nfs://server/export/file", "ftp://server/file", "webdav://server/file"})
+        QVERIFY(!parseFileResource(QString::fromLatin1(unsupported), resource, error));
+    QVERIFY(fuse_.lastUrl.isEmpty());
+}
+void ResourceTest::snapshotsSupportedRemoteFormats_data()
+{
+    QTest::addColumn<QString>("base");
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/");
+    QTest::newRow("experimental-sftp") << QStringLiteral("sftp://user@server:2222/fixtures/");
+}
 void ResourceTest::snapshotsSupportedRemoteFormats()
 {
+    QFETCH(QString, base);
+    remoteBase_ = base;
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     const auto imagePath = directory_.filePath(QStringLiteral("image.png"));
     QImage image(20, 30, QImage::Format_RGB32);
     image.fill(Qt::red);
@@ -146,7 +218,7 @@ void ResourceTest::snapshotsSupportedRemoteFormats()
         {pdfPath, PreviewKind::Pdf}, {textPath, PreviewKind::Text}};
     for (const auto &fixture : fixtures) {
         fuse_.path = fixture.first;
-        const auto url = QStringLiteral("smb://server/share/%1").arg(QFileInfo(fixture.first).fileName());
+        const auto url = (remoteBase_ + QStringLiteral("%1")).arg(QFileInfo(fixture.first).fileName());
         auto resource = prepare(url);
         QCOMPARE(fuse_.lastUrl, url);
         QCOMPARE(resource.url.toString(), url);
@@ -165,15 +237,25 @@ void ResourceTest::snapshotsSupportedRemoteFormats()
         QVERIFY(!QFileInfo::exists(store));
     }
     fuse_.path = textPath;
-    auto snapshot = prepare(QStringLiteral("smb://server/share/original.txt"));
+    auto snapshot = prepare((remoteBase_ + QStringLiteral("original.txt")));
     QVERIFY(!write(QStringLiteral("original.txt"), "changed source\n").isEmpty());
     const auto data = PreviewRegistry::load(snapshot, QSize(100, 100), std::make_shared<std::atomic_bool>(false));
     QCOMPARE(data.text, QStringLiteral("original snapshot\n"));
 }
+void ResourceTest::boundsTextAndContentCopies_data()
+{
+    QTest::addColumn<QString>("base");
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/");
+    QTest::newRow("experimental-sftp") << QStringLiteral("sftp://user@server:2222/fixtures/");
+}
 void ResourceTest::boundsTextAndContentCopies()
 {
+    QFETCH(QString, base);
+    remoteBase_ = base;
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     fuse_.path = write(QStringLiteral("large.txt"), QByteArray(TextPreviewProvider::ByteLimit + 1024, 'a'));
-    auto resource = prepare(QStringLiteral("smb://server/share/large.txt"));
+    auto resource = prepare((remoteBase_ + QStringLiteral("large.txt")));
     QVERIFY(!resource.informationOnly);
     QCOMPARE(QFileInfo(resource.backingPath).size(), TextPreviewProvider::ByteLimit + 1);
     const auto data = PreviewRegistry::load(resource, QSize(100, 100), std::make_shared<std::atomic_bool>(false));
@@ -184,31 +266,51 @@ void ResourceTest::boundsTextAndContentCopies()
     QVERIFY(huge.open(QIODevice::ReadWrite));
     QVERIFY(huge.resize(64 * 1024 * 1024 + 1));
     huge.close();
-    resource = prepare(QStringLiteral("smb://server/share/huge.pdf"));
+    resource = prepare((remoteBase_ + QStringLiteral("huge.pdf")));
     QVERIFY(resource.informationOnly);
     QVERIFY(resource.backingPath.isEmpty());
     QVERIFY(resource.metadata.value(QStringLiteral("message")).toString().contains(QStringLiteral("64 MiB")));
     QVERIFY(QDir(resource.backingStore->path()).entryList(QDir::Files).isEmpty());
 }
+void ResourceTest::describesSpecialResourcesWithoutReadingThem_data()
+{
+    QTest::addColumn<QString>("base");
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/");
+    QTest::newRow("experimental-sftp") << QStringLiteral("sftp://user@server:2222/fixtures/");
+}
 void ResourceTest::describesSpecialResourcesWithoutReadingThem()
 {
+    QFETCH(QString, base);
+    remoteBase_ = base;
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     const auto target = write(QStringLiteral("target.txt"), "not opened");
-    const auto link = directory_.filePath(QStringLiteral("link.txt"));
+    const auto link = directory_.filePath(QStringLiteral("link-%1.txt").arg(QUrl(base).scheme()));
     QVERIFY(QFile::link(target, link));
-    const auto fifo = directory_.filePath(QStringLiteral("pipe"));
+    const auto fifo = directory_.filePath(QStringLiteral("pipe-%1").arg(QUrl(base).scheme()));
     QCOMPARE(::mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
     for (const auto &path : {directory_.path(), link, fifo}) {
         fuse_.path = path;
-        const auto resource = prepare(QStringLiteral("smb://server/share/object"));
+        const auto resource = prepare((remoteBase_ + QStringLiteral("object")));
         QVERIFY(resource.informationOnly);
         QVERIFY(resource.backingPath.isEmpty());
         QVERIFY(!resource.metadata.value(QStringLiteral("message")).toString().isEmpty());
     }
 }
+void ResourceTest::reportsAccessFailure_data()
+{
+    QTest::addColumn<QString>("base");
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/");
+    QTest::newRow("experimental-sftp") << QStringLiteral("sftp://user@server:2222/fixtures/");
+}
 void ResourceTest::reportsAccessFailure()
 {
+    QFETCH(QString, base);
+    remoteBase_ = base;
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     fuse_.reject = true;
-    const auto resource = prepare(QStringLiteral("smb://server/share/file.txt"));
+    const auto resource = prepare((remoteBase_ + QStringLiteral("file.txt")));
     QVERIFY(resource.informationOnly);
     const auto message = resource.metadata.value(QStringLiteral("message")).toString();
     QVERIFY(message.contains(QStringLiteral("authenticate")));
@@ -227,15 +329,25 @@ void ResourceTest::missingLocalFileIsAnAsynchronousError()
         explained |= label->text().contains(QStringLiteral("does not exist"));
     QVERIFY(explained);
 }
+void ResourceTest::slowShareDoesNotBlockDismissalOrReplacement_data()
+{
+    QTest::addColumn<QString>("base");
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/");
+    QTest::newRow("experimental-sftp") << QStringLiteral("sftp://user@server:2222/fixtures/");
+}
 void ResourceTest::slowShareDoesNotBlockDismissalOrReplacement()
 {
+    QFETCH(QString, base);
+    remoteBase_ = base;
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     fuse_.delay = 1500;
     fuse_.path = write(QStringLiteral("late.txt"), "late remote result");
     PreviewController controller;
     QString error;
     QElapsedTimer timer;
     timer.start();
-    QVERIFY(controller.show(QStringLiteral("smb://server/share/late.txt"), error));
+    QVERIFY(controller.show((remoteBase_ + QStringLiteral("late.txt")), error));
     QVERIFY(timer.elapsed() < 100);
     QTRY_VERIFY(!fuse_.lastUrl.isEmpty());
     QTRY_VERIFY(controller.window()->isVisible());
@@ -253,14 +365,24 @@ void ResourceTest::slowShareDoesNotBlockDismissalOrReplacement()
     QTest::qWait(200);
     QVERIFY(!controller.isVisible());
 }
+void ResourceTest::slowShareTimesOut_data()
+{
+    QTest::addColumn<QString>("base");
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/");
+    QTest::newRow("experimental-sftp") << QStringLiteral("sftp://user@server:2222/fixtures/");
+}
 void ResourceTest::slowShareTimesOut()
 {
+    QFETCH(QString, base);
+    remoteBase_ = base;
+    QString policyError;
+    QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     fuse_.delay = 2000;
     fuse_.path = directory_.path();
     ResourcePreparation preparation(nullptr, 200);
     FileResource input, result;
     QString error;
-    QVERIFY(parseFileResource(QStringLiteral("smb://server/share/slow.txt"), input, error));
+    QVERIFY(parseFileResource((remoteBase_ + QStringLiteral("slow.txt")), input, error));
     bool ready = false;
     connect(&preparation, &ResourcePreparation::ready, this, [&](const FileResource &resource) {
         result = resource;

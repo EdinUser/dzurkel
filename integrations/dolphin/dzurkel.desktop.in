@@ -5,7 +5,7 @@ Icon=preview
 StartupNotify=true
 MimeType=application/octet-stream;
 Actions=dzurkel;
-X-KDE-Protocols=file,smb
+X-KDE-Protocols=file,smb,sftp
 X-KDE-RequiredNumberOfUrls=1
 X-KDE-Priority=TopLevel
 
