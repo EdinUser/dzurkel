@@ -36,7 +36,7 @@ jobs:
       - name: Build binary and source RPMs; run CTest
         run: bash packaging/fedora/build-rpm.sh
       - name: Upload RPMs and checksums
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fedora-44-x86_64
           path: build-rpm/artifacts/*
@@ -44,7 +44,7 @@ jobs:
           retention-days: 14
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rpm-test-logs
           path: build-rpm/BUILD/**/Testing/Temporary/*.log
@@ -113,7 +113,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: clang-test-logs
           path: build/Testing/Temporary/*.log
