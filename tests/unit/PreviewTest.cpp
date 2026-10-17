@@ -237,7 +237,7 @@ void PreviewTest::newestRequestBeforeFirstMappingWins()
     QVERIFY(!window->isVisible());
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("text"));
-    QCOMPARE(window->windowTitle(), QStringLiteral("Dzurkel — current-first-map.txt"));
+    QCOMPARE(window->windowTitle(), QStringLiteral("current-first-map.txt"));
     const QSize area = window->screen()->availableGeometry().size();
     QVERIFY(firstShow.size.width() >= area.width() * 80 / 100);
     QVERIFY(firstShow.size.height() >= area.height() * 80 / 100);
@@ -597,26 +597,37 @@ void PreviewTest::decodesText_data()
 {
     QTest::addColumn<QByteArray>("bytes");
     QTest::addColumn<QString>("expected");
-    QTest::newRow("UTF-8") << QString::fromUtf8("  Пример 😀\n\tline\n").toUtf8() << QString::fromUtf8("  Пример 😀\n\tline\n");
-    QTest::newRow("line endings") << QByteArray("A\r\nB\rC\n") << QStringLiteral("A\nB\nC\n");
-    QTest::newRow("UTF-32LE") << QByteArray::fromHex("fffe0000410000000a00000011040000") << QString::fromUtf8("A\nБ");
-    QTest::newRow("UTF-16LE") << QByteArray::fromHex("fffe41000a001104") << QString::fromUtf8("A\nБ");
-    QTest::newRow("Latin-1") << QByteArray::fromHex("636166e90a") << QString::fromUtf8("café\n");
-    QTest::newRow("plain XML") << QByteArray("<script>alert('text only')</script>\n") << QStringLiteral("<script>alert('text only')</script>\n");
+    QTest::addColumn<int>("lines");
+    QTest::newRow("UTF-8") << QString::fromUtf8("  Пример 😀\n\tline\n").toUtf8() << QString::fromUtf8("  Пример 😀\n\tline\n") << 2;
+    QTest::newRow("line endings") << QByteArray("A\r\nB\rC\n") << QStringLiteral("A\nB\nC\n") << 3;
+    QTest::newRow("UTF-32LE") << QByteArray::fromHex("fffe0000410000000a00000011040000") << QString::fromUtf8("A\nБ") << 2;
+    QTest::newRow("UTF-16LE") << QByteArray::fromHex("fffe41000a001104") << QString::fromUtf8("A\nБ") << 2;
+    QTest::newRow("Latin-1") << QByteArray::fromHex("636166e90a") << QString::fromUtf8("café\n") << 1;
+    QTest::newRow("plain XML") << QByteArray("<script>alert('text only')</script>\n") << QStringLiteral("<script>alert('text only')</script>\n") << 1;
+    QTest::newRow("blank line") << QByteArray("A\n\nB") << QStringLiteral("A\n\nB") << 3;
+    QTest::newRow("no final newline") << QByteArray("Only one line") << QStringLiteral("Only one line") << 1;
 }
 void PreviewTest::decodesText()
 {
     QFETCH(QByteArray, bytes);
     QFETCH(QString, expected);
+    QFETCH(int, lines);
     const auto data = load(write(QStringLiteral("text.txt"), bytes));
     QCOMPARE(data.kind, PreviewKind::Text);
     QCOMPARE(data.text, expected);
+    QCOMPARE(data.textLineCount, lines);
     std::unique_ptr<QWidget> widget(PreviewRegistry::createWidget(data, nullptr));
     auto *view = qobject_cast<QPlainTextEdit *>(widget.get());
     QVERIFY(view);
     QVERIFY(view->isReadOnly());
     QCOMPARE(view->lineWrapMode(), QPlainTextEdit::NoWrap);
     QCOMPARE(view->toPlainText(), expected);
+    PreviewWindow window(data.resource);
+    window.setContent(widget.release());
+    window.setPreviewData(data);
+    QCOMPARE(window.findChild<QLabel *>(QStringLiteral("previewSummary"))->text(),
+        QStringLiteral("%1 · %2 %3").arg(data.detail).arg(lines)
+            .arg(lines == 1 ? QStringLiteral("line") : QStringLiteral("lines")));
 }
 void PreviewTest::boundsTextAndRejectsBinary()
 {

@@ -16,6 +16,9 @@
 #include <QScopeGuard>
 #include <QPushButton>
 #include <QStandardPaths>
+#include <QDialog>
+#include <QScrollArea>
+#include <QScrollBar>
 
 class DzurkelTest : public QObject {
     Q_OBJECT
@@ -37,7 +40,71 @@ private slots:
     void shortcutSetupRejectsMalformedAndNewerChanges();
     void shortcutSetupRejectsLinksAndConcurrentChanges();
     void settingsLinkIsReusedAndKeyboardIndependent();
+    void informationDialogStaysCompactWithLongPathsAndThemes();
 };
+
+void DzurkelTest::informationDialogStaysCompactWithLongPathsAndThemes()
+{
+    const auto original = QApplication::palette();
+    const auto restore = qScopeGuard([original] { QApplication::setPalette(original); });
+    const QString name = QStringLiteral("example <sample>.txt");
+    const QString path = QStringLiteral("/example/") + QStringLiteral("long-directory-name/").repeated(30) + name;
+    dzurkel::FileResource resource;
+    resource.path = path;
+    resource.url = QUrl::fromLocalFile(path);
+    dzurkel::PreviewData data;
+    data.resource = resource;
+    data.kind = dzurkel::PreviewKind::Text;
+    data.mimeType = QStringLiteral("text/plain");
+    data.description = QStringLiteral("Plain text");
+    data.detail = QStringLiteral("UTF-8");
+    data.textLineCount = 2;
+    data.size = 100;
+    for (bool dark : {false, true}) {
+        QPalette palette = original;
+        const QColor background = dark ? QColor(35, 35, 35) : QColor(245, 245, 245);
+        const QColor foreground = dark ? QColor(240, 240, 240) : QColor(20, 20, 20);
+        palette.setColor(QPalette::Window, background);
+        palette.setColor(QPalette::Base, background);
+        palette.setColor(QPalette::Button, background);
+        palette.setColor(QPalette::WindowText, foreground);
+        palette.setColor(QPalette::Text, foreground);
+        palette.setColor(QPalette::ButtonText, foreground);
+        QApplication::setPalette(palette);
+        dzurkel::PreviewWindow window(resource);
+        window.setContent(new QPlainTextEdit(QStringLiteral("First line\nSecond line")));
+        window.setPreviewData(data);
+        window.show();
+        window.resize(400, 400);
+        QCoreApplication::processEvents();
+        QCOMPARE(window.windowTitle(), name);
+        auto *info = window.findChild<QPushButton *>(QStringLiteral("fileInfoButton"));
+        QVERIFY(info->accessibleDescription().contains(QStringLiteral("Name: ") + name));
+        QVERIFY(info->accessibleDescription().contains(path));
+        const auto *settings = window.findChild<QPushButton *>(QStringLiteral("settingsLink"));
+        QVERIFY(settings->isVisible());
+        QVERIFY(window.rect().contains(settings->geometry()));
+        QVERIFY(window.grab().save(dark ? QStringLiteral("visual-footer-dark.png") : QStringLiteral("visual-footer-light.png")));
+        QTest::mouseClick(info, Qt::LeftButton);
+        auto *dialog = window.findChild<QDialog *>(QStringLiteral("fileInformationDialog"));
+        QVERIFY(dialog);
+        QTRY_VERIFY(dialog->isVisible());
+        QVERIFY(dialog->width() <= 480);
+        QVERIFY(dialog->height() <= 360);
+        const auto *text = dialog->findChild<QLabel *>(QStringLiteral("fileInformationText"));
+        QVERIFY(text->text().contains(name.toHtmlEscaped()));
+        QVERIFY(text->text().contains(path.toHtmlEscaped()));
+        QCOMPARE(text->palette().color(QPalette::WindowText), foreground);
+        QVERIFY(text->height() >= text->heightForWidth(text->width()));
+        const auto *scroll = dialog->findChild<QScrollArea *>();
+        if (text->height() > scroll->viewport()->height())
+            QVERIFY(scroll->verticalScrollBar()->maximum() > 0);
+        QVERIFY(dialog->grab().save(dark ? QStringLiteral("visual-information-dark.png") : QStringLiteral("visual-information-light.png")));
+        QTest::keyClick(dialog, Qt::Key_Escape);
+        QTRY_VERIFY(!dialog->isVisible());
+        QVERIFY(window.isVisible());
+    }
+}
 
 void DzurkelTest::shortcutSetupPreservesAndRestores()
 {
@@ -281,7 +348,7 @@ void DzurkelTest::controllerReusesWindow()
     QVERIFY(controller.isVisible());
     QVERIFY(controller.show(QUrl::fromLocalFile(second).toString(), error));
     QCOMPARE(controller.window(), window);
-    QCOMPARE(window->windowTitle(), QStringLiteral("Dzurkel — second.txt"));
+    QCOMPARE(window->windowTitle(), QStringLiteral("second.txt"));
     QVERIFY(!controller.show(QStringLiteral("https://example.com/unsupported"), error));
     QVERIFY(controller.isVisible());
     QCOMPARE(controller.fileUrl(), QUrl::fromLocalFile(second).toString(QUrl::FullyEncoded));

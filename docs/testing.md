@@ -621,3 +621,32 @@ All ten suites passed in the optimized Fedora build (29.31s), and the native
 focus regression passed against both Debug and optimized builds. The user-local
 installation was updated; its executable matched the stripped optimized build
 byte-for-byte. The existing draft RPM was not rebuilt as part of this fix.
+The user subsequently confirmed the real Dolphin sequence now refocuses the
+open preview correctly when Space is pressed after selecting another file.
+
+## Focused visual refinement
+
+The native widget title now contains only the filename; KWin's actual caption
+was verified as `small.png — Dzurkel`, removing the duplicated application name.
+The compact toolbar, settings icon, native frame, image sizing, zoom, table
+model/tabs and preview rendering retain their existing behavior.
+
+Text summaries now include encoding and physical line count from the bounded
+decoded payload. Decoder regressions cover CR/CRLF, Unicode line breaks, UTF-8,
+UTF-16/32, Latin-1, blank lines and final-newline handling. CSV/TSV summaries
+identify rows and columns; XLSX retains sheet counts and active-sheet dimensions.
+PDF page counts use normal singular/plural wording.
+
+The information dialog adds an explicit Name field and uses compact two-column
+metadata with smaller secondary labels, content-based height and a bounded width.
+Long-path tests verify escaping, text height, scroll access, Escape dismissal,
+400-pixel preview widths and visible Settings. Offscreen and native Wayland
+light/dark captures were visually inspected. Generated screenshots remain in the
+ignored `build/` directory; the public README screenshot uses synthetic CSV data.
+
+The native refocus regression and all eleven small-first KWin placement checks
+passed after these changes, retaining focus and a single native window. This
+does not establish mixed-DPI or every desktop theme's behavior.
+
+The optimized Fedora install passed all ten suites (29.72s). The installed
+executable was verified byte-for-byte against the stripped optimized build.

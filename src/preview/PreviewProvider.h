@@ -32,6 +32,7 @@ struct PreviewData {
     QList<int> animationDelays;
     int animationLoops = 0; // Additional loops; -1 means repeat indefinitely.
     QString text;
+    int textLineCount = 0; // Physical lines in the bounded text, excluding a trailing empty paragraph.
     std::shared_ptr<const TabularDocument> table;
     bool truncated = false;
     std::shared_ptr<QPdfDocument> pdf;

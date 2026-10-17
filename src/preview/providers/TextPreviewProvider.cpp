@@ -48,6 +48,8 @@ PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData d
         }
     }
     data.text = std::move(bounded);
+    data.textLineCount = data.text.isEmpty() ? 0
+        : data.text.count(QChar('\n')) + (data.text.endsWith(QChar('\n')) ? 0 : 1);
     data.kind = PreviewKind::Text;
     data.message.clear();
     if (data.truncated) data.message = QStringLiteral("Partial preview — limited to 2 MiB, 20,000 lines, and 16,384 characters per line.");

@@ -116,6 +116,7 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     summary_ = new QLabel(this);
     summary_->setObjectName(QStringLiteral("previewSummary"));
     summary_->setTextFormat(Qt::PlainText);
+    summary_->setForegroundRole(QPalette::PlaceholderText);
     summary_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     footer->addWidget(summary_, 1);
     status_ = new QLabel(this);
@@ -124,6 +125,7 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     status_->setWordWrap(true);
     status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     status_->setMinimumWidth(0);
+    status_->setAlignment(Qt::AlignCenter | Qt::AlignVCenter);
     status_->hide();
     footer->addWidget(status_, 1);
     auto *hint = new QLabel(QStringLiteral("Space / Esc to close"), this);
@@ -155,10 +157,14 @@ void PreviewWindow::setResource(const FileResource &resource)
 {
     placement_->cancel();
     const QString name = QFileInfo(resource.path).fileName();
-    setWindowTitle(QStringLiteral("Dzurkel — %1").arg(name));
+    // The desktop backend appends applicationDisplayName to the native title.
+    setWindowTitle(name);
     setAccessibleName(windowTitle());
     location_ = resource.url.isLocalFile() ? resource.path : resource.url.toDisplayString();
-    fileInformation_ = QStringLiteral("<qt><b>Location</b><br>%1</qt>").arg(location_.toHtmlEscaped());
+    fileInformation_ = QStringLiteral("<qt><table cellspacing='0' cellpadding='3'>"
+        "<tr><td valign='top'><small>Name</small></td><td>%1</td></tr>"
+        "<tr><td valign='top'><small>Location</small></td><td>%2</td></tr></table></qt>")
+        .arg(name.toHtmlEscaped(), location_.toHtmlEscaped());
     fileInfoButton_->setToolTip(fileInformation_);
     fileInfoButton_->setAccessibleDescription(location_);
     summary_->clear();
@@ -241,19 +247,23 @@ void PreviewWindow::setPreviewData(const PreviewData &data)
     QString rows;
     const auto add = [&](const QString &name, const QString &value) {
         if (value.isEmpty()) return;
-        rows += QStringLiteral("<tr><td valign='top'><b>%1</b></td><td>%2</td></tr>")
+        rows += QStringLiteral("<tr><td valign='top'><small>%1</small></td><td>%2</td></tr>")
             .arg(name.toHtmlEscaped(), value.toHtmlEscaped().replace(QChar('\n'), QStringLiteral("<br>")));
         plain.append(name + QStringLiteral(": ") + value);
     };
+    add(QStringLiteral("Name"), windowTitle());
     add(QStringLiteral("Location"), location_);
     add(QStringLiteral("Type"), data.description.isEmpty() ? data.mimeType : data.description);
     add(QStringLiteral("Size"), QStringLiteral("%1 (%2 bytes)").arg(QLocale().formattedDataSize(data.size)).arg(data.size));
     if (!data.imageSize.isEmpty()) add(QStringLiteral("Dimensions"), QStringLiteral("%1 × %2 pixels").arg(data.imageSize.width()).arg(data.imageSize.height()));
     if (data.modified.isValid()) add(QStringLiteral("Modified"), QLocale().toString(data.modified, QLocale::ShortFormat));
     add(QStringLiteral("Target"), data.linkTarget);
-    add(QStringLiteral("Preview"), data.detail);
+    if (data.kind == PreviewKind::Text) {
+        add(QStringLiteral("Encoding"), data.detail);
+        add(data.truncated ? QStringLiteral("Lines shown") : QStringLiteral("Lines"), QString::number(data.textLineCount));
+    } else add(QStringLiteral("Preview"), data.detail);
     add(QStringLiteral("Notice"), data.message);
-    fileInformation_ = QStringLiteral("<qt><table cellspacing='6'>%1</table></qt>").arg(rows);
+    fileInformation_ = QStringLiteral("<qt><table cellspacing='0' cellpadding='3'>%1</table></qt>").arg(rows);
     fileInfoButton_->setToolTip(fileInformation_);
     fileInfoButton_->setAccessibleDescription(plain.join(QChar('\n')));
     const auto mime = QMimeDatabase().mimeTypeForName(data.mimeType);
@@ -263,19 +273,29 @@ void PreviewWindow::setPreviewData(const PreviewData &data)
         summary_->setText(QStringLiteral("%1 × %2 px").arg(data.imageSize.width()).arg(data.imageSize.height()));
     } else if (data.kind == PreviewKind::Table && data.table) {
         const auto document = data.table;
-        const auto update = [this, document](int index) {
+        const bool delimited = data.readerId == QStringLiteral("csv");
+        const auto update = [this, document, delimited](int index) {
             if (index < 0 || index >= document->sheets.size()) return;
             const auto &sheet = document->sheets.at(index);
-            summary_->setText(QStringLiteral("%1 %2 · %3 × %4")
-                .arg(document->sheets.size()).arg(document->sheets.size() == 1 ? QStringLiteral("sheet") : QStringLiteral("sheets"))
-                .arg(sheet.rowCount).arg(sheet.columnCount));
+            if (delimited)
+                summary_->setText(QStringLiteral("%1 %2 × %3 %4")
+                    .arg(sheet.rowCount).arg(sheet.rowCount == 1 ? QStringLiteral("row") : QStringLiteral("rows"))
+                    .arg(sheet.columnCount).arg(sheet.columnCount == 1 ? QStringLiteral("column") : QStringLiteral("columns")));
+            else
+                summary_->setText(QStringLiteral("%1 %2 · %3 × %4")
+                    .arg(document->sheets.size()).arg(document->sheets.size() == 1 ? QStringLiteral("sheet") : QStringLiteral("sheets"))
+                    .arg(sheet.rowCount).arg(sheet.columnCount));
         };
         if (auto *tabs = content_->findChild<QTabWidget *>()) {
             connect(tabs, &QTabWidget::currentChanged, this, update);
             update(tabs->currentIndex());
         }
     } else if (data.kind == PreviewKind::Pdf) {
-        summary_->setText(QStringLiteral("%1 page(s)").arg(data.pdfPageSizes.size()));
+        summary_->setText(QStringLiteral("%1 %2").arg(data.pdfPageSizes.size())
+            .arg(data.pdfPageSizes.size() == 1 ? QStringLiteral("page") : QStringLiteral("pages")));
+    } else if (data.kind == PreviewKind::Text) {
+        summary_->setText(QStringLiteral("%1 · %2 %3").arg(data.detail).arg(data.textLineCount)
+            .arg(data.textLineCount == 1 ? QStringLiteral("line") : QStringLiteral("lines")));
     } else summary_->setText(data.description);
     summary_->setToolTip(fileInformation_);
     setStatus(data.kind == PreviewKind::Information ? QString() : data.message);
@@ -291,6 +311,8 @@ void PreviewWindow::showFileInformation()
         dialog->setObjectName(QStringLiteral("fileInformationDialog"));
         dialog->setWindowTitle(QStringLiteral("File information"));
         auto *layout = new QVBoxLayout(dialog);
+        layout->setContentsMargins(12, 12, 12, 12);
+        layout->setSpacing(8);
         auto *text = new QLabel(dialog);
         text->setObjectName(QStringLiteral("fileInformationText"));
         text->setTextFormat(Qt::RichText);
@@ -307,8 +329,15 @@ void PreviewWindow::showFileInformation()
         connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::hide);
         layout->addWidget(buttons);
     }
-    informationDialog_->findChild<QLabel *>(QStringLiteral("fileInformationText"))->setText(fileInformation_);
-    informationDialog_->resize(QSize(560, 260).boundedTo(screen()->availableGeometry().size()));
+    auto *text = informationDialog_->findChild<QLabel *>(QStringLiteral("fileInformationText"));
+    text->setText(fileInformation_);
+    const QSize limit = (screen()->availableGeometry().size() - QSize(32, 32)).expandedTo(QSize(1, 1));
+    const int dialogWidth = std::min(480, limit.width());
+    const int textWidth = std::max(1, dialogWidth - 24 - style()->pixelMetric(QStyle::PM_ScrollBarExtent));
+    const int buttonsHeight = informationDialog_->findChild<QDialogButtonBox *>()->sizeHint().height();
+    const int dialogHeight = std::clamp(text->heightForWidth(textWidth) + buttonsHeight + 32, 160, 360);
+    informationDialog_->setMaximumSize(limit);
+    informationDialog_->resize(QSize(dialogWidth, dialogHeight).boundedTo(limit));
     informationDialog_->show();
     informationDialog_->raise();
     informationDialog_->activateWindow();

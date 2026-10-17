@@ -45,8 +45,9 @@ leaving a small margin. Manual resizing/zooming stays under your control, and a
 maximized image window remains maximized. Image and compact information windows
 do not overwrite the remembered document size.
 
-The filename appears in the native title bar. Compact navigation/zoom controls
-sit above the content, with dimensions or sheet counts in the bottom strip.
+The filename appears once in the native title bar, followed by Dzurkel on KDE.
+Compact navigation/zoom controls sit above the content. The bottom strip shows
+dimensions, text encoding and line count, table dimensions, or PDF page count.
 Hover over or click **File information** for the full location, size, modification
 time and format details, including text encoding and CSV delimiter. Partial
 previews and unavailable formula results remain visibly flagged.

@@ -274,7 +274,7 @@ void LibraryTest::compactChromeKeepsDetailsAccessible()
             .arg(position->x()).arg(position->width()).arg(next->x())));
     const auto *summary = window->findChild<QLabel *>(QStringLiteral("previewSummary"));
     QVERIFY(summary);
-    QVERIFY(summary->text().contains(QStringLiteral("2 × 2")));
+    QCOMPARE(summary->text(), QStringLiteral("2 rows × 2 columns"));
     QVERIFY(!summary->text().contains(QStringLiteral("UTF")));
     QVERIFY(!summary->text().contains(QStringLiteral("separated")));
     QVERIFY(!window->findChild<QLabel *>(QStringLiteral("previewStatus"))->isVisible());

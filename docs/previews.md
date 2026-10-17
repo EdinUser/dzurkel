@@ -6,11 +6,16 @@ works in documents and text. Previewing does not execute or edit file contents.
 
 The filename lives in the native title bar; navigation and supported zoom
 controls share a compact toolbar. The bottom strip shows image dimensions,
-PDF page counts or the active sheet's row/column dimensions. Spreadsheet zoom
+text encoding and line count, PDF page counts, CSV/TSV row and column counts,
+or the active XLSX sheet's dimensions. Text counts describe the bounded preview,
+normalize line endings, and exclude an extra empty paragraph after a final newline.
+Spreadsheet zoom
 and sheet-creation controls are not shown. File information is available by
 hover, click or keyboard activation of the information button. It includes the
-full original location, size, modification time and format details; encoding
-and delimiter details are shown here rather than occupying preview space.
+name, full original location, size, modification time and format details.
+CSV delimiter and other secondary details stay in this interface. The metadata
+dialog sizes itself to the content within screen bounds, wraps long locations,
+and retains scrolling for larger descriptions.
 Warnings remain visible in the footer, with complete explanations in tooltips
 and file information. Settings uses a native icon button at the bottom right.
 
