@@ -2,7 +2,7 @@
 
 ## Environment
 
-Validated on 2026-10-16 with Fedora 44 KDE, Plasma 6.7.5, Dolphin 26.08.1,
+Validated on 2026-10-17 with Fedora 44 KDE, Plasma 6.7.5, Dolphin 26.08.1,
 Qt 6.11.2, CMake 4.3.0, and GCC 16.2.1. The desktop session uses Wayland.
 
 ## Milestone 4 automated checks
@@ -130,7 +130,7 @@ or screen transfer through Dolphin: those interactions remain manual below.
 
 ## Dolphin acceptance remains manual
 
-Version 0.5.3's compact stripped build is installed locally with the executable, service menu, and hidden
+Version 0.5.4's compact stripped build is installed locally with the executable, service menu, and hidden
 application identity. The user confirmed that resizing works and reported that
 the window "kind of remembers the size." Size retention is process-local and
 may be reduced to fit a smaller display; full cross-monitor retention remains
@@ -152,6 +152,16 @@ cycles with content teardown and late compositor-configure checks. Captures show
 the icon and metadata immediately in the compact view and a restored large PDF
 view. Initial native attempts encountered exposure timeouts; standalone reruns
 passed. This does not resolve the separate Dolphin shortcut acceptance checks.
+
+Reopening after an information view restores normal dimensions before mapping,
+so Wayland places the larger window rather than expanding it at the compact
+window's position. The regression checks these dimensions before provider
+completion. A temporary read-only KWin observer restricted to generated test
+files verified the actual PDF frame at `(144, 45, 1632, 946)` within the usable
+`1920 × 1036` screen across four close/reopen cycles. Qt's client geometry alone
+does not establish compositor placement. Custom-size tests now wait for initial
+native placement before simulating a user resize. The observer was unloaded
+after validation; no KWin settings or window rules were changed.
 
 `desktop-file-validate` flags `MimeType` and `Actions` for KDE's documented
 `Type=Service`: its freedesktop schema does not recognize that KDE combination.

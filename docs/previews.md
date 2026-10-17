@@ -11,6 +11,8 @@ does not replace the remembered content-preview size. Repeated information views
 remain compact, and image decoding still targets the larger preview size.
 The icon and metadata appear without manual resizing, including on first open;
 closing an information view does not make the next PDF preview compact.
+On reopening, normal dimensions are restored before the window is shown so
+Wayland can place the full preview within the screen.
 
 ## Supported content
 

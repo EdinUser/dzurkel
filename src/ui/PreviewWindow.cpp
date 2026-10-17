@@ -87,6 +87,15 @@ void PreviewWindow::setResource(const FileResource &resource)
 }
 void PreviewWindow::present(const QString &activationToken)
 {
+    // Wayland places a newly mapped surface using its initial dimensions.
+    // Restore before mapping: growing an already placed compact window leaves
+    // its top-left corner fixed, and clients cannot reposition it afterward.
+    if (!isVisible() && informationMode_) {
+        resize(previewWindowSize_);
+        setWindowState(previewWindowState_);
+        // Keep information mode until the provider completes so a late compact
+        // configure cannot be mistaken for a new user-chosen preview size.
+    }
     show();
     activatePreview(windowHandle(), activationToken, diagnostics_);
 }

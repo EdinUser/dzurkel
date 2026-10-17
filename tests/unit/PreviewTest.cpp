@@ -76,11 +76,15 @@ void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
         // Match user dismissal: allow content teardown before another CLI show.
         QTRY_VERIFY(!window->findChild<QWidget *>(QStringLiteral("fileInfoPreview")));
         QVERIFY(controller.show(pdf, error));
+        // Placement must use the large size before the async provider finishes.
+        // Qt cannot repair the compositor's global position afterward on Wayland.
+        const QSize area = window->screen()->availableGeometry().size();
+        QVERIFY(window->width() >= area.width() * 80 / 100);
+        QVERIFY(window->height() >= area.height() * 80 / 100);
         QTRY_VERIFY(!controller.loading());
         QVERIFY(QTest::qWaitForWindowExposed(window));
         QTest::qWait(100);
         QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
-        const QSize area = window->screen()->availableGeometry().size();
         QTRY_VERIFY(window->width() >= area.width() * 80 / 100);
         QTRY_VERIFY(window->height() >= area.height() * 80 / 100);
         QVERIFY(window->findChild<QPdfView *>()->isVisible());
@@ -107,14 +111,18 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     QVERIFY(controller.show(text, error));
     QTRY_VERIFY(!controller.loading());
     auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    // Resize only after initial placement, as a user would; a pending initial
+    // compositor configure can otherwise overwrite this synthetic resize.
+    QTest::qWait(100);
     window->resize(740, 700);
     QCoreApplication::processEvents();
     const QSize previewSize = window->size();
     QVERIFY(controller.show(unsupported, error));
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("information"));
-    QVERIFY(window->width() <= 560);
-    QVERIFY(window->height() < 500);
+    QTRY_VERIFY(window->width() <= 560);
+    QTRY_VERIFY(window->height() < 500);
     QVERIFY(window->grab().save(QStringLiteral("preview-information-compact.png")));
     controller.hide();
     QVERIFY(controller.show(unsupported, error));
