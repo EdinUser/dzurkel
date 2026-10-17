@@ -30,7 +30,7 @@ def smoke(binary):
                     for key, _ in selector.select(timeout=0.1):
                         log += os.read(key.fileobj.fileno(), 4096)
             client_env = {**environment, "QT_QPA_PLATFORM": "dzurkel_invalid_backend"}
-            for command in (["--hide"], ["--show", str(sample)], ["--quit"]):
+            for command in (["--hide"], ["--settings"], ["--settings"], ["--show", str(sample)], ["--quit"]):
                 subprocess.run([binary, *command], env=client_env, check=True, timeout=7)
             assert primary.wait(timeout=10) == 0, primary.stderr.read().decode(errors="replace")
         finally:
@@ -58,8 +58,12 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
     binary = root / args.bindir.lstrip("/") / "dzurkel"
     menu = root / args.datadir.lstrip("/") / "kio/servicemenus/dzurkel.desktop"
     application = root / args.datadir.lstrip("/") / "applications/dzurkel.desktop"
+    settings = root / args.datadir.lstrip("/") / "applications/dzurkel-settings.desktop"
     actual = {item for item in root.rglob("*") if item.is_file()}
-    assert actual == {binary, menu, application}, f"Unexpected installation contents: {actual}"
+    assert actual == {binary, menu, application, settings}, f"Unexpected installation contents: {actual}"
+    assert ' --settings' in settings.read_text()
+    assert 'NoDisplay=true' not in settings.read_text()
+    assert '@DZURKEL_EXEC@' not in settings.read_text()
     assert os.access(binary, os.X_OK)
     assert os.access(menu, os.X_OK), "KDE user-local service menus must be executable"
     assert not os.access(application, os.X_OK)

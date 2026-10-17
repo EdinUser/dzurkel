@@ -10,6 +10,8 @@ include(CTest)
 
 # Bounded worker-thread decoding with native Qt widgets and PDF rendering.
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus Concurrent Pdf PdfWidgets)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip>=1.7)
 option(DZURKEL_WITH_KDE_ACTIVATION "Use KDE's public Wayland activation support" ON)
 if(DZURKEL_WITH_KDE_ACTIVATION)
     find_package(KF6WindowSystem 6.0 REQUIRED)
@@ -19,10 +21,18 @@ add_library(dzurkel_core STATIC
     src/application/InstanceCoordinator.cpp
     src/controller/PreviewController.cpp
     src/desktop/DesktopIntegration.cpp
+    src/desktop/WindowPlacement.cpp
     src/desktop/DolphinShortcuts.cpp
     src/desktop/DolphinSession.cpp
     src/ipc/PreviewService.cpp
     src/preview/PreviewRegistry.cpp
+    src/preview/PreviewLibrary.cpp
+    src/preview/providers/CsvPreviewProvider.cpp
+    src/preview/providers/XlsxPreviewProvider.cpp
+    src/preview/readers/XlsxReader.cpp
+    src/preview/readers/CsvReader.cpp
+    src/preview/readers/TextDecoder.cpp
+    src/preview/table/SpreadsheetView.cpp
     src/preview/providers/ImagePreviewProvider.cpp
     src/preview/providers/PdfPreviewProvider.cpp
     src/preview/providers/TextPreviewProvider.cpp
@@ -37,6 +47,7 @@ add_library(dzurkel_core STATIC
 )
 target_include_directories(dzurkel_core PUBLIC src)
 target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets)
+target_link_libraries(dzurkel_core PRIVATE PkgConfig::LIBZIP)
 if(DZURKEL_WITH_KDE_ACTIVATION)
     target_link_libraries(dzurkel_core PRIVATE KF6::WindowSystem)
     target_compile_definitions(dzurkel_core PRIVATE DZURKEL_KDE_ACTIVATION)
@@ -80,12 +91,15 @@ string(REPLACE "`" "\\\\`" DZURKEL_EXEC "${DZURKEL_EXEC}")
 string(REPLACE "%" "%%" DZURKEL_EXEC "${DZURKEL_EXEC}")
 configure_file(integrations/dolphin/dzurkel.desktop.in dzurkel.desktop @ONLY)
 configure_file(integrations/desktop/dzurkel.desktop.in dzurkel-application.desktop @ONLY)
+configure_file(integrations/desktop/dzurkel-settings.desktop.in dzurkel-settings.desktop @ONLY)
 install(TARGETS dzurkel RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # Executable permission authorizes a user-local KDE service menu.
 install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/dzurkel.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/kio/servicemenus)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-application.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications RENAME dzurkel.desktop)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-settings.desktop"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 
 option(DZURKEL_BUILD_BENCHMARKS "Build the isolated-session latency and stability tool" OFF)
 if(DZURKEL_BUILD_BENCHMARKS)
@@ -134,6 +148,16 @@ if(BUILD_TESTING)
     add_dependencies(dzurkel_interaction_tests dzurkel)
     add_test(NAME dzurkel_interactions COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_interaction_tests>)
     set_tests_properties(dzurkel_interactions PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_executable(dzurkel_library_tests tests/integration/LibraryTest.cpp)
+    target_link_libraries(dzurkel_library_tests PRIVATE dzurkel_core Qt6::Test)
+    add_dependencies(dzurkel_library_tests dzurkel)
+    add_test(NAME dzurkel_library COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_library_tests>)
+    set_tests_properties(dzurkel_library PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_executable(dzurkel_xlsx_tests tests/integration/XlsxTest.cpp)
+    target_link_libraries(dzurkel_xlsx_tests PRIVATE dzurkel_core Qt6::Test PkgConfig::LIBZIP)
+    add_dependencies(dzurkel_xlsx_tests dzurkel)
+    add_test(NAME dzurkel_xlsx COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_xlsx_tests>)
+    set_tests_properties(dzurkel_xlsx PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
     add_test(NAME dzurkel_cli COMMAND ${CMAKE_COMMAND}
         -DDZURKEL=$<TARGET_FILE:dzurkel>
         -DEXPECTED_VERSION=${PROJECT_VERSION}

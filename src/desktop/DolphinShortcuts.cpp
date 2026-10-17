@@ -120,6 +120,23 @@ bool startsWithSpace(const QKeySequence &sequence)
 {
     return !sequence.isEmpty() && sequence[0] == QKeyCombination(Qt::Key_Space);
 }
+Changes spaceChanges(const Changes &current)
+{
+    Changes changes;
+    for (auto it = current.begin(); it != current.end(); ++it) {
+        const auto old = shortcuts(it.value());
+        auto kept = old;
+        kept.removeIf(startsWithSpace);
+        if (kept.size() != old.size()) changes[it.key()] = kept.isEmpty() ? QString()
+            : QKeySequence::listToString(kept, QKeySequence::PortableText);
+    }
+    // Missing overrides use Dolphin's default Space selection binding.
+    if (!current.value(selection)) changes[selection] = QString();
+    auto preview = shortcuts(changes.contains(target) ? changes.value(target) : current.value(target));
+    preview.prepend(QKeySequence(Qt::Key_Space));
+    changes[target] = QKeySequence::listToString(preview, QKeySequence::PortableText);
+    return changes;
+}
 } // namespace
 DolphinShortcuts::DolphinShortcuts()
     : DolphinShortcuts(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
@@ -146,6 +163,27 @@ bool DolphinShortcuts::usesSpace() const
         return shortcuts(current.value(target)).contains(QKeySequence(Qt::Key_Space));
     } catch (...) { return false; }
 }
+QString DolphinShortcuts::setupSummary(QString &error) const
+{
+    try {
+        check(supportsAutomaticSetup(), QStringLiteral("Use Dolphin’s shortcut editor for this custom shortcut scheme."));
+        Changes current;
+        transform(read(configuration_), {}, &current);
+        const auto changes = spaceChanges(current);
+        QStringList affected;
+        int count = 0;
+        for (auto it = changes.begin(); it != changes.end(); ++it) {
+            if (it.key() == target) continue;
+            ++count;
+            if (affected.size() < 8) affected.append(it.key() == selection
+                ? QStringLiteral("Select files (Dolphin)") : it.key().left(100));
+        }
+        if (count > affected.size()) affected.append(QStringLiteral("and %1 more action(s)").arg(count - affected.size()));
+        error.clear();
+        return affected.isEmpty() ? QStringLiteral("Space will open Dzurkel. Existing alternate bindings are kept.")
+            : QStringLiteral("Space will open Dzurkel and be removed from: %1. Existing alternate bindings are kept.").arg(affected.join(QStringLiteral(", ")));
+    } catch (const std::exception &failure) { error = QString::fromUtf8(failure.what()); return {}; }
+}
 bool DolphinShortcuts::useSpace(QString &error)
 {
     try {
@@ -157,17 +195,7 @@ bool DolphinShortcuts::useSpace(QString &error)
         const QByteArray before = read(configuration_);
         Changes current;
         transform(before, {}, &current);
-        Changes changes;
-        for (auto it = current.begin(); it != current.end(); ++it) {
-            const auto old = shortcuts(it.value());
-            auto kept = old;
-            kept.removeIf(startsWithSpace);
-            if (kept.size() != old.size()) changes[it.key()] = kept.isEmpty() ? QString()
-                : QKeySequence::listToString(kept, QKeySequence::PortableText);
-        }
-        // Missing overrides use Dolphin's default Space selection binding.
-        if (!current.value(selection)) changes[selection] = QString();
-        changes[target] = QStringLiteral("Space");
+        const auto changes = spaceChanges(current);
         QJsonArray entries;
         for (auto it = changes.begin(); it != changes.end(); ++it) {
             const auto original = current.value(it.key());
@@ -185,6 +213,7 @@ bool DolphinShortcuts::useSpace(QString &error)
 bool DolphinShortcuts::restore(QString &error)
 {
     try {
+        check(supportsAutomaticSetup(), QStringLiteral("The shortcut scheme has changed. Restore shortcuts in Dolphin to preserve the current scheme."));
         QLockFile lock(backup_ + QStringLiteral(".lock"));
         check(lock.tryLock(), QStringLiteral("Another shortcut setup is already running."));
         const auto backup = QJsonDocument::fromJson(read(backup_)).object();

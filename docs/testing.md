@@ -15,7 +15,7 @@ cmake --build --preset compact
 ctest --preset compact
 ```
 
-The current development checkout has eight suites:
+The current development checkout has ten suites:
 
 - Qt Test: 25 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
@@ -362,3 +362,200 @@ GIFs and broader desktop acceptance still require user testing.
 
 The expanded GIF/zoom/arrow interaction suite also passed ASan/UBSan with leak
 detection (3.87s), using only the existing narrow Qt PDF suppression.
+
+## Preview library / CSV checks
+
+The library suite covers reader IDs/source budgets, signature priority, quoted
+multiline records and escaped quotes, empty/ragged fields, literal leading zeros
+and formula-like strings, comma/semicolon/tab detection, UTF-8 BOM/UTF-16/Latin-1,
+byte/row/column/cell/field limits, incomplete-record omission, cancellation,
+malformed-text and binary fallbacks, sparse read-only models, sheet switching,
+escaped tooltips, table keyboard navigation/dismissal and local/fake SMB/SFTP
+preparation with original URL retention. Settings checks include the CSV support
+information control. Real share CSV performance and ambiguous delimiter behavior
+remain user acceptance checks. XLSX has its own suite described below.
+
+Foundation validation: all nine main-build suites passed (17.33s). Native
+Wayland table/grid, sheet switching and navigation/dismissal checks passed
+(three cases plus setup/cleanup, 1.213s). The dark-theme grid screenshot was
+inspected. Remote coverage uses a fake service; real-share acceptance remains
+pending.
+
+The library suite passed ASan/UBSan with leak detection (1.34s). The optimized
+Fedora installer passed all nine suites (29.64s) and the installed binary was
+verified against that build. Installed-app CSV acceptance is pending user testing.
+
+## XLSX stored-value checks
+
+`dzurkel_xlsx` tests shared/inline/rich strings as plain text, long numeric
+lexemes, booleans, saved formula results (including zero and empty strings),
+visible missing-result markers/counts, error values, unknown style fallback,
+multiple sheets, Strict OOXML namespaces and
+implicit coordinates. It verifies actual-cell dimensions despite inflated
+declared ranges, partial row/column/cell limits, malformed XML/DTD rejection,
+invalid shared-string references, missing package parts, external-sheet and
+path-traversal rejection, ZIP entry/expanded-byte/part/field limits, and
+cancellation during loading. Local and fake SMB snapshot preparation both use
+the shared read-only grid and keyboard dismissal.
+
+The review refinements add 1900/1904 calendar cases, the fictional 1900 leap
+day, built-in/custom date/time formats, elapsed durations, millisecond precision,
+midnight rounding and raw fallback for unsupported formats or invalid serials.
+Each format case runs against both transitional and Strict packages and checks
+literal cells and saved formula results. Malformed style XML, invalid format IDs,
+oversized format fields and invalid workbook date-system flags are rejected.
+A UI check verifies that partial-preview and missing-result notices appear
+together and that unavailable formula results occupy visible cells.
+
+Shortcut checks now cover the visible pre-setup conflict summary, retention of
+Dzurkel's own alternate bindings, restoration after unrelated shortcut edits,
+and refusal to edit symbolic-link configurations or compete with a setup lock.
+Lifecycle checks cover immediate reopening while a dismissed worker is still
+running and prompt destruction of a controller with a cooperative worker.
+Native decoders that do not cooperate can still delay shutdown; this test does
+not establish a hard shutdown deadline for arbitrary inputs.
+
+Validation on 2026-10-17: all ten main-build suites passed (27.40s); after the
+final date-rounding/style-processing changes, XLSX passed again (0.72s).
+The new notice, conflict-summary, immediate-reopen and cooperative-shutdown
+checks also passed with the native Wayland backend. Light offscreen and dark
+Wayland screenshots of the notices/settings were visually inspected. These
+checks use temporary resources and isolated D-Bus sessions; they do not establish
+real Dolphin focus restoration, multi-monitor placement or real-server behavior.
+No new sanitizer run was performed for these refinements. See
+[the short Debug baseline](performance.md#review-refinement-baseline-2026-10-17)
+for the accompanying latency measurement.
+
+An optional private sample check uses `DZURKEL_XLSX_SAMPLE=/absolute/path.xlsx`
+with `dzurkel_xlsx_tests inspectUserSample`. It prints counts/timing only and
+writes an ignored build-directory screenshot. Do not add personal workbooks
+or sample screenshots to Git. A native Wayland run loaded a small ordinary
+workbook in 11 ms (parser only), with 180 rows, 11 columns and 1,888 stored cells;
+the rendered grid was visually inspected. This is one local sample, not a
+performance guarantee for other workbooks or remote locations.
+
+The main build passed all ten suites (28.39s). Real remote XLSX performance and
+broader workbook compatibility remain user acceptance checks. XLS/XLSB/XLSM,
+formula calculation and exact Excel display formatting remain outside scope.
+
+The XLSX suite passed ASan/UBSan with leak detection (1.72s), using only the
+existing narrow Qt PDF suppression.
+
+The optimized Fedora install passed all ten suites (27.86s); the installed
+executable was verified against that build. Installed XLSX acceptance is pending
+user testing.
+
+## Compact preview UI and image window sizing
+
+The showcase-inspired layout uses the native title bar for filenames, icon
+navigation and zoom controls, an information button, and a compact summary
+footer. The full path, encoding and delimiter details are accessible through
+hover information and a scrollable, keyboard-accessible dialog. Partial previews
+and unavailable formula results remain visible; switching sheets updates the
+row/column summary. Table sections use compact fixed starting sizes and remain
+resizable without scanning the whole workbook.
+
+Regression checks cover escaped filenames/metadata, absence of the old filename
+and path header rows, encoding/delimiter text kept out of the footer, non-overlap
+of navigation controls, dialog activation with Space and independent Escape
+handling, natural image sizing, a centered 40 × 30 image in a 400 × 400 window,
+a medium image at 100%, oversized image fitting, manual resizing/zooming,
+maximized windows and document-size restoration across image/information views.
+The cold small image is checked at its first Show event to catch oversized
+initial placement.
+
+All ten Debug suites passed during refinement (29.20s). After the final layout
+correction, the focused table/information check passed again. Six native Wayland
+cases passed: natural image sizing; temporary information sizing; repeated
+information-to-PDF reopening; table details/dialog access; multi-sheet summary
+updates; and combined partial/unavailable-result notices. Light offscreen and
+dark native Wayland image, table and information screenshots were inspected.
+Artifacts and Qt Test logs live in the ignored build directory as
+`ui-refinement-*.png` and `ui-refinement-wayland-*.txt`.
+
+Tests use temporary files and isolated buses. Moving between monitors with
+mixed scaling, real Dolphin focus restoration and human keyboard interaction
+still require desktop acceptance; the automated checks are not a latency study.
+
+The optimized Fedora reinstall passed all ten suites (29.17s). The installed
+binary was verified byte-for-byte against the stripped optimized build, and both
+desktop entries matched. This installs the compact UI and image-sizing changes.
+
+## Wayland frame-placement regression
+
+The first UI-refinement acceptance checks verified widget sizes and screenshots
+of client content; they did not verify the compositor's global frame placement.
+User screenshots exposed bottom/right clipping during image resizing. A read-only
+KWin geometry probe reproduced a 1,076-pixel-high frame inside a 1,036-pixel work
+area and a wide preview extending past the right edge. Qt's global coordinates
+and estimated available geometry were insufficient for this check.
+
+`WaylandPlacementTest.py` is an opt-in regression check on a real KDE Wayland
+session. It creates generated images, text and an unsupported resource, runs its
+own Dzurkel process on a private bus, and uses a temporary KWin observer filtered
+to that PID to read actual frame/work-area rectangles. It never calls the user's
+resident Dzurkel service or changes persistent KWin configuration. `--activate`
+activates only the initial generated window, then checks that later transitions
+retain focus continuously. It also requires one native window ID throughout
+navigation, no hidden/closed events, and multiple actual sizes, including a burst
+of requests. The observer is unloaded and its child processes are stopped.
+It uses the public [KWin scripting API](https://develop.kde.org/docs/plasma/kwin/api/)
+to observe the application placement adapter. A test-only
+`DZURKEL_TEST_KWIN_BUS_ADDRESS` override lets the isolated preview process reach
+the desktop compositor without sharing the resident application's service bus.
+
+Run from the checkout on the real desktop bus, without `dbus-run-session`:
+
+```bash
+python3 tests/integration/WaylandPlacementTest.py --initial small --activate \
+  --report build/wayland-placement-small.json
+python3 tests/integration/WaylandPlacementTest.py --initial large --activate \
+  --report build/wayland-placement-large.json
+```
+
+This optional check requires `python3-dbus` and `python3-gobject`. The ordinary
+Qt/CMake suites remain isolated and do not require these Python modules, KWin
+scripting access or an active desktop. The Qt image-sizing regression also checks
+that automatic placement does not emit dismissal; an explicit hide still does.
+
+Validation of the earlier placement fix: all ten Debug suites passed (30.19s). The
+small-first and large-first compositor runs each passed nine actual frame-bound
+checks with focus retained, including returns through text and metadata views.
+The native Qt checks of manual resizing, non-dismissal and maximized/reopened
+PDF restoration also passed (three cases plus setup/cleanup, 4.828s). Unlike the
+previous client-only screenshot checks, these compositor reports include window
+decorations and the panel-reserved work area. Mixed-DPI layouts and non-default
+KWin placement policies remain separate acceptance scenarios.
+
+That earlier workaround remapped the native surface. Final-position/focus
+checks passed, but missed temporary focus transfer and taskbar blinking reported
+by the user. It has been replaced with in-place compositor geometry updates.
+The strengthened probe checks every observed focus change and native identity,
+not just the final state. The orientation test also cancels at the metadata
+callback and verifies no image was decoded, covering background sizing before
+pixel loading.
+
+Final optimized reinstall: all ten suites passed (29.97s), and the installed
+binary matched the stripped optimized build byte-for-byte. Small-first and
+large-first runs against that installed binary each passed eleven compositor
+checks, including rapid navigation and information-to-image-to-document
+restoration. Each run retained one native window ID, continuous focus, no
+hidden/closed events, and on-screen frames within the panel-reserved work area.
+
+The optimized placement-fix reinstall passed all ten suites (29.99s). Its
+432,448-byte installed executable matched the stripped build exactly. The
+installed executable then passed all nine small-first compositor checks with
+focus retained; results are in `build/wayland-placement-installed.json`. Test
+windows, private buses and temporary KWin observers were cleaned up.
+
+## Initial public packaging validation (2026-10-17)
+
+The current checkout passed all ten CTest suites in Debug (29.18s), including
+Settings startup without a file, forwarding to the existing service, preservation
+of the preview URL, activation-option validation, and the staged four-file
+installation. The initial sandbox run could not bind D-Bus sockets; the successful
+run used isolated buses outside that restriction. No personal shortcuts were
+changed. CI and RPM validation results are recorded in the GitHub workflow runs.
+
+The README table screenshot was captured from the real Qt preview using a
+synthetic CSV listing supported formats; it contains no personal files or paths.

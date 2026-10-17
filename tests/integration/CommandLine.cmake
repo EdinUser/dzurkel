@@ -27,6 +27,8 @@ check_cli(1 "without passwords" --show smb://user:password@server/share/file)
 
 check_cli(2 "does not accept a file" --hide file.txt)
 check_cli(2 "does not accept a file" --quit file.txt)
+check_cli(2 "does not accept a file" --settings file.txt)
+check_cli(2 "Choose exactly one command" --settings --show file.txt)
 check_cli(2 "exactly one file path or URL" --toggle)
 check_cli(2 "Choose exactly one command" --show --toggle file.txt)
 check_cli(2 "Unknown option" --unknown)

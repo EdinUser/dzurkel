@@ -1,4 +1,4 @@
-# Dzurkel D-Bus API (Milestone 3)
+# Dzurkel D-Bus API
 
 Dzurkel owns one service on the user session bus:
 
@@ -18,6 +18,7 @@ These project identifiers remain provisional until the first public release.
 | `Toggle(string url)` | Hide a visible window; otherwise show the supplied URL. |
 | `ToggleWithOptions(string url, dict options)` | Toggle with optional launch context. |
 | `Quit()` | Acknowledge the request and gracefully terminate the service. |
+| `ShowSettings(dict options)` | Open or raise Settings without opening a preview; accepts the same activation option. |
 
 By default, `url` must be a fully encoded absolute `file://` or `smb://` URL. SMB URLs may
 include a username, but not a password, explicit port, query or fragment.
@@ -46,12 +47,17 @@ Toggle ignores its unused options as well as its URL.
 
 Read-only properties are available through standard D-Bus Properties.Get:
 
+Settings visibility is independent of the preview properties below. The
+`dzurkel --settings` command starts the resident service if needed or forwards
+to the existing owner. Repeated requests reuse the Settings dialog. Closing
+Settings leaves the service resident; `dzurkel --quit` stops it.
+
 - `Visible` (boolean): whether a preview is requested, including loading and
   initial provider selection before the first window maps. Hide/Toggle cancels
   that pending presentation too.
 - `FileUrl` (string): the last accepted URL; retained while hidden.
 - `Loading` (boolean): whether the current preview is being prepared.
-- `PreviewKind` (string): `loading`, `image`, `pdf`, `text`, `information`, or
+- `PreviewKind` (string): `loading`, `image`, `pdf`, `text`, `table`, `information`, or
   `none` (hidden/cleared).
 
 Decoder failure produces an `information` preview with an explanation.

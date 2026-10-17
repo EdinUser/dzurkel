@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a preview, Dolphin integration or installation problem
+labels: [bug]
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Distribution, Plasma, Dolphin, Qt and Dzurkel versions; Wayland or X11; installation method.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include the file type and whether it is local, mounted or a direct network URL. Use synthetic examples without credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Remove personal paths, credentials and private document contents.

@@ -11,12 +11,14 @@ class QPdfDocument;
 class QWidget;
 
 namespace dzurkel {
+struct TabularDocument;
 using Cancellation = std::shared_ptr<std::atomic_bool>;
-enum class PreviewKind { Cancelled, Image, Pdf, Text, Information };
+enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Information };
 
 struct PreviewData {
     PreviewKind kind = PreviewKind::Information;
     FileResource resource;
+    QString readerId;
     QString mimeType;
     QString description;
     qint64 size = 0;
@@ -30,6 +32,7 @@ struct PreviewData {
     QList<int> animationDelays;
     int animationLoops = 0; // Additional loops; -1 means repeat indefinitely.
     QString text;
+    std::shared_ptr<const TabularDocument> table;
     bool truncated = false;
     std::shared_ptr<QPdfDocument> pdf;
     QList<QSizeF> pdfPageSizes;

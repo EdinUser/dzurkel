@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Dzurkel Settings
+Comment=Enable Space previews in Dolphin and configure Dzurkel
+Icon=preview
+Exec="@DZURKEL_EXEC@" --settings
+Terminal=false
+StartupNotify=true
+Categories=Settings;Utility;
+Keywords=Dolphin;preview;Space;shortcut;KDE;

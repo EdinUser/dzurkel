@@ -46,6 +46,16 @@ void PreviewService::ShowWithOptions(const QString &url, const QVariantMap &opti
 void PreviewService::Hide() { controller_.hide(); }
 void PreviewService::Toggle(const QString &url) { open(url, true); }
 void PreviewService::ToggleWithOptions(const QString &url, const QVariantMap &options) { open(url, true, options); }
+void PreviewService::ShowSettings(const QVariantMap &options)
+{
+    const auto token = options.value(QStringLiteral("activation-token"));
+    if (token.isValid() && (token.metaType().id() != QMetaType::QString || token.toString().size() > 16384)) {
+        if (calledFromDBus()) sendErrorReply(QStringLiteral("org.freedesktop.DBus.Error.InvalidArgs"),
+            QStringLiteral("activation-token must be a string of at most 16384 characters."));
+        return;
+    }
+    controller_.showSettings(token.toString());
+}
 void PreviewService::Quit()
 {
     // Return the D-Bus acknowledgement before ending the event loop.

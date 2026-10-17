@@ -56,8 +56,10 @@ int main(int argc, char *argv[])
         if (result == dzurkel::InstanceCoordinator::ForwardResult::Failed) return fail(error);
         // Hiding or quitting an absent instance is a successful no-op.
         if (request.command == dzurkel::Command::Hide || request.command == dzurkel::Command::Quit) return 0;
-        dzurkel::FileResource resource;
-        if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
+        if (request.command != dzurkel::Command::Settings) {
+            dzurkel::FileResource resource;
+            if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
+        }
     }
 
     // KDE consumes the saved token on the actual show request. Avoid also
@@ -76,7 +78,8 @@ int main(int argc, char *argv[])
         const auto claim = instance.claim(service, error);
         if (claim == dzurkel::InstanceCoordinator::ClaimResult::Failed) return fail(error);
         if (claim == dzurkel::InstanceCoordinator::ClaimResult::Primary) {
-            if (!controller.show(request.url, error, nullptr, request.activationToken)) return fail(error);
+            if (request.command == dzurkel::Command::Settings) controller.showSettings(request.activationToken);
+            else if (!controller.show(request.url, error, nullptr, request.activationToken)) return fail(error);
             if (request.diagnostics) {
                 QTextStream(stderr) << "Dzurkel primary PID: " << application.applicationPid()
                     << " platform: " << application.platformName() << '\n';

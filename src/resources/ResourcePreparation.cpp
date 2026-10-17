@@ -1,6 +1,6 @@
 #include "ResourcePreparation.h"
 #include "preview/providers/FileInfoProvider.h"
-#include "preview/providers/TextPreviewProvider.h"
+#include "preview/PreviewLibrary.h"
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -16,7 +16,6 @@
 
 namespace dzurkel {
 namespace {
-constexpr qint64 SnapshotLimit = 64 * 1024 * 1024;
 // One current helper plus one cancelled helper being reaped. A kernel-stuck
 // filesystem call must not allow rapid requests to spawn unbounded processes.
 int activeHelpers = 0;
@@ -174,20 +173,13 @@ int prepareResourceSnapshot(const QString &url, const QString &directory)
     input.seek(0);
     object.insert(QStringLiteral("mime"), mime.name());
     object.insert(QStringLiteral("description"), mime.comment());
-    const bool pdf = mime.inherits(QStringLiteral("application/pdf")) || input.peek(1024).startsWith("%PDF-");
-    const bool text = TextPreviewProvider().supports(mime);
-    bool image;
-    {
-        QImageReader reader(&input);
-        image = reader.canRead() || mime.name().startsWith(QStringLiteral("image/"));
-    }
+    const auto capability = PreviewLibrary::capability(PreviewLibrary::select(input, mime, original.path));
     input.seek(0);
-    if (!pdf && !image && !text) return report(object);
-    // Text readers intentionally consume a bounded prefix, including one extra
-    // byte so their existing partial-preview notice/encoding logic is preserved.
-    const qint64 limit = !pdf && !image && text ? TextPreviewProvider::ByteLimit + 1 : SnapshotLimit;
-    if (input.size() > limit && limit == SnapshotLimit) {
-        object.insert(QStringLiteral("message"), QStringLiteral("File exceeds the 64 MiB content preview limit."));
+    if (!capability) return report(object);
+    const qint64 limit = capability->sourceLimit;
+    const bool complete = capability->access == SourceAccess::CompleteSnapshot;
+    if (input.size() > limit && complete) {
+        object.insert(QStringLiteral("message"), QStringLiteral("File exceeds the %1 MiB content preview limit.").arg(limit / (1024 * 1024)));
         return report(object);
     }
     QFile output(QDir(directory).filePath(snapshotName(original)));
@@ -200,7 +192,7 @@ int prepareResourceSnapshot(const QString &url, const QString &directory)
         if (output.write(bytes) != bytes.size()) return failure(QStringLiteral("Cannot write the preview snapshot (check temporary disk space)."));
         copied += bytes.size();
     }
-    if (limit == SnapshotLimit && !input.atEnd()) return failure(QStringLiteral("File grew beyond the 64 MiB preview limit."));
+    if (complete && !input.atEnd()) return failure(QStringLiteral("File grew beyond the content preview limit."));
     if (!output.flush()) return failure(QStringLiteral("Cannot finish the preview snapshot."));
     object.insert(QStringLiteral("informationOnly"), false);
     return report(object);

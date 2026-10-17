@@ -84,15 +84,18 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     loading_ = true;
     kind_ = PreviewKind::Cancelled;
     window_.setResource(resource);
-    auto *label = new QLabel(QStringLiteral("Loading preview…"));
-    label->setAlignment(Qt::AlignCenter);
-    window_.setContent(label);
+    if (!window_.isVisible()) {
+        auto *label = new QLabel(QStringLiteral("Loading preview…"));
+        label->setAlignment(Qt::AlignCenter);
+        window_.setContent(label);
+    }
     window_.setStatus({});
     // Wayland placement uses the initial mapped size. Keep the very first
-    // surface hidden until provider selection so information maps compactly.
-    presentationPending_ = !window_.hasBeenShown() && !loader_;
-    if (presentationPending_) window_.preparePresentation();
-    else window_.present(activationToken);
+    // surface hidden until a fast result determines its natural window size.
+    // Slow loads still present a loading window through the timer below.
+    presentationPending_ = !window_.isVisible() && !loader_;
+    if (!window_.isVisible()) window_.preparePresentation();
+    if (!presentationPending_ && !window_.isVisible()) window_.present(activationToken);
     window_.layout()->activate();
     pending_ = Job{resource, window_.previewSize(), generation_, activationToken};
     // Preserve compact first-map placement for fast information results, but
@@ -145,10 +148,8 @@ void PreviewController::startPending()
             if (data.kind == PreviewKind::Pdf && !pdfRuntime_)
                 pdfRuntime_ = std::make_unique<QPdfDocument>();
             window_.setContent(PreviewRegistry::createWidget(data, nullptr));
-            window_.setStatus(data.kind == PreviewKind::Information ? QString()
-                : (data.message.isEmpty() ? data.detail : data.message));
+            window_.setPreviewData(data);
             window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information);
-            window_.setInformationMode(data.kind == PreviewKind::Information);
             if (presentationPending_) {
                 presentationPending_ = false;
                 window_.present(job.activationToken);
@@ -160,15 +161,13 @@ void PreviewController::startPending()
     watcher->setFuture(QtConcurrent::run(&pool_, [this, loader, job, cancel] {
         try {
             if (loader) return loader(job.resource, job.target, cancel);
-            return PreviewRegistry::load(job.resource, job.target, cancel, [this, job] {
-                // Selection precedes expensive decoding: supported files still
-                // get their normal loading window without waiting for content.
-                QMetaObject::invokeMethod(this, [this, job] {
-                    if (job.generation != generation_ || !presentationPending_) return;
-                    presentationPending_ = false;
-                    window_.present(job.activationToken);
-                }, Qt::QueuedConnection);
-            });
+            return PreviewRegistry::load(job.resource, job.target, cancel, {},
+                [this, job, cancel](const QSize &imageSize) {
+                    QMetaObject::invokeMethod(this, [this, job, cancel, imageSize] {
+                        if (job.generation != generation_ || cancel->load() || !isVisible()) return;
+                        window_.prepareImage(imageSize);
+                    }, Qt::QueuedConnection);
+                });
         } catch (...) {
             auto data = FileInfoProvider::describe(job.resource);
             data.message = QStringLiteral("Preview loading failed; file information is shown instead.");

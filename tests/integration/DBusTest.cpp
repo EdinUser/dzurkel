@@ -43,6 +43,7 @@ private slots:
     void initTestCase();
     void cleanup();
     void absentInstanceControlsAreHeadless();
+    void settingsStartsWithoutFileAndReusesOwner();
     void reusesPrimaryAndWindowLifecycle();
     void returnsResourceErrors();
     void handlesStartupRacesAndCrashRecovery();
@@ -207,6 +208,29 @@ void DBusTest::absentInstanceControlsAreHeadless()
     QCOMPARE(cli({QStringLiteral("--hide")}), 0);
     QCOMPARE(cli({QStringLiteral("--quit")}), 0);
     QVERIFY(!registered());
+}
+void DBusTest::settingsStartsWithoutFileAndReusesOwner()
+{
+    auto env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    primary_.setProcessEnvironment(env);
+    primary_.start(QStringLiteral(DZURKEL_EXECUTABLE), {QStringLiteral("--settings")});
+    QVERIFY(primary_.waitForStarted());
+    QTRY_VERIFY_WITH_TIMEOUT(registered(), 5000);
+    const uint pid = ownerPid();
+    QVERIFY(!property(QStringLiteral("Visible")).toBool());
+    QVERIFY(property(QStringLiteral("FileUrl")).toString().isEmpty());
+    QCOMPARE(cli({QStringLiteral("--settings")}), 0);
+    QCOMPARE(ownerPid(), pid);
+    QCOMPARE(cli({first_}), 0);
+    QTRY_VERIFY(property(QStringLiteral("Visible")).toBool());
+    const auto url = property(QStringLiteral("FileUrl")).toString();
+    QCOMPARE(cli({QStringLiteral("--settings")}), 0);
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), url);
+    QCOMPARE(ownerPid(), pid);
+    const auto invalid = call(QStringLiteral("ShowSettings"),
+        {QVariantMap{{QStringLiteral("activation-token"), 123}}});
+    QCOMPARE(invalid.errorName(), QStringLiteral("org.freedesktop.DBus.Error.InvalidArgs"));
 }
 void DBusTest::reusesPrimaryAndWindowLifecycle()
 {

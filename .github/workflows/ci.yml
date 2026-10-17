@@ -1,0 +1,147 @@
+name: Fedora CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  rpm:
+    name: Fedora 44 RPM and tests (GCC)
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build tools
+        run: >-
+          dnf install -y git tar gzip gcc-c++ cmake cmake-rpm-macros make ninja-build
+          rpm-build redhat-rpm-config pkgconf-pkg-config libzip-devel
+          qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
+          qt6-qtwayland dbus-daemon python3 desktop-file-utils
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build binary and source RPMs; run CTest
+        run: bash packaging/fedora/build-rpm.sh
+      - name: Upload RPMs and checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fedora-44-x86_64
+          path: build-rpm/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rpm-test-logs
+          path: build-rpm/BUILD/**/Testing/Temporary/*.log
+          retention-days: 7
+
+  install:
+    name: Fedora 44 clean install and removal
+    needs: rpm
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: fedora-44-x86_64
+          path: packages
+      - name: Install and verify the package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd packages
+          sha256sum --check SHA256SUMS
+          dnf install -y ./dzurkel-[0-9]*.x86_64.rpm dbus-daemon python3 git tar gzip
+          rpm -V dzurkel
+          dzurkel --version
+          test -x /usr/bin/dzurkel
+          test -x /usr/share/kio/servicemenus/dzurkel.desktop
+          test -f /usr/share/applications/dzurkel-settings.desktop
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Exercise installed preview on an isolated bus
+        run: dbus-run-session -- python3 tests/integration/InstallTest.py --smoke /usr/bin/dzurkel
+      - name: Remove and verify cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf remove -y dzurkel
+          test ! -e /usr/bin/dzurkel
+          test ! -e /usr/share/applications/dzurkel.desktop
+          test ! -e /usr/share/applications/dzurkel-settings.desktop
+          test ! -e /usr/share/kio/servicemenus/dzurkel.desktop
+
+  clang:
+    name: Fedora 44 tests (Clang)
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install dependencies
+        run: >-
+          dnf install -y git tar gzip clang cmake make pkgconf-pkg-config
+          libzip-devel qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
+          dbus-daemon python3 desktop-file-utils
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build --parallel 2
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: clang-test-logs
+          path: build/Testing/Temporary/*.log
+          retention-days: 7
+
+  release:
+    name: Prepare draft release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [rpm, install, clang]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: fedora-44-x86_64
+          path: packages
+      - name: Create draft and attach packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Dzurkel $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" packages/* --clobber

@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a focused improvement to Dzurkel
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What task would this help you do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+    validations:
+      required: true

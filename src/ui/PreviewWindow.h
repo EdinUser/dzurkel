@@ -6,15 +6,19 @@ class QLabel;
 class QVBoxLayout;
 class QScreen;
 class QPushButton;
+class QDialog;
 namespace dzurkel {
 struct FileResource;
+struct PreviewData;
 class SettingsDialog;
+class WindowPlacement;
 class PreviewWindow : public QWidget {
     Q_OBJECT
 public:
     explicit PreviewWindow(bool diagnostics = false);
     explicit PreviewWindow(const FileResource &resource, bool diagnostics = false);
     void setResource(const FileResource &resource);
+    void showSettings(const QString &activationToken = {});
     // Resolve the initial screen/normal size before an asynchronous first load.
     void preparePresentation();
     bool hasBeenShown() const { return shown_; }
@@ -22,6 +26,8 @@ public:
     // Takes ownership; replacing content destroys its widgets/documents.
     void setContent(QWidget *content);
     void setStatus(const QString &status);
+    void setPreviewData(const PreviewData &data);
+    void prepareImage(const QSize &imageSize);
     void setInformationMode(bool information);
     QSize previewSize() const;
     void setNavigation(bool previous, bool next, const QString &status);
@@ -37,6 +43,11 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 private:
     void fitInformation();
+    void enterImageMode();
+    void fitImage(const QSize &natural = {});
+    void resizePreview(const QSize &size, const QSize &imageSize = {}, const QSize &chrome = {});
+    void restoreDocumentSize();
+    void showFileInformation();
     void updateZoomControls();
     void watchScreen(QScreen *screen);
     void fitScreen(QScreen *screen);
@@ -48,10 +59,17 @@ private:
     QLabel *navigationStatus_;
     QWidget *zoomControls_;
     QLabel *zoomStatus_;
+    QPushButton *fileInfoButton_;
+    QLabel *summary_;
+    QString location_;
+    QString fileInformation_;
+    QPointer<QDialog> informationDialog_;
     bool shown_ = false;
     bool presentationPrepared_ = false;
     bool trackingScreen_ = false;
     bool informationMode_ = false;
+    bool imageMode_ = false;
+    WindowPlacement *placement_;
     bool informationRestorePending_ = false;
     bool mappingResizePending_ = false;
     QSize mappedWindowSize_;

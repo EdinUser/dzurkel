@@ -7,6 +7,7 @@
 
 #include <QFile>
 #include <QLabel>
+#include <QLockFile>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QDir>
@@ -34,6 +35,7 @@ private slots:
     void followsLightAndDarkPalettes();
     void shortcutSetupPreservesAndRestores();
     void shortcutSetupRejectsMalformedAndNewerChanges();
+    void shortcutSetupRejectsLinksAndConcurrentChanges();
     void settingsLinkIsReusedAndKeyboardIndependent();
 };
 
@@ -49,26 +51,32 @@ void DzurkelTest::shortcutSetupPreservesAndRestores()
     auto get = [&] { QFile file(path); return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray(); };
     QVERIFY(put("<gui name=\"dolphin\" version=\"60\"><!--Keep comment--><ToolBar name=\"main\">Keep me</ToolBar>"
         "<ActionProperties><Action name=\"custom\" shortcut=\"Space; Ctrl+J\" icon=\"folder\"/>"
+        "<Action name=\"servicemenu_dzurkel.desktop::dzurkel\" shortcut=\"Ctrl+P\"/>"
         "<Action name=\"unrelated\" shortcut=\"Ctrl+K\"/></ActionProperties></gui>"));
     dzurkel::DolphinShortcuts shortcuts(path, backup);
     QString error;
+    QVERIFY(shortcuts.setupSummary(error).contains(QStringLiteral("custom")));
+    QVERIFY(error.isEmpty());
+    QVERIFY(!shortcuts.hasBackup());
     QVERIFY2(shortcuts.useSpace(error), qPrintable(error));
     QVERIFY(shortcuts.usesSpace());
     QVERIFY(shortcuts.hasBackup());
     const auto configured = get();
     QVERIFY(configured.contains("shortcut=\"Ctrl+J\""));
     QVERIFY(configured.contains("shortcut=\"Ctrl+K\""));
+    QVERIFY(configured.contains("shortcut=\"Space; Ctrl+P\""));
     QVERIFY(configured.contains("Keep comment"));
     QVERIFY(configured.contains("icon=\"folder\""));
     QVERIFY(!shortcuts.useSpace(error));
     QCOMPARE(get(), configured);
-    QVERIFY(put(QByteArray(configured).replace("Keep me", "New toolbar text")));
+    QVERIFY(put(QByteArray(configured).replace("Keep me", "New toolbar text").replace("Ctrl+K", "Ctrl+L")));
     QVERIFY2(shortcuts.restore(error), qPrintable(error));
     QVERIFY(!shortcuts.usesSpace());
     QVERIFY(!shortcuts.hasBackup());
     QVERIFY(get().contains("New toolbar text"));
     QVERIFY(get().contains("shortcut=\"Space; Ctrl+J\""));
-    QVERIFY(get().contains("shortcut=\"Ctrl+K\""));
+    QVERIFY(get().contains("shortcut=\"Ctrl+L\""));
+    QVERIFY(get().contains("shortcut=\"Ctrl+P\""));
 }
 
 void DzurkelTest::shortcutSetupRejectsMalformedAndNewerChanges()
@@ -100,6 +108,33 @@ void DzurkelTest::shortcutSetupRejectsMalformedAndNewerChanges()
     QVERIFY(shortcuts.hasBackup());
 }
 
+void DzurkelTest::shortcutSetupRejectsLinksAndConcurrentChanges()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("dolphinui.rc"));
+    const QString backup = directory.filePath(QStringLiteral("backup.json"));
+    const QString original = directory.filePath(QStringLiteral("original.rc"));
+    QFile file(original);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    const QByteArray contents = "<gui name=\"dolphin\"/>";
+    QCOMPARE(file.write(contents), contents.size());
+    file.close();
+    QVERIFY(QFile::link(original, path));
+    dzurkel::DolphinShortcuts shortcuts(path, backup);
+    QString error;
+    QVERIFY(!shortcuts.useSpace(error));
+    QVERIFY(!shortcuts.hasBackup());
+    QVERIFY(shortcuts.setupSummary(error).isEmpty());
+    QVERIFY(!error.isEmpty());
+    QVERIFY(QFile::remove(path));
+    QLockFile lock(backup + QStringLiteral(".lock"));
+    QVERIFY(lock.tryLock());
+    QVERIFY(!shortcuts.useSpace(error));
+    QVERIFY(!QFile::exists(path));
+    QVERIFY(!shortcuts.hasBackup());
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), contents);
+}
 void DzurkelTest::settingsLinkIsReusedAndKeyboardIndependent()
 {
     QStandardPaths::setTestModeEnabled(true);
@@ -123,6 +158,11 @@ void DzurkelTest::settingsLinkIsReusedAndKeyboardIndependent()
     QVERIFY(dialog->grab().save(QStringLiteral("settings-dialog.png")));
     window.hide();
     QVERIFY(!dialog->isVisible());
+    window.showSettings();
+    QVERIFY(dialog->isVisible());
+    QVERIFY(!window.isVisible());
+    QCOMPARE(window.findChildren<dzurkel::SettingsDialog *>().size(), 1);
+    dialog->close();
 }
 
 void DzurkelTest::shiftSpaceDismissesButControlSpaceDoesNot()
@@ -241,7 +281,7 @@ void DzurkelTest::controllerReusesWindow()
     QVERIFY(controller.isVisible());
     QVERIFY(controller.show(QUrl::fromLocalFile(second).toString(), error));
     QCOMPARE(controller.window(), window);
-    QCOMPARE(window->findChild<QLabel *>("fileName")->text(), QStringLiteral("second.txt"));
+    QCOMPARE(window->windowTitle(), QStringLiteral("Dzurkel — second.txt"));
     QVERIFY(!controller.show(QStringLiteral("https://example.com/unsupported"), error));
     QVERIFY(controller.isVisible());
     QCOMPARE(controller.fileUrl(), QUrl::fromLocalFile(second).toString(QUrl::FullyEncoded));
@@ -249,7 +289,7 @@ void DzurkelTest::controllerReusesWindow()
     QVERIFY(!controller.isVisible());
     QVERIFY(controller.toggle(QUrl::fromLocalFile(first).toString(), error));
     QCOMPARE(controller.window(), window);
-    auto *child = window->findChild<QLabel *>("filePath");
+    auto *child = window->findChild<QPushButton *>("fileInfoButton");
     child->window()->activateWindow();
     QTRY_VERIFY(window->isActiveWindow());
     QTest::keyClick(child->window(), Qt::Key_Escape);
@@ -341,9 +381,12 @@ void DzurkelTest::dismissesWithKeyboard()
     resource.path = path;
     resource.url = QUrl::fromLocalFile(path);
     dzurkel::PreviewWindow window(resource);
-    auto *label = window.findChild<QLabel *>(QStringLiteral("filePath"));
+    auto *label = window.findChild<QLabel *>(QStringLiteral("previewSummary"));
     QVERIFY(label);
-    QCOMPARE(label->text(), path);
+    const auto *details = window.findChild<QPushButton *>(QStringLiteral("fileInfoButton"));
+    QVERIFY(details);
+    QCOMPARE(details->accessibleDescription(), path);
+    QVERIFY(details->toolTip().contains(path.toHtmlEscaped()));
     QCOMPARE(label->textFormat(), Qt::PlainText);
     QVERIFY(!window.windowFlags().testFlag(Qt::FramelessWindowHint));
     QVERIFY(!window.windowFlags().testFlag(Qt::WindowStaysOnTopHint));

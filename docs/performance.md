@@ -125,6 +125,34 @@ platform helpers, and explicit setup work can create more threads. This single
 sample does not establish a memory plateau or regression against the 0.5.0
 fixtures. No resident process scanning was added.
 
+## Review refinement baseline: 2026-10-17
+
+The Debug checkout before the compact-UI/image-sizing refinement (Qt 6.11.2,
+without IPO or section removal) completed
+25 offscreen cycles / 100 previews, followed by clean primary shutdown:
+
+```bash
+cmake -S . -B build -DDZURKEL_BUILD_BENCHMARKS=ON
+cmake --build build
+dbus-run-session -- ./build/dzurkel_benchmark \
+  --cycles 25 --output build/benchmark-review-refinements.json
+```
+
+| Fixture | Median ready state | p95 ready state |
+| --- | ---: | ---: |
+| Image | 81.0 ms | 95.4 ms |
+| PDF | 75.7 ms | 99.7 ms |
+| Text | 79.0 ms | 92.7 ms |
+| Information | 75.6 ms | 87.0 ms |
+
+Fresh-process text ready state was 121.3 ms (one sample). The report is retained
+in the ignored build directory. This is a short baseline for this Debug
+checkout, not a comparison against the historical optimized build, a sustained
+memory-stability test, an XLSX benchmark, or a Dolphin keyboard-to-first-paint
+measurement. The four new native Wayland correctness checks are documented in
+[testing](testing.md); no optimization or architecture change follows from
+these timing samples alone.
+
 ## Historical measured results: 2026-10-16 (0.5.0)
 
 Fedora 44, Qt 6.11.2, GCC 16.2.1; shared system libraries and KDE activation

@@ -1,10 +1,21 @@
 #include "PreviewWindow.h"
 #include "SettingsDialog.h"
 #include "ZoomPreview.h"
+#include "preview/PreviewProvider.h"
+#include "preview/table/TabularDocument.h"
 #include <QWheelEvent>
 #include "desktop/DesktopIntegration.h"
+#include "desktop/WindowPlacement.h"
 #include "resources/FileResource.h"
 #include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QIcon>
+#include <QLocale>
+#include <QMimeDatabase>
+#include <QStyle>
+#include <QTabWidget>
+#include <QScrollArea>
 #include <QCursor>
 #include <QEvent>
 #include <QFileInfo>
@@ -26,54 +37,59 @@ namespace dzurkel {
 PreviewWindow::PreviewWindow(bool diagnostics)
     : QWidget(nullptr, Qt::Window), diagnostics_(diagnostics)
 {
+    placement_ = new WindowPlacement(this);
     setWindowTitle(QStringLiteral("Dzurkel"));
     setAccessibleName(windowTitle());
     setFocusPolicy(Qt::StrongFocus);
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(20, 20, 20, 20);
-    layout->setSpacing(10);
-    const auto addLabel = [this, layout](const QString &text) {
-        auto *label = new QLabel(text, this);
-        label->setTextFormat(Qt::PlainText);
-        label->setWordWrap(true);
-        label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-        layout->addWidget(label);
-        return label;
-    };
-    auto *name = addLabel({});
-    name->setObjectName(QStringLiteral("fileName"));
-    auto font = name->font();
-    font.setBold(true);
-    name->setFont(font);
-    addLabel({})->setObjectName(QStringLiteral("filePath"));
+    layout->setContentsMargins(8, 8, 8, 6);
+    layout->setSpacing(6);
     auto *controls = new QHBoxLayout;
-    auto button = [this](const QString &text, const QString &name, const QString &tip) {
-        auto *result = new QPushButton(text, this);
+    controls->setSpacing(6);
+    auto button = [this](const QString &theme, QStyle::StandardPixmap fallback,
+                         const QString &name, const QString &tip) {
+        auto *result = new QPushButton(this);
+        result->setIcon(QIcon::fromTheme(theme, style()->standardIcon(fallback)));
         result->setObjectName(name);
         result->setToolTip(tip);
         result->setAccessibleName(tip);
         result->setAutoDefault(false);
+        result->setFixedSize(30, 30);
         return result;
     };
-    previous_ = button(QStringLiteral("Previous"), QStringLiteral("previousFile"), QStringLiteral("Previous file (Alt+Left)"));
-    next_ = button(QStringLiteral("Next"), QStringLiteral("nextFile"), QStringLiteral("Next file (Alt+Right)"));
+    previous_ = button(QStringLiteral("go-previous"), QStyle::SP_ArrowBack,
+        QStringLiteral("previousFile"), QStringLiteral("Previous file (Alt+Left)"));
+    next_ = button(QStringLiteral("go-next"), QStyle::SP_ArrowForward,
+        QStringLiteral("nextFile"), QStringLiteral("Next file (Alt+Right)"));
     controls->addWidget(previous_);
-    controls->addWidget(next_);
     navigationStatus_ = new QLabel(this);
     navigationStatus_->setObjectName(QStringLiteral("navigationStatus"));
-    navigationStatus_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    controls->addWidget(navigationStatus_, 1);
+    navigationStatus_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    navigationStatus_->setMinimumWidth(44);
+    navigationStatus_->setAlignment(Qt::AlignCenter);
+    controls->addWidget(navigationStatus_);
+    controls->addWidget(next_);
+    controls->addStretch();
     connect(previous_, &QPushButton::clicked, this, [this] { emit navigateRequested(-1); });
     connect(next_, &QPushButton::clicked, this, [this] { emit navigateRequested(1); });
     zoomControls_ = new QWidget(this);
     auto *zoomLayout = new QHBoxLayout(zoomControls_);
     zoomLayout->setContentsMargins(0, 0, 0, 0);
-    auto *out = button(QStringLiteral("−"), QStringLiteral("zoomOut"), QStringLiteral("Zoom out (- or Ctrl+wheel)"));
-    auto *in = button(QStringLiteral("+"), QStringLiteral("zoomIn"), QStringLiteral("Zoom in (+ or Ctrl+wheel)"));
-    auto *fit = button(QStringLiteral("Fit"), QStringLiteral("zoomFit"), QStringLiteral("Fit preview (0)"));
+    zoomLayout->setSpacing(4);
+    auto *out = button(QStringLiteral("zoom-out"), QStyle::SP_ArrowDown,
+        QStringLiteral("zoomOut"), QStringLiteral("Zoom out (- or Ctrl+wheel)"));
+    auto *in = button(QStringLiteral("zoom-in"), QStyle::SP_ArrowUp,
+        QStringLiteral("zoomIn"), QStringLiteral("Zoom in (+ or Ctrl+wheel)"));
+    auto *fit = button(QStringLiteral("zoom-fit-best"), QStyle::SP_TitleBarMaxButton,
+        QStringLiteral("zoomFit"), QStringLiteral("Fit preview (0)"));
+    out->setIcon(QIcon());
+    out->setText(QStringLiteral("−"));
+    in->setIcon(QIcon());
+    in->setText(QStringLiteral("+"));
     zoomStatus_ = new QLabel(zoomControls_);
     zoomStatus_->setObjectName(QStringLiteral("zoomStatus"));
-    zoomStatus_->setMinimumWidth(80);
+    zoomStatus_->setAlignment(Qt::AlignCenter);
+    zoomStatus_->setMinimumWidth(42);
     zoomLayout->addWidget(out);
     zoomLayout->addWidget(zoomStatus_);
     zoomLayout->addWidget(in);
@@ -82,6 +98,11 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     connect(out, &QPushButton::clicked, this, [this] { if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) zoom->zoomBy(-1); });
     connect(in, &QPushButton::clicked, this, [this] { if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) zoom->zoomBy(1); });
     connect(fit, &QPushButton::clicked, this, [this] { if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) zoom->fit(); });
+    fileInfoButton_ = button(QStringLiteral("dialog-information"), QStyle::SP_MessageBoxInformation,
+        QStringLiteral("fileInfoButton"), QStringLiteral("File information"));
+    fileInfoButton_->setAccessibleName(QStringLiteral("File information"));
+    controls->addWidget(fileInfoButton_);
+    connect(fileInfoButton_, &QPushButton::clicked, this, &PreviewWindow::showFileInformation);
     layout->addLayout(controls);
     setNavigation(false, false, {});
     zoomControls_->hide();
@@ -90,29 +111,41 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     contentLayout_ = new QVBoxLayout(contentHost_);
     contentLayout_->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(contentHost_, 1);
-    status_ = addLabel({});
-    status_->setObjectName(QStringLiteral("previewStatus"));
-    status_->hide();
     auto *footer = new QHBoxLayout;
-    footer->addWidget(new QLabel(QStringLiteral("Space or Escape to close"), this));
-    footer->addStretch();
-    auto *settings = new QPushButton(QStringLiteral("Settings"), this);
-    settings->setObjectName(QStringLiteral("settingsLink"));
+    footer->setSpacing(8);
+    summary_ = new QLabel(this);
+    summary_->setObjectName(QStringLiteral("previewSummary"));
+    summary_->setTextFormat(Qt::PlainText);
+    summary_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    footer->addWidget(summary_, 1);
+    status_ = new QLabel(this);
+    status_->setObjectName(QStringLiteral("previewStatus"));
+    status_->setTextFormat(Qt::PlainText);
+    status_->setWordWrap(true);
+    status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    status_->setMinimumWidth(0);
+    status_->hide();
+    footer->addWidget(status_, 1);
+    auto *hint = new QLabel(QStringLiteral("Space / Esc to close"), this);
+    hint->setForegroundRole(QPalette::PlaceholderText);
+    footer->addWidget(hint);
+    auto *settings = button(QStringLiteral("configure"), QStyle::SP_FileDialogDetailedView,
+        QStringLiteral("settingsLink"), QStringLiteral("Settings"));
     settings->setFlat(true);
-    settings->setCursor(Qt::PointingHandCursor);
-    auto linkFont = settings->font();
-    linkFont.setUnderline(true);
-    settings->setFont(linkFont);
     settings->setAccessibleDescription(QStringLiteral("Open Dzurkel desktop and preview settings"));
     footer->addWidget(settings);
     layout->addLayout(footer);
     connect(settings, &QPushButton::clicked, this, [this] {
-        if (!settings_) settings_ = new SettingsDialog(this);
-        settings_->show();
-        settings_->raise();
-        settings_->activateWindow();
+        showSettings();
     });
     qApp->installEventFilter(this);
+}
+void PreviewWindow::showSettings(const QString &activationToken)
+{
+    if (!settings_) settings_ = new SettingsDialog(this);
+    settings_->show();
+    settings_->raise();
+    activatePreview(settings_->windowHandle(), activationToken, diagnostics_);
 }
 PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics) : PreviewWindow(diagnostics)
 {
@@ -120,24 +153,20 @@ PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics) : P
 }
 void PreviewWindow::setResource(const FileResource &resource)
 {
+    placement_->cancel();
     const QString name = QFileInfo(resource.path).fileName();
     setWindowTitle(QStringLiteral("Dzurkel — %1").arg(name));
     setAccessibleName(windowTitle());
-    findChild<QLabel *>(QStringLiteral("fileName"))->setText(name);
-    findChild<QLabel *>(QStringLiteral("filePath"))->setText(resource.url.isLocalFile()
-        ? resource.path : resource.url.toDisplayString());
+    location_ = resource.url.isLocalFile() ? resource.path : resource.url.toDisplayString();
+    fileInformation_ = QStringLiteral("<qt><b>Location</b><br>%1</qt>").arg(location_.toHtmlEscaped());
+    fileInfoButton_->setToolTip(fileInformation_);
+    fileInfoButton_->setAccessibleDescription(location_);
+    summary_->clear();
+    if (informationDialog_) informationDialog_->hide();
 }
 void PreviewWindow::present(const QString &activationToken)
 {
-    // Wayland places a newly mapped surface using its initial dimensions.
-    // Restore before mapping: growing an already placed compact window leaves
-    // its top-left corner fixed, and clients cannot reposition it afterward.
-    if (!isVisible() && informationMode_ && shown_) {
-        resize(previewWindowSize_);
-        setWindowState(previewWindowState_);
-        // Keep information mode until the provider completes so a late compact
-        // configure cannot be mistaken for a new user-chosen preview size.
-    }
+    if (isVisible()) return;
     show();
     activatePreview(windowHandle(), activationToken, diagnostics_);
 }
@@ -163,17 +192,20 @@ void PreviewWindow::setNavigation(bool previous, bool next, const QString &statu
 {
     previous_->setEnabled(previous);
     next_->setEnabled(next);
-    navigationStatus_->setText(status);
+    const auto position = status.section(QStringLiteral(" · "), 0, 0);
+    const int width = std::clamp(navigationStatus_->fontMetrics().horizontalAdvance(position) + 8, 44, 100);
+    navigationStatus_->setFixedWidth(width);
+    navigationStatus_->setText(navigationStatus_->fontMetrics().elidedText(position, Qt::ElideRight, width));
     navigationStatus_->setToolTip(status);
     navigationStatus_->setAccessibleName(status);
+    layout()->activate();
 }
 void PreviewWindow::updateZoomControls()
 {
     auto *zoom = qobject_cast<ZoomPreview *>(content_);
     zoomControls_->setVisible(zoom != nullptr);
     if (zoom) {
-        zoomStatus_->setText(QStringLiteral("%1%2%")
-            .arg(zoom->isFit() ? QStringLiteral("Fit · ") : QString()).arg(qRound(zoom->zoomFactor() * 100)));
+        zoomStatus_->setText(QStringLiteral("%1%").arg(qRound(zoom->zoomFactor() * 100)));
         zoomStatus_->setToolTip(zoom->zoomHint());
         findChild<QPushButton *>(QStringLiteral("zoomIn"))->setEnabled(zoom->zoomFactor() < zoom->maximumZoom() - .00001);
         findChild<QPushButton *>(QStringLiteral("zoomOut"))->setEnabled(zoom->zoomFactor() > std::min(.1, zoom->maximumZoom()) + .00001);
@@ -181,13 +213,109 @@ void PreviewWindow::updateZoomControls()
 }
 void PreviewWindow::setStatus(const QString &status)
 {
-    status_->setText(status);
+    QString badge = status;
+    const bool partial = status.contains(QStringLiteral("Partial"), Qt::CaseInsensitive);
+    const bool missing = status.contains(QStringLiteral("formula result(s) unavailable"));
+    if (partial || missing) badge = partial && missing ? QStringLiteral("Partial · Results unavailable")
+        : partial ? QStringLiteral("Partial preview") : QStringLiteral("Results unavailable");
+    else if (badge.size() > 42) badge = badge.left(39) + QChar(0x2026);
+    status_->setText(badge);
+    status_->setToolTip(status);
+    status_->setAccessibleName(status);
     status_->setVisible(!status.isEmpty());
+}
+void PreviewWindow::setPreviewData(const PreviewData &data)
+{
+    if (data.kind != PreviewKind::Image && imageMode_) {
+        imageMode_ = false;
+        if (data.kind != PreviewKind::Information) restoreDocumentSize();
+        else {
+            // Keep the reading size saved before entering the image preview.
+            informationMode_ = true;
+        }
+    }
+    if (data.kind == PreviewKind::Image) enterImageMode();
+    else setInformationMode(data.kind == PreviewKind::Information);
+    QStringList plain;
+    QString rows;
+    const auto add = [&](const QString &name, const QString &value) {
+        if (value.isEmpty()) return;
+        rows += QStringLiteral("<tr><td valign='top'><b>%1</b></td><td>%2</td></tr>")
+            .arg(name.toHtmlEscaped(), value.toHtmlEscaped().replace(QChar('\n'), QStringLiteral("<br>")));
+        plain.append(name + QStringLiteral(": ") + value);
+    };
+    add(QStringLiteral("Location"), location_);
+    add(QStringLiteral("Type"), data.description.isEmpty() ? data.mimeType : data.description);
+    add(QStringLiteral("Size"), QStringLiteral("%1 (%2 bytes)").arg(QLocale().formattedDataSize(data.size)).arg(data.size));
+    if (!data.imageSize.isEmpty()) add(QStringLiteral("Dimensions"), QStringLiteral("%1 × %2 pixels").arg(data.imageSize.width()).arg(data.imageSize.height()));
+    if (data.modified.isValid()) add(QStringLiteral("Modified"), QLocale().toString(data.modified, QLocale::ShortFormat));
+    add(QStringLiteral("Target"), data.linkTarget);
+    add(QStringLiteral("Preview"), data.detail);
+    add(QStringLiteral("Notice"), data.message);
+    fileInformation_ = QStringLiteral("<qt><table cellspacing='6'>%1</table></qt>").arg(rows);
+    fileInfoButton_->setToolTip(fileInformation_);
+    fileInfoButton_->setAccessibleDescription(plain.join(QChar('\n')));
+    const auto mime = QMimeDatabase().mimeTypeForName(data.mimeType);
+    const auto icon = QIcon::fromTheme(mime.iconName(), style()->standardIcon(QStyle::SP_FileIcon));
+    if (windowIcon().isNull() || windowIcon().name() != icon.name()) setWindowIcon(icon);
+    if (data.kind == PreviewKind::Image) {
+        summary_->setText(QStringLiteral("%1 × %2 px").arg(data.imageSize.width()).arg(data.imageSize.height()));
+    } else if (data.kind == PreviewKind::Table && data.table) {
+        const auto document = data.table;
+        const auto update = [this, document](int index) {
+            if (index < 0 || index >= document->sheets.size()) return;
+            const auto &sheet = document->sheets.at(index);
+            summary_->setText(QStringLiteral("%1 %2 · %3 × %4")
+                .arg(document->sheets.size()).arg(document->sheets.size() == 1 ? QStringLiteral("sheet") : QStringLiteral("sheets"))
+                .arg(sheet.rowCount).arg(sheet.columnCount));
+        };
+        if (auto *tabs = content_->findChild<QTabWidget *>()) {
+            connect(tabs, &QTabWidget::currentChanged, this, update);
+            update(tabs->currentIndex());
+        }
+    } else if (data.kind == PreviewKind::Pdf) {
+        summary_->setText(QStringLiteral("%1 page(s)").arg(data.pdfPageSizes.size()));
+    } else summary_->setText(data.description);
+    summary_->setToolTip(fileInformation_);
+    setStatus(data.kind == PreviewKind::Information ? QString() : data.message);
+    if (data.kind == PreviewKind::Table && data.readerId == QStringLiteral("xlsx") && data.message.isEmpty())
+        setStatus(QStringLiteral("Saved results may be stale"));
+    if (imageMode_) fitImage();
+}
+void PreviewWindow::showFileInformation()
+{
+    if (!informationDialog_) {
+        auto *dialog = new QDialog(this);
+        informationDialog_ = dialog;
+        dialog->setObjectName(QStringLiteral("fileInformationDialog"));
+        dialog->setWindowTitle(QStringLiteral("File information"));
+        auto *layout = new QVBoxLayout(dialog);
+        auto *text = new QLabel(dialog);
+        text->setObjectName(QStringLiteral("fileInformationText"));
+        text->setTextFormat(Qt::RichText);
+        text->setWordWrap(true);
+        text->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+        text->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+        auto *scroll = new QScrollArea(dialog);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setWidget(text);
+        layout->addWidget(scroll);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
+        connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::hide);
+        layout->addWidget(buttons);
+    }
+    informationDialog_->findChild<QLabel *>(QStringLiteral("fileInformationText"))->setText(fileInformation_);
+    informationDialog_->resize(QSize(560, 260).boundedTo(screen()->availableGeometry().size()));
+    informationDialog_->show();
+    informationDialog_->raise();
+    informationDialog_->activateWindow();
 }
 QSize PreviewWindow::previewSize() const
 {
     // A compact fallback must not reduce the next image's decode resolution.
-    QSize target = informationMode_ ? previewContentSize_ : contentHost_->size();
+    QSize target = informationMode_ || imageMode_ ? previewContentSize_ : contentHost_->size();
     if (screen()) target = target.boundedTo(screen()->availableGeometry().size());
     return (target * devicePixelRatioF()).boundedTo(QSize(2048, 2048)).expandedTo(QSize(1, 1));
 }
@@ -197,12 +325,14 @@ void PreviewWindow::setInformationMode(bool information)
     const QPoint center = geometry().center();
     const auto minimized = windowState() & Qt::WindowMinimized;
     if (information) {
-        if (!informationMode_) {
+        if (!informationMode_ && !imageMode_) {
             previewWindowState_ = windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
             previewWindowSize_ = previewWindowState_ ? normalGeometry().size() : size();
             previewContentSize_ = contentHost_->size();
         }
         informationMode_ = true;
+        imageMode_ = false;
+        setMinimumSize(0, 0);
         informationRestorePending_ = isMaximized() || isFullScreen();
         // Unmaximize temporarily; do not request activation when loading ends.
         setWindowState(minimized);
@@ -210,23 +340,84 @@ void PreviewWindow::setInformationMode(bool information)
     } else {
         informationMode_ = false;
         informationRestorePending_ = false;
-        requestedWindowSize_ = previewWindowSize_;
-        resize(previewWindowSize_);
-        setWindowState(previewWindowState_ | minimized);
+        restoreDocumentSize();
     }
     if (!isMaximized() && !isFullScreen()) {
-        move(center - rect().center());
+        if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
+            move(center - rect().center());
         fitScreen(screen());
     }
+}
+void PreviewWindow::restoreDocumentSize()
+{
+    setMinimumSize(0, 0);
+    requestedWindowSize_ = previewWindowSize_;
+    resizePreview(previewWindowSize_);
+    setWindowState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
+    fitScreen(screen());
+}
+void PreviewWindow::enterImageMode()
+{
+    if (imageMode_) return;
+    if (informationMode_) {
+        // Both are temporary sizes. Keep the saved reading geometry and avoid
+        // an intermediate asynchronous restore through the document size.
+        informationMode_ = false;
+        informationRestorePending_ = false;
+        setMinimumSize(0, 0);
+        setWindowState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
+    } else {
+        previewWindowState_ = windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+        previewWindowSize_ = previewWindowState_ ? normalGeometry().size() : size();
+        previewContentSize_ = contentHost_->size();
+    }
+    imageMode_ = true;
+}
+void PreviewWindow::prepareImage(const QSize &imageSize)
+{
+    if (imageSize.isEmpty()) return;
+    enterImageMode();
+    fitImage(imageSize);
+}
+void PreviewWindow::fitImage(const QSize &sourceSize)
+{
+    auto *zoom = qobject_cast<ZoomPreview *>(content_);
+    const QSize natural = sourceSize.isEmpty() && zoom ? zoom->naturalSize() : sourceSize;
+    if (natural.isEmpty() || isMaximized() || isFullScreen()) return;
+    layout()->invalidate();
+    layout()->activate();
+    const QSize chrome = size() - contentHost_->size();
+    const QSize decoration = frameGeometry().size() - size();
+    const QSize limit = (screen()->availableGeometry().size() - decoration - QSize(32, 32)).expandedTo(QSize(1, 1));
+    setMinimumSize(QSize(400, 400).boundedTo(limit));
+    const auto available = (limit - chrome).expandedTo(QSize(1, 1));
+    const qreal factor = std::min({1.0, qreal(available.width()) / natural.width(), qreal(available.height()) / natural.height()});
+    const QSize fitted(qRound(natural.width() * factor), qRound(natural.height() * factor));
+    requestedWindowSize_ = (fitted + chrome).expandedTo(minimumSize()).boundedTo(limit);
+    resizePreview(requestedWindowSize_, natural, chrome);
+    fitScreen(screen());
+}
+void PreviewWindow::resizePreview(const QSize &target, const QSize &imageSize, const QSize &chrome)
+{
+    const bool wayland = QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
+    if (isVisible() && wayland) {
+        if (!isMaximized() && !isFullScreen() && !isMinimized())
+            placement_->request(windowTitle(), target, imageSize, chrome);
+        return;
+    }
+    if (target == size()) return;
+    const QPoint center = geometry().center();
+    resize(target);
+    if (!wayland) move(center - rect().center());
 }
 void PreviewWindow::fitInformation()
 {
     contentLayout_->activate();
     layout()->invalidate();
     layout()->activate();
-    const int width = std::clamp(content_ ? content_->sizeHint().width() + 40 : 480, 380, 560);
+    const int width = std::clamp(content_ ? content_->sizeHint().width() + 16 : 480, 380, 560);
     const int height = std::max(layout()->totalHeightForWidth(width), layout()->minimumSize().height());
-    resize(width, height);
+    resizePreview(QSize(width, height));
     fitScreen(screen());
 }
 void PreviewWindow::resizeEvent(QResizeEvent *event)
@@ -234,12 +425,16 @@ void PreviewWindow::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
     if (mappingResizePending_ && event->spontaneous()) {
         mappingResizePending_ = false;
-        if (event->size() == mappedWindowSize_) {
+        if (event->size() == mappedWindowSize_
+            && !QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+            // A Wayland configure is the compositor's authoritative placement
+            // and work-area constraint. Never expand past it to a Qt estimate.
             // A late initial configure can restore the size used when mapping,
             // superseding a provider's subsequent compact/restore request.
             QTimer::singleShot(0, this, [this] {
                 if (!isVisible() || isMaximized() || isFullScreen()) return;
                 if (informationMode_) fitInformation();
+                else if (imageMode_) fitImage();
                 else {
                     resize(requestedWindowSize_);
                     fitScreen(screen());
@@ -278,6 +473,7 @@ void PreviewWindow::showEvent(QShowEvent *event)
 void PreviewWindow::preparePresentation()
 {
     if (!presentationPrepared_) {
+        if (!isVisible() && shown_ && (informationMode_ || imageMode_)) restoreDocumentSize();
         QScreen *target = QGuiApplication::screenAt(QCursor::pos());
         if (!target) target = screen();
         if (!target) target = QGuiApplication::primaryScreen();
@@ -290,7 +486,8 @@ void PreviewWindow::preparePresentation()
             // Keep a user's size across hide/reopen; fit a smaller new monitor.
             if (!shown_) resize(initial);
             else if (!isMaximized()) resize(size().boundedTo(area.size()));
-            if (!isMaximized()) move(area.center() - rect().center());
+            if (!isMaximized() && !QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
+                move(area.center() - rect().center());
             watchScreen(target);
             presentationPrepared_ = true;
         }
@@ -310,7 +507,9 @@ void PreviewWindow::fitScreen(QScreen *target)
     if (area.isEmpty()) return;
     const QSize decoration = frameGeometry().size() - size();
     const QSize limit = (area.size() - decoration).expandedTo(QSize(1, 1));
+    if (imageMode_) setMinimumSize(QSize(400, 400).boundedTo(limit));
     resize(size().boundedTo(limit));
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) return;
     const QRect frame = frameGeometry();
     const QPoint position(std::clamp(frame.x(), area.left(), std::max(area.left(), area.right() - frame.width() + 1)),
                           std::clamp(frame.y(), area.top(), std::max(area.top(), area.bottom() - frame.height() + 1)));
@@ -382,7 +581,8 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
             && (key->modifiers() == Qt::NoModifier || key->modifiers() == Qt::ShiftModifier))
             || (key->key() == Qt::Key_Escape && key->modifiers() == Qt::NoModifier);
         // Space on the Settings link activates the focused button.
-        if (key->key() == Qt::Key_Space && target->objectName() == QStringLiteral("settingsLink"))
+        if (key->key() == Qt::Key_Space && (target->objectName() == QStringLiteral("settingsLink")
+            || target->objectName() == QStringLiteral("fileInfoButton")))
             return QWidget::eventFilter(watched, event);
         if (dismiss) {
             key->accept();
@@ -395,13 +595,17 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 void PreviewWindow::hideEvent(QHideEvent *event)
 {
     mappingResizePending_ = false;
+    placement_->cancel();
     if (settings_) settings_->hide();
+    if (informationDialog_) informationDialog_->hide();
     QWidget::hideEvent(event);
     emit dismissed();
 }
 void PreviewWindow::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange && (isMaximized() || isFullScreen() || isMinimized()))
+        placement_->cancel();
     if (diagnostics_ && event->type() == QEvent::ActivationChange)
         QTextStream(stderr) << "Dzurkel window active: " << isActiveWindow() << '\n';
 }

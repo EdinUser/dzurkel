@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QImage>
 #include <QLabel>
+#include <QPushButton>
 #include <QPainter>
 #include <QPdfWriter>
 #include <QPlainTextEdit>
@@ -409,9 +410,9 @@ void ResourceTest::liveAuthenticatedSmbPreview()
     QVERIFY2(kind == QStringLiteral("image") || kind == QStringLiteral("pdf") || kind == QStringLiteral("text"),
         qPrintable(QStringLiteral("Expected decoded SMB content, got %1").arg(kind)));
     QCOMPARE(controller.fileUrl(), parsed.url.toString(QUrl::FullyEncoded));
-    const auto *location = controller.window()->findChild<QLabel *>(QStringLiteral("filePath"));
+    const auto *location = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"));
     QVERIFY(location);
-    QCOMPARE(location->text(), parsed.url.toDisplayString());
+    QVERIFY(location->accessibleDescription().contains(parsed.url.toDisplayString()));
     QVERIFY(QTest::qWaitForWindowExposed(location->window()));
     controller.hide();
     QTRY_VERIFY(!controller.isVisible());

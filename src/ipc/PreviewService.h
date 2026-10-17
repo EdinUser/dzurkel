@@ -30,6 +30,7 @@ public slots:
     void Toggle(const QString &url);
     void ToggleWithOptions(const QString &url, const QVariantMap &options);
     void Quit();
+    void ShowSettings(const QVariantMap &options);
 private:
     void open(const QString &url, bool toggle, const QVariantMap &options = {});
     PreviewController &controller_;

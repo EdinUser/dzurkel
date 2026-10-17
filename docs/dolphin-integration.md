@@ -1,12 +1,19 @@
-# Dolphin and Wayland desktop acceptance
+# Set up Dolphin Space previews
+
+After installing, open **Dzurkel Settings** from the application menu or run
+`dzurkel --settings`. Choose **Enable Space shortcut…**, review the changes, and
+allow Dolphin to restart if prompted. Installation does not assign shortcuts.
+You can also right-click a file, choose **Dzurkel**, and open Settings from the
+preview. This targets Dolphin 26.04 or newer on KDE Plasma.
 
 ## Setup
 
 Build and install using the README. Select exactly one local or authenticated SMB file in
-Dolphin. The service menu restricts selection to one URL and the `file` protocol;
+Dolphin. The service menu restricts selection to one URL and lists local, SMB
+and experimental SFTP locations;
 `%u` passes that URL directly to the application, without a shell wrapper.
 
-The window displays the resolved filename and path above its content preview. Check these against your
+The title bar displays the filename; **File information** shows the full path. Check these against your
 selection, especially when using spaces, Unicode, `#`, `%`, quotes, or `$` in a
 filename. Start a fresh primary with `--diagnostics` from a terminal to log the Qt
 platform, PID, and window activation changes. The displayed path and D-Bus

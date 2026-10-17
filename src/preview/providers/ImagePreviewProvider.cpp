@@ -77,6 +77,10 @@ public:
     }
     qreal zoomFactor() const override { return scale_; }
     bool isFit() const override { return fit_; }
+    QSize naturalSize() const override
+    {
+        return source_ + QSize(0, playback_ ? playback_->sizeHint().height() + layout()->spacing() : 0);
+    }
     qreal maximumZoom() const override
     {
         return std::min(8.0, qreal(QWIDGETSIZE_MAX - 1) / std::max(source_.width(), source_.height()));
@@ -178,7 +182,13 @@ bool ImagePreviewProvider::supports(const QMimeType &mime) const
     return mime.name().startsWith(QStringLiteral("image/"));
 }
 PreviewData ImagePreviewProvider::load(std::unique_ptr<QFile> file, PreviewData data,
-                                     const QSize &, const Cancellation &cancel) const
+                                     const QSize &target, const Cancellation &cancel) const
+{
+    return loadWithMetadata(std::move(file), std::move(data), target, cancel, {});
+}
+PreviewData ImagePreviewProvider::loadWithMetadata(std::unique_ptr<QFile> file, PreviewData data,
+                                     const QSize &, const Cancellation &cancel,
+                                     const std::function<void(const QSize &)> &metadataReady) const
 {
     if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
     QElapsedTimer work;
@@ -210,6 +220,9 @@ PreviewData ImagePreviewProvider::load(std::unique_ptr<QFile> file, PreviewData 
     // Query format before decoding: format() can look ahead to the next GIF
     // frame and advance delay metadata after a read.
     const bool animatedGif = reader.format() == QByteArrayLiteral("gif") && reader.supportsAnimation();
+    // This callback runs on the decoder worker, before allocating image pixels.
+    if (!cancel->load() && metadataReady) metadataReady(data.imageSize);
+    if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
     data.image = reader.read();
     const int firstDelay = qBound(20, reader.nextImageDelay(), 60000);
     if (cancel->load()) {

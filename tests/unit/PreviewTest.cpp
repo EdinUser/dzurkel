@@ -2,10 +2,13 @@
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/ImagePreviewProvider.h"
 #include "preview/providers/TextPreviewProvider.h"
+#include "ui/ZoomPreview.h"
 #include <QFile>
 #include <QEvent>
+#include <QElapsedTimer>
 #include <QImageReader>
 #include <QLabel>
+#include <QPushButton>
 #include <QPainter>
 #include <QPdfDocument>
 #include <QPdfPageNavigator>
@@ -13,12 +16,14 @@
 #include <QPdfWriter>
 #include <QPlainTextEdit>
 #include <QSemaphore>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QScreen>
 #include <QtEndian>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <thread>
 
 using namespace dzurkel;
 
@@ -50,10 +55,13 @@ private slots:
     void rejectsFileReplacementWithFifo();
     void newestRequestWinsAndQueueIsBounded();
     void dismissalPreventsResurrection();
+    void immediateReopenIgnoresDismissedWorker();
+    void shutdownCancelsCooperativeWorker();
     void textAndPdfChildrenDoNotConsumeDismissal();
     void repeatedlyReplacesAndReleasesProviders();
     void retainedPdfRuntimeStillReleasesEachDocument();
     void informationFallbackTemporarilyCompactsWindow();
+    void imageWindowsFitContentAndPreserveReadingSize();
     void informationFallbackRestoresMaximizedPreview();
     void coldInformationThenReopenedPdfKeepsContentAndSize();
     void coldInformationMapsAtCompactSize_data();
@@ -78,7 +86,7 @@ void PreviewTest::coldInformationMapsAtCompactSize()
     QFETCH(QString, name);
     const QString path = write(name, QByteArray::fromHex("504b030400010203ff"));
     PreviewController controller;
-    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    auto *window = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"))->window();
     FirstShowSize firstShow;
     window->installEventFilter(&firstShow);
     QString error;
@@ -90,7 +98,7 @@ void PreviewTest::coldInformationMapsAtCompactSize()
     QVERIFY(QTest::qWaitForWindowExposed(window));
     QVERIFY(firstShow.size.width() >= 380);
     QVERIFY(firstShow.size.width() <= 560);
-    QVERIFY(firstShow.size.height() >= 280);
+    QVERIFY(firstShow.size.height() >= 220);
     QVERIFY(firstShow.size.height() < 500);
     QTest::qWait(100);
     QCOMPARE(window->size(), firstShow.size);
@@ -125,7 +133,7 @@ void PreviewTest::newestRequestBeforeFirstMappingWins()
     const QString unsupported = write(QStringLiteral("obsolete-first-map.zip"), QByteArray::fromHex("504b030400010203ff"));
     const QString text = write(QStringLiteral("current-first-map.txt"), "The latest request wins.\n");
     PreviewController controller;
-    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    auto *window = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"))->window();
     FirstShowSize firstShow;
     window->installEventFilter(&firstShow);
     QString error;
@@ -134,7 +142,7 @@ void PreviewTest::newestRequestBeforeFirstMappingWins()
     QVERIFY(!window->isVisible());
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("text"));
-    QCOMPARE(window->findChild<QLabel *>(QStringLiteral("fileName"))->text(), QStringLiteral("current-first-map.txt"));
+    QCOMPARE(window->windowTitle(), QStringLiteral("Dzurkel — current-first-map.txt"));
     const QSize area = window->screen()->availableGeometry().size();
     QVERIFY(firstShow.size.width() >= area.width() * 80 / 100);
     QVERIFY(firstShow.size.height() >= area.height() * 80 / 100);
@@ -149,7 +157,7 @@ void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
     for (int cycle = 0; cycle < 4; ++cycle) {
         QVERIFY(controller.show(unsupported, error));
         QTRY_VERIFY(!controller.loading());
-        auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+        auto *window = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"))->window();
         QVERIFY(QTest::qWaitForWindowExposed(window));
         // Allow a late compositor configure to arrive after provider completion.
         QTest::qWait(100);
@@ -157,7 +165,7 @@ void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
         QVERIFY(info);
         QTRY_VERIFY(info->isVisible());
         QTRY_VERIFY(info->height() >= 150);
-        QTRY_VERIFY(window->height() >= 280);
+        QTRY_VERIFY(window->height() >= 220);
         QVERIFY(window->width() <= 560);
         QVERIFY(window->height() < 500);
         if (cycle == 3) QVERIFY(window->grab().save(QStringLiteral("preview-cold-information.png")));
@@ -199,7 +207,7 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     QString error;
     QVERIFY(controller.show(text, error));
     QTRY_VERIFY(!controller.loading());
-    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    auto *window = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"))->window();
     QVERIFY(QTest::qWaitForWindowExposed(window));
     // Resize only after initial placement, as a user would; a pending initial
     // compositor configure can otherwise overwrite this synthetic resize.
@@ -222,7 +230,7 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     QVERIFY(controller.show(imagePath, error));
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("image"));
-    QTRY_COMPARE(window->size(), previewSize);
+    QVERIFY(window->size() != previewSize); // Images now choose their natural size.
     QVERIFY(targetWidth.load() > 600);
     QVERIFY(controller.show(unsupported, error));
     QTRY_VERIFY(!controller.loading());
@@ -235,6 +243,98 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     QVERIFY(window->isMinimized());
 }
 
+void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
+{
+    const auto text = write(QStringLiteral("reading-size.txt"), "A document keeps its reading size.\n");
+    const auto info = write(QStringLiteral("image-return.bin"), QByteArray::fromHex("000102ff"));
+    const QSize area = QGuiApplication::primaryScreen()->availableGeometry().size();
+    const QSize mediumSize(qMin(800, area.width() - 120), qMin(600, area.height() - 160));
+    QStringList images;
+    for (const auto &size : {QSize(40, 30), mediumSize, QSize(4000, 2000)}) {
+        QImage image(size, QImage::Format_RGB32);
+        image.fill(QColor("#3067b1"));
+        QPainter painter(&image);
+        painter.fillRect(image.rect().adjusted(size.width() / 8, size.height() / 8,
+            -size.width() / 8, -size.height() / 8), QColor("#e6a52a"));
+        painter.end();
+        const auto path = directory_.filePath(QStringLiteral("natural-%1.png").arg(size.width()));
+        QVERIFY(image.save(path));
+        images.append(path);
+    }
+    PreviewController controller;
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QSignalSpy dismissed(window, &PreviewWindow::dismissed);
+    FirstShowSize firstShow;
+    window->installEventFilter(&firstShow);
+    QString error;
+    // Fast cold images must map at their natural size, without an 85% flash.
+    QVERIFY(controller.show(images.first(), error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    QCOMPARE(firstShow.size, QSize(400, 400));
+    auto *zoom = window->findChild<ZoomPreview *>();
+    QVERIFY(zoom);
+    QCOMPARE(zoom->zoomFactor(), 1.0);
+    QCOMPARE(zoom->findChild<QWidget *>(QStringLiteral("imageCanvas"))->size(), QSize(40, 30));
+    QVERIFY(window->grab().save(QStringLiteral("ui-refinement-small-image.png")));
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QTest::qWait(100);
+    window->resize(QSize(740, 700).boundedTo(area - QSize(32, 32)));
+    QCoreApplication::processEvents();
+    const auto readingSize = window->size();
+    QVERIFY(controller.show(images.at(1), error));
+    QTRY_VERIFY(!controller.loading());
+    // Allow the asynchronous compositor geometry transaction to settle before
+    // simulating a manual resize on the same mapped surface.
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTest::qWait(100);
+    zoom = window->findChild<ZoomPreview *>();
+    QTRY_COMPARE(zoom->zoomFactor(), 1.0);
+    QCOMPARE(zoom->findChild<QWidget *>(QStringLiteral("imageCanvas"))->size(), mediumSize);
+    QVERIFY(window->width() >= mediumSize.width());
+    QVERIFY(window->width() <= mediumSize.width() + 32);
+    QVERIFY(window->height() >= mediumSize.height());
+    QVERIFY(window->height() <= mediumSize.height() + 130);
+    QVERIFY(window->grab().save(QStringLiteral("ui-refinement-image.png")));
+    window->resize(500, 500);
+    QTest::qWait(100);
+    QCOMPARE(window->size(), QSize(500, 500));
+    zoom->zoomBy(1);
+    QCOMPARE(window->size(), QSize(500, 500));
+    QVERIFY(controller.show(images.last(), error));
+    QTRY_VERIFY(!controller.loading());
+    zoom = window->findChild<ZoomPreview *>();
+    QVERIFY(zoom->zoomFactor() < 1.0);
+    QVERIFY(window->width() < area.width());
+    QVERIFY(window->height() < area.height());
+    QVERIFY(window->grab().save(QStringLiteral("ui-refinement-large-image.png")));
+    // Image and compact-information transitions must both preserve the document size.
+    QVERIFY(controller.show(info, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(controller.show(images.first(), error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_COMPARE(window->size(), readingSize);
+    QCOMPARE(dismissed.count(), 0); // Automatic Wayland placement is not dismissal.
+    controller.hide();
+    QCOMPARE(dismissed.count(), 1);
+    QVERIFY(controller.show(images.first(), error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_COMPARE(window->size(), readingSize);
+    window->showMaximized();
+    QTRY_VERIFY(window->isMaximized());
+    QVERIFY(controller.show(images.at(1), error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(window->isMaximized());
+}
+
 void PreviewTest::informationFallbackRestoresMaximizedPreview()
 {
     const QString text = write(QStringLiteral("maximized-return.txt"), "Text preview\n");
@@ -244,7 +344,7 @@ void PreviewTest::informationFallbackRestoresMaximizedPreview()
     QString error;
     QVERIFY(controller.show(text, error));
     QTRY_VERIFY(!controller.loading());
-    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    auto *window = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"))->window();
     QVERIFY(QTest::qWaitForWindowExposed(window));
     const QSize normalSize = window->size();
     window->showMaximized();
@@ -356,6 +456,21 @@ void PreviewTest::honorsJpegOrientation()
     const auto data = load(path, QSize(500, 500));
     QCOMPARE(data.kind, PreviewKind::Image);
     QCOMPARE(data.image.size(), QSize(60, 120));
+    FileResource resource;
+    QString error;
+    QVERIFY(resolveFileResource(path, resource, error));
+    const auto cancel = std::make_shared<std::atomic_bool>(false);
+    QSize metadataSize;
+    const auto cancelled = PreviewRegistry::load(resource, QSize(500, 500), cancel, {},
+        [&](const QSize &size) {
+            metadataSize = size;
+            // Cancellation here must stop allocation/decoding, proving that
+            // oriented metadata arrives before the full image is read.
+            cancel->store(true);
+        });
+    QCOMPARE(metadataSize, QSize(60, 120));
+    QCOMPARE(cancelled.kind, PreviewKind::Cancelled);
+    QVERIFY(cancelled.image.isNull());
 }
 void PreviewTest::rejectsOversizedAndDamagedImages()
 {
@@ -558,6 +673,59 @@ void PreviewTest::dismissalPreventsResurrection()
     QVERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("none"));
     QVERIFY(!controller.window()->findChild<QPlainTextEdit *>());
+}
+void PreviewTest::immediateReopenIgnoresDismissedWorker()
+{
+    const QString first = write(QStringLiteral("dismissed.txt"), "first");
+    const QString last = write(QStringLiteral("reopened.txt"), "last");
+    QSemaphore entered, release;
+    std::atomic_int calls = 0;
+    PreviewController controller(false, [&](const FileResource &resource, const QSize &, const Cancellation &) {
+        if (++calls == 1) { entered.release(); release.tryAcquire(1, 3000); }
+        PreviewData data;
+        data.resource = resource;
+        data.kind = PreviewKind::Text;
+        data.text = resource.path;
+        return data;
+    });
+    QString error;
+    QVERIFY(controller.show(first, error));
+    QVERIFY(entered.tryAcquire(1, 2000));
+    controller.hide();
+    QVERIFY(controller.show(last, error));
+    release.release();
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(controller.isVisible());
+    QCOMPARE(calls.load(), 2);
+    auto *view = controller.window()->findChild<QPlainTextEdit *>();
+    QVERIFY(view);
+    QCOMPARE(view->toPlainText(), last);
+}
+void PreviewTest::shutdownCancelsCooperativeWorker()
+{
+    const QString path = write(QStringLiteral("shutdown.txt"), "shutdown");
+    QSemaphore entered;
+    std::atomic_bool cancelled = false;
+    auto controller = std::make_unique<PreviewController>(false,
+        [&](const FileResource &, const QSize &, const Cancellation &cancel) {
+            entered.release();
+            QElapsedTimer deadline;
+            deadline.start();
+            while (!cancel->load() && deadline.elapsed() < 2000)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            cancelled.store(cancel->load());
+            PreviewData data;
+            data.kind = PreviewKind::Cancelled;
+            return data;
+        });
+    QString error;
+    QVERIFY(controller->show(path, error));
+    QVERIFY(entered.tryAcquire(1, 2000));
+    QElapsedTimer timer;
+    timer.start();
+    controller.reset();
+    QVERIFY(cancelled.load());
+    QVERIFY2(timer.elapsed() < 1500, "Cooperative worker did not finish promptly during shutdown");
 }
 void PreviewTest::textAndPdfChildrenDoNotConsumeDismissal()
 {

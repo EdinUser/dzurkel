@@ -1,4 +1,6 @@
 #include "PreviewRegistry.h"
+#include "PreviewLibrary.h"
+#include "table/SpreadsheetView.h"
 #include "providers/FileInfoProvider.h"
 #include "providers/ImagePreviewProvider.h"
 #include "providers/PdfPreviewProvider.h"
@@ -9,7 +11,8 @@
 
 namespace dzurkel {
 PreviewData PreviewRegistry::load(const FileResource &resource, const QSize &target,
-                                  const Cancellation &cancel, const std::function<void()> &contentSelected)
+                                  const Cancellation &cancel, const std::function<void()> &contentSelected,
+                                  const std::function<void(const QSize &)> &imageMetadataReady)
 {
     auto data = FileInfoProvider::describe(resource);
     if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
@@ -24,27 +27,14 @@ PreviewData PreviewRegistry::load(const FileResource &resource, const QSize &tar
     file->seek(0);
     data.mimeType = mime.name();
     data.description = mime.comment();
-    ImagePreviewProvider image;
-    PdfPreviewProvider pdf;
-    TextPreviewProvider text;
-    if (pdf.supports(mime) || file->peek(1024).startsWith("%PDF-")) {
-        if (contentSelected) contentSelected();
-        return pdf.load(std::move(file), std::move(data), target, cancel);
-    }
-    // Actual image-reader capability wins over misleading file extensions.
-    bool canReadImage = false;
-    {
-        QImageReader reader(file.get());
-        canReadImage = reader.canRead();
-    }
+    data.readerId = PreviewLibrary::select(*file, mime, resource.path);
+    auto reader = PreviewLibrary::createReader(data.readerId);
     file->seek(0);
-    if (canReadImage || image.supports(mime)) {
+    if (reader) {
         if (contentSelected) contentSelected();
-        return image.load(std::move(file), std::move(data), target, cancel);
-    }
-    if (text.supports(mime)) {
-        if (contentSelected) contentSelected();
-        return text.load(std::move(file), std::move(data), target, cancel);
+        if (auto *image = dynamic_cast<ImagePreviewProvider *>(reader.get()))
+            return image->loadWithMetadata(std::move(file), std::move(data), target, cancel, imageMetadataReady);
+        return reader->load(std::move(file), std::move(data), target, cancel);
     }
     return data;
 }
@@ -54,6 +44,7 @@ QWidget *PreviewRegistry::createWidget(const PreviewData &data, QWidget *parent)
     case PreviewKind::Image: return ImagePreviewProvider().createWidget(data, parent);
     case PreviewKind::Pdf: return PdfPreviewProvider().createWidget(data, parent);
     case PreviewKind::Text: return TextPreviewProvider().createWidget(data, parent);
+    case PreviewKind::Table: return new SpreadsheetView(data.table, parent);
     default: return FileInfoProvider::createWidget(data, parent);
     }
 }
@@ -63,6 +54,7 @@ QString PreviewRegistry::kindName(PreviewKind kind)
     case PreviewKind::Image: return QStringLiteral("image");
     case PreviewKind::Pdf: return QStringLiteral("pdf");
     case PreviewKind::Text: return QStringLiteral("text");
+    case PreviewKind::Table: return QStringLiteral("table");
     case PreviewKind::Information: return QStringLiteral("information");
     default: return QStringLiteral("none");
     }

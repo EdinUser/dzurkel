@@ -44,6 +44,7 @@ private slots:
     void informationIsAccessibleAndClickable();
     void experimentalSftpIsExplicitAndPersistent();
     void appliesAndRestoresWhenDolphinIsClosed();
+    void explainsConflictsBeforeApplying();
     void cancellationLeavesConfigurationUntouched();
     void waitsForEveryWindowBeforeApplying();
     void refusedCloseTimesOutWithoutWriting();
@@ -140,7 +141,7 @@ void SettingsTest::informationIsAccessibleAndClickable()
 {
     SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
     dialog.show();
-    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo", "sftpInfo"}) {
+    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo", "csvInfo", "xlsxInfo", "sftpInfo"}) {
         auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY(button);
         QVERIFY(!button->toolTip().isEmpty());
@@ -159,6 +160,25 @@ void SettingsTest::informationIsAccessibleAndClickable()
     dialog.findChild<QToolButton *>(QStringLiteral("imageInfo"))->click();
     QVERIFY(detailsSeen);
     QVERIFY(dialog.grab().save(QStringLiteral("settings-redesign.png")));
+}
+void SettingsTest::explainsConflictsBeforeApplying()
+{
+    QFile file(directory_.filePath(QStringLiteral("dolphinui.rc")));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    const QByteArray original = "<gui name=\"dolphin\"><ActionProperties><Action name=\"custom_action\" shortcut=\"Space; Ctrl+J\"/></ActionProperties></gui>";
+    QCOMPARE(file.write(original), original.size());
+    file.close();
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
+    dialog.show();
+    auto *summary = dialog.findChild<QLabel *>(QStringLiteral("shortcutChanges"));
+    QVERIFY(summary);
+    QVERIFY(summary->isVisible());
+    QVERIFY(summary->text().contains(QStringLiteral("custom_action")));
+    QVERIFY(summary->text().contains(QStringLiteral("Select files")));
+    QVERIFY(!shortcuts().hasBackup());
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(file.readAll(), original);
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-shortcut-conflicts.png")));
 }
 void SettingsTest::appliesAndRestoresWhenDolphinIsClosed()
 {

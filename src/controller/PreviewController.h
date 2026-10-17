@@ -18,6 +18,7 @@ public:
     bool show(const QString &url, QString &error, ResourceError *failure = nullptr,
               const QString &activationToken = {});
     void hide();
+    void showSettings(const QString &activationToken = {}) { window_.showSettings(activationToken); }
     bool toggle(const QString &url, QString &error);
     bool isVisible() const;
     bool loading() const { return loading_; }

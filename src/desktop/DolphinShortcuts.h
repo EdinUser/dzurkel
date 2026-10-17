@@ -10,6 +10,7 @@ public:
     bool usesSpace() const;
     bool hasBackup() const;
     bool supportsAutomaticSetup() const;
+    QString setupSummary(QString &error) const;
     bool useSpace(QString &error);
     bool restore(QString &error);
 private:

@@ -4,18 +4,39 @@ Dzurkel renders content in one reusable window. Space or Escape dismisses the
 preview; the process stays resident until `dzurkel --quit`. Mouse-wheel scrolling
 works in documents and text. Previewing does not execute or edit file contents.
 
-Information-only views automatically shrink to fit their icon and text. This is
-temporary: a supported content preview restores the previous preview dimensions
-and maximized state, fitting the current display. Resizing an information window
-does not replace the remembered content-preview size. Repeated information views
-remain compact; image decoding retains bounded detail for zoom.
-The icon and metadata appear without manual resizing, including on first open.
-The first information-only preview is sized before mapping so Wayland can place
-the compact window correctly. Initial provider selection runs asynchronously;
-supported files show the normal loading window before decoding completes.
-Closing an information view does not make the next PDF preview compact.
-On reopening, normal dimensions are restored before the window is shown so
-Wayland can place the full preview within the screen.
+The filename lives in the native title bar; navigation and supported zoom
+controls share a compact toolbar. The bottom strip shows image dimensions,
+PDF page counts or the active sheet's row/column dimensions. Spreadsheet zoom
+and sheet-creation controls are not shown. File information is available by
+hover, click or keyboard activation of the information button. It includes the
+full original location, size, modification time and format details; encoding
+and delimiter details are shown here rather than occupying preview space.
+Warnings remain visible in the footer, with complete explanations in tooltips
+and file information. Settings uses a native icon button at the bottom right.
+
+Images size the window around their natural 100% dimensions plus controls.
+The minimum is 400 × 400 logical pixels (limited by the available desktop),
+so small images remain centered at 100% against the native themed background.
+Larger images fit proportionally within the desktop work area, including
+window decorations. The compositor may further constrain their size to keep
+controls clear of desktop panels. Manual
+resize and zoom do not trigger another automatic fit for that file; explicitly
+maximized/fullscreen windows retain their state. New images choose their own
+natural size. GIF playback controls are included in the size calculation.
+
+Information-only views shrink to fit their icon and text. Both information and
+image windows temporarily replace the document reading size; returning to PDF,
+text or a table restores that size and maximized state. Resizing these temporary
+views does not replace the remembered document size. On opening a hidden window,
+fast results are fitted before mapping, giving Wayland the initial size it needs
+for placement. Image dimensions and orientation are read on the background
+worker before pixel decoding. On KDE Wayland, a small desktop adapter uses
+KWin's public scripting API to resize and reposition the existing mapped frame
+within the actual work area. Navigation keeps the same native window and does
+not request activation. If KWin scripting is unavailable, its visible size is
+retained. A 150 ms fallback shows a loading window for slow operations;
+it does not impose a delay on fast previews. Initial loading and format selection
+remain asynchronous, without GUI-thread source-file reads.
 
 ## Supported content
 
@@ -23,7 +44,9 @@ Wayland can place the full preview within the screen.
 | --- | --- |
 | Images | PNG, JPEG, and BMP; additional formats depend on installed Qt image readers. |
 | PDF | First page on open, fit-to-width display, page count, and multipage scrolling. |
-| Text | Plain text, logs, CSV, JSON, XML, and source files identified as text by Qt. |
+| CSV / TSV | Read-only table grid; literal values, quoted fields and bounded complete records. |
+| XLSX | Same table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
+| Text | Plain text, logs, JSON, XML, and source files identified as text by Qt. |
 | Other files | Filename, type/MIME, size, modification time, icon, and explanation. |
 | Directories, links, special objects | Information only; contents/targets are not opened. |
 
@@ -98,6 +121,12 @@ the listing; normal preview validation then reports the failure. Current directo
 link, and special-object previews have navigation disabled. A listing failure does
 not prevent the selected file from being previewed. SMB and opt-in SFTP use the
 same ordering and limits; broader real-server acceptance remains separate.
+
+CSV/TSV use the shared spreadsheet view; regular arrows move between cells,
+while Alt+arrows and Previous/Next browse files. Values are never recalculated or
+coerced to numbers. See [CSV rules, fallback and limits](preview-library.md#csv--tsv).
+XLSX uses the same grid; see [its scope and limits](preview-library.md#xlsx).
+Legacy XLS and DOCX are not enabled.
 
 ## Resource limits
 

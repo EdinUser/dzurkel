@@ -15,6 +15,8 @@ public:
     virtual bool isFit() const = 0;
     virtual qreal maximumZoom() const { return 8.0; }
     virtual QString zoomHint() const { return {}; }
+    // Natural content size at 100%, when a provider supports window fitting.
+    virtual QSize naturalSize() const { return {}; }
     virtual void scrollVertically(int direction) { Q_UNUSED(direction); }
 protected:
     qreal steppedZoom(int steps) const

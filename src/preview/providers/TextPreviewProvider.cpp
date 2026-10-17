@@ -2,7 +2,7 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QPlainTextEdit>
-#include <QStringDecoder>
+#include "preview/readers/TextDecoder.h"
 
 namespace dzurkel {
 bool TextPreviewProvider::supports(const QMimeType &mime) const
@@ -16,39 +16,12 @@ bool TextPreviewProvider::supports(const QMimeType &mime) const
 PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData data,
                                     const QSize &, const Cancellation &cancel) const
 {
-    QByteArray bytes = file->read(ByteLimit + 1);
-    if (file->error() != QFileDevice::NoError) {
-        data.message = QStringLiteral("Text could not be read: %1").arg(file->errorString());
-        return data;
-    }
-    data.truncated = bytes.size() > ByteLimit;
-    bytes.truncate(ByteLimit);
-    auto encoding = QStringConverter::encodingForData(bytes).value_or(QStringConverter::Utf8);
-    const auto flags = data.truncated ? QStringConverter::Flag::Default : QStringConverter::Flag::Stateless;
-    QStringDecoder decoder(encoding, flags);
-    QString text = decoder(bytes);
-    data.detail = QString::fromLatin1(QStringConverter::nameForEncoding(encoding));
-    if (decoder.hasError()) {
-        if (encoding != QStringConverter::Utf8) {
-            data.message = QStringLiteral("The declared text encoding is damaged.");
-            return data;
-        }
-        text = QString::fromLatin1(bytes);
-        data.detail = QStringLiteral("Latin-1 fallback; encoding not detected");
-    }
-    int controls = 0;
-    for (const auto character : text) {
-        if (character.isNull()) {
-            data.message = QStringLiteral("Binary data detected; no text preview is available.");
-            return data;
-        }
-        if ((character.category() == QChar::Other_Control) && character != QChar('\n') && character != QChar('\r')
-            && character != QChar('\t') && character != QChar('\f')) ++controls;
-    }
-    if (controls > qMax(1, int(text.size() / 100))) {
-        data.message = QStringLiteral("Binary control characters detected; no text preview is available.");
-        return data;
-    }
+    auto decoded = decodePreviewText(*file, ByteLimit, cancel);
+    if (decoded.cancelled) { data.kind = PreviewKind::Cancelled; return data; }
+    if (!decoded.error.isEmpty()) { data.message = decoded.error; return data; }
+    data.truncated = decoded.truncated;
+    data.detail = decoded.encoding;
+    QString text = std::move(decoded.text);
     // QPlainTextEdit treats these as paragraph breaks too. Normalize them
     // before applying the line budget, including standalone classic-Mac CR.
     text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));

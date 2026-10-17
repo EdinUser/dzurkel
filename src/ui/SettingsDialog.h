@@ -38,6 +38,7 @@ private:
     QFuture<QString> focusToken_;
     QDialogButtonBox *buttons_;
     QLabel *status_;
+    QLabel *shortcutChanges_;
     QPushButton *apply_;
     QPushButton *restore_;
     QCheckBox *experimentalSftp_;

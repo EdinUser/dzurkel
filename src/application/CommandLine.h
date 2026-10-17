@@ -2,7 +2,7 @@
 #include <QStringList>
 
 namespace dzurkel {
-enum class Command { Show, Hide, Toggle, Quit, Help, Version };
+enum class Command { Show, Hide, Toggle, Quit, Settings, Help, Version };
 struct Request {
     Command command = Command::Show;
     QString url;

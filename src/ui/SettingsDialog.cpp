@@ -1,6 +1,7 @@
 #include "SettingsDialog.h"
 #include "desktop/DesktopIntegration.h"
 #include "resources/ResourceAccessPolicy.h"
+#include "preview/PreviewLibrary.h"
 #include <QCheckBox>
 #include <QEvent>
 #include <QDialogButtonBox>
@@ -77,6 +78,9 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     status_ = label(this, {});
     status_->setObjectName(QStringLiteral("shortcutStatus"));
     layout->addWidget(status_);
+    shortcutChanges_ = label(this, {}, true);
+    shortcutChanges_->setObjectName(QStringLiteral("shortcutChanges"));
+    layout->addWidget(shortcutChanges_);
     auto *restart = label(this, QStringLiteral("If Dolphin is open, you’ll be asked to restart it."), true);
     restart->setToolTip(QStringLiteral("Dolphin closes before the shortcut file is updated, so it cannot overwrite the change while saving its own settings."));
     layout->addWidget(restart);
@@ -101,10 +105,6 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     auto *support = new QGridLayout;
     support->setHorizontalSpacing(12);
     support->setVerticalSpacing(8);
-    QStringList names;
-    for (const auto &format : QImageReader::supportedImageFormats()) names.append(QString::fromLatin1(format).toUpper());
-    names.removeDuplicates();
-    std::sort(names.begin(), names.end());
     const auto addSupport = [this, support](int row, const QString &name, const QString &theme,
                                           const QString &object, const QString &details) {
         auto *image = new QLabel(this);
@@ -114,12 +114,9 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
         support->addWidget(label(this, QStringLiteral("Included"), true), row, 2);
         support->addWidget(information(this, object, name, details), row, 3);
     };
-    addSupport(0, QStringLiteral("Images"), QStringLiteral("image-x-generic"), QStringLiteral("imageInfo"),
-        QStringLiteral("Available image readers: %1. Actual support depends on the file and installed Qt plugins. Images keep their aspect ratio; animations show a static frame.").arg(names.join(QStringLiteral(", "))));
-    addSupport(1, QStringLiteral("PDF"), QStringLiteral("application-pdf"), QStringLiteral("pdfInfo"),
-        QStringLiteral("Read-only PDF previews with scrolling. Password-protected, damaged, or oversized documents show file information instead."));
-    addSupport(2, QStringLiteral("Plain text"), QStringLiteral("text-x-generic"), QStringLiteral("textInfo"),
-        QStringLiteral("Read-only text and source files. Large files are truncated with a notice; binary files show file information instead."));
+    int row = 0;
+    for (const auto &reader : PreviewLibrary::readers())
+        addSupport(row++, reader.title, reader.icon, reader.informationObject, reader.description);
     support->setColumnStretch(1, 1);
     layout->addLayout(support);
     layout->addWidget(label(this, QStringLiteral("Other files show an icon and file information."), true));
@@ -276,12 +273,16 @@ void SettingsDialog::refresh()
     const bool active = shortcuts_.usesSpace();
     const bool supported = shortcuts_.supportsAutomaticSetup();
     const bool backup = shortcuts_.hasBackup();
+    QString summaryError;
+    shortcutChanges_->setText(shortcuts_.setupSummary(summaryError));
+    if (!summaryError.isEmpty()) shortcutChanges_->setText(summaryError);
+    shortcutChanges_->setVisible(!backup && !active);
     status_->setText(!supported ? QStringLiteral("Custom shortcut scheme — use Dolphin’s shortcut editor.")
         : !installed ? QStringLiteral("Install the Dolphin integration to enable shortcut setup.")
         : active ? QStringLiteral("Space shortcut configured")
         : QStringLiteral("Space shortcut not enabled"));
     apply_->setVisible(!backup);
-    apply_->setEnabled(supported && installed && !active && !backup);
+    apply_->setEnabled(supported && installed && !active && !backup && summaryError.isEmpty());
     restore_->setVisible(backup);
     restore_->setEnabled(backup);
 }

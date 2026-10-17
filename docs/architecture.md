@@ -14,7 +14,7 @@ file-manager integration; rendering does not depend on Dolphin internals.
 | `src/controller/` | Request generations, bounded worker queue, content replacement and visibility. |
 | `src/resources/` | URL admission/policy, isolated preparation, desktop remote resolution and bounded snapshots. |
 | `src/preview/` | MIME/reader selection, bounded decoding, metadata and GUI-widget construction. |
-| `src/ui/` | Preview geometry, dismissal, Settings link and setup dialog. |
+| `src/ui/` | Preview geometry, dismissal, file information and Settings dialogs. |
 | `src/desktop/` | Activation support, Dolphin shortcut backup/restore and explicit restart lifecycle. |
 | `integrations/` | Dolphin service-menu and hidden application-identity desktop templates. |
 
@@ -42,24 +42,47 @@ job. Each request gets a generation identifier and cancellation flag. A result
 can update the UI only if it still belongs to the current requested preview.
 Widgets are created and replaced on the GUI thread under Qt parent ownership.
 
-The first request prepares the target screen and normal dimensions while the
-window is hidden. Provider selection runs on the worker. Selecting image, PDF
-or text queues presentation of the normal loading window before decoding.
-An information-only result instead builds and fits its widget before the first
-map. This lets Wayland place a compact first window using its actual size.
-A 150 ms grace timer maps a loading window if preparation/selection is still
-pending. There is no GUI-thread source-file access or MIME sniffing.
+A hidden-window request prepares the target screen and remembered reading
+size. Fast worker results are constructed and fitted before mapping, so Wayland
+can place small image and information windows using their actual dimensions.
+A 150 ms fallback maps a loading window if content is still pending. There is
+no GUI-thread source-file access or MIME sniffing.
 
-`Visible` includes that pending first presentation, so Hide/Toggle can cancel it
-before a native window exists. Generation checks prevent obsolete results or
-queued selection notifications from mapping the window afterward. See
-[the D-Bus contract](dbus-api.md).
+`Visible` includes pending presentation, so Hide/Toggle can cancel it before a
+native window exists. Generation checks prevent obsolete results from mapping
+the window afterward. See [the D-Bus contract](dbus-api.md).
 
-Normal previews initially use 85% of the pointer screen's usable dimensions.
-Standard decorations allow resize/maximize; user dimensions persist only within
-the process. Information views temporarily save and replace the normal size and
-state. A subsequent supported preview restores them, including before mapping
-a hidden window. The compositor decides final Wayland placement and activation.
+PDF/text/table previews initially use 85% of the pointer screen's work area and
+remember user dimensions within the process. Images expose a natural content
+size through `ZoomPreview`; the window adds its chrome, applies a 400 × 400
+minimum and fits oversized content proportionally within the work area.
+Information and image sizes temporarily replace the reading size; they do not
+overwrite it. User resizing/zooming remains independent of initial fitting.
+The image worker publishes validated, orientation-correct dimensions before
+decoding pixels. The controller checks the request generation before using them
+to prepare the window size. During navigation, previous content remains visible
+until its replacement is ready; no loading-widget flash or activation request
+is needed for the already visible preview.
+
+On KDE Wayland, `desktop/WindowPlacement` asks KWin to resize and reposition the
+existing frame through its public scripting API. One-shot temporary scripts are
+scoped to this process's main window and expected title, unloaded immediately,
+and never change activation or persistent compositor settings. File creation and
+bounded D-Bus calls run off the GUI thread; one active and one latest pending
+request limit work during rapid navigation. Obsolete requests are cancelled.
+KWin's actual work area and decorations determine proportional image fitting,
+centering around the old frame, and edge clamping. No hide/show cycle is used.
+If compositor scripting is unavailable, the visible geometry is retained.
+Manual resizes and maximized/fullscreen windows do not use this path. The final
+compositor configure remains authoritative. See
+[Qt's Wayland geometry limitations](https://doc.qt.io/qt-6/application-windows.html#wayland-peculiarities).
+
+The native title bar supplies the filename. A compact toolbar and footer keep
+navigation, supported zoom, dimensions and warnings visible. `PreviewData`
+supplies file metadata and secondary format details for an escaped information
+tooltip and keyboard-accessible dialog. Encoding and delimiter metadata are not
+repeated in the footer. The shared table view updates footer dimensions when
+switching sheets and uses fixed initial section sizes without whole-sheet scans.
 
 ## Dismissal and resident resources
 
@@ -98,3 +121,14 @@ flag, retry loop for activation, or resident file-manager monitor is added.
 Future managers need their own verified detection, shortcut, restart and
 readiness semantics. They may reuse CLI/D-Bus and the desktop activation layer;
 their implementation and generic file-manager discovery remain deferred.
+
+## Preview library foundation
+
+`PreviewLibrary` centralizes implemented reader IDs, selection, source-copy policy
+and Settings descriptions. `PreviewRegistry` dispatches worker reads and creates
+views. CSV and XLSX use separate readers and the same immutable sparse tabular
+payload/Qt model-view grid. XLSX uses public libzip APIs for bounded package reads
+and Qt XML parsing for saved values and number formats identifying dates/times;
+visual styling, charts and formula evaluation are outside its scope. Neither
+reader depends on QXlsx, LibreOffice or external
+converters. See [the library contract](preview-library.md).

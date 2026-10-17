@@ -37,6 +37,7 @@ InstanceCoordinator::ForwardResult InstanceCoordinator::forward(const Request &r
     case Command::Hide: method = QStringLiteral("Hide"); break;
     case Command::Toggle: method = QStringLiteral("Toggle"); break;
     case Command::Quit: method = QStringLiteral("Quit"); break;
+    case Command::Settings: method = QStringLiteral("ShowSettings"); break;
     default: error = QStringLiteral("Invalid service command."); return ForwardResult::Failed;
     }
     const bool opens = request.command == Command::Show || request.command == Command::Toggle;
@@ -45,6 +46,8 @@ InstanceCoordinator::ForwardResult InstanceCoordinator::forward(const Request &r
     auto message = QDBusMessage::createMethodCall(owner.value(), QString::fromLatin1(ObjectPath),
                                                  QString::fromLatin1(InterfaceName), method);
     message.setAutoStartService(false);
+    if (request.command == Command::Settings)
+        message << QVariantMap{{QStringLiteral("activation-token"), request.activationToken}};
     if (opens) {
         message << request.url;
         if (!request.activationToken.isEmpty())
