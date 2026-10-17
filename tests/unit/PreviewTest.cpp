@@ -3,6 +3,7 @@
 #include "preview/providers/ImagePreviewProvider.h"
 #include "preview/providers/TextPreviewProvider.h"
 #include <QFile>
+#include <QEvent>
 #include <QImageReader>
 #include <QLabel>
 #include <QPainter>
@@ -20,6 +21,17 @@
 #include <unistd.h>
 
 using namespace dzurkel;
+
+class FirstShowSize : public QObject {
+public:
+    QSize size;
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() == QEvent::Show && size.isEmpty())
+            size = qobject_cast<QWidget *>(watched)->size();
+        return false;
+    }
+};
 
 class PreviewTest : public QObject {
     Q_OBJECT
@@ -44,12 +56,89 @@ private slots:
     void informationFallbackTemporarilyCompactsWindow();
     void informationFallbackRestoresMaximizedPreview();
     void coldInformationThenReopenedPdfKeepsContentAndSize();
+    void coldInformationMapsAtCompactSize_data();
+    void coldInformationMapsAtCompactSize();
+    void hideBeforeFirstMappingPreventsResurrection();
+    void newestRequestBeforeFirstMappingWins();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
 };
+
+void PreviewTest::coldInformationMapsAtCompactSize_data()
+{
+    QTest::addColumn<QString>("name");
+    QTest::newRow("archive") << QStringLiteral("first-map.zip");
+    QTest::newRow("office-document") << QStringLiteral("first-map.odt");
+}
+void PreviewTest::coldInformationMapsAtCompactSize()
+{
+    QFETCH(QString, name);
+    const QString path = write(name, QByteArray::fromHex("504b030400010203ff"));
+    PreviewController controller;
+    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    FirstShowSize firstShow;
+    window->installEventFilter(&firstShow);
+    QString error;
+    QVERIFY(controller.show(path, error));
+    QVERIFY(controller.isVisible()); // The requested preview is cancellable before mapping.
+    QVERIFY(!window->isVisible());
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("information"));
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QVERIFY(firstShow.size.width() >= 380);
+    QVERIFY(firstShow.size.width() <= 560);
+    QVERIFY(firstShow.size.height() >= 280);
+    QVERIFY(firstShow.size.height() < 500);
+    QTest::qWait(100);
+    QCOMPARE(window->size(), firstShow.size);
+    QVERIFY(window->grab().save(QStringLiteral("preview-first-map-%1.png").arg(name)));
+    controller.hide();
+    QVERIFY(controller.show(makePdf(), error));
+    const QSize area = window->screen()->availableGeometry().size();
+    QVERIFY(window->width() >= area.width() * 80 / 100);
+    QVERIFY(window->height() >= area.height() * 80 / 100);
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
+}
+void PreviewTest::hideBeforeFirstMappingPreventsResurrection()
+{
+    const QString path = write(QStringLiteral("cancel-first-map.zip"), QByteArray::fromHex("504b030400010203ff"));
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(path, error));
+    QVERIFY(controller.isVisible());
+    QVERIFY(controller.toggle(path, error));
+    QVERIFY(!controller.isVisible());
+    QVERIFY(!controller.loading());
+    QTest::qWait(150);
+    QVERIFY(!controller.window()->isVisible());
+    QVERIFY(controller.show(path, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(controller.window()->isVisible());
+    QCOMPARE(controller.previewKind(), QStringLiteral("information"));
+}
+void PreviewTest::newestRequestBeforeFirstMappingWins()
+{
+    const QString unsupported = write(QStringLiteral("obsolete-first-map.zip"), QByteArray::fromHex("504b030400010203ff"));
+    const QString text = write(QStringLiteral("current-first-map.txt"), "The latest request wins.\n");
+    PreviewController controller;
+    auto *window = controller.window()->findChild<QLabel *>(QStringLiteral("fileName"))->window();
+    FirstShowSize firstShow;
+    window->installEventFilter(&firstShow);
+    QString error;
+    QVERIFY(controller.show(unsupported, error));
+    QVERIFY(controller.show(text, error));
+    QVERIFY(!window->isVisible());
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("text"));
+    QCOMPARE(window->findChild<QLabel *>(QStringLiteral("fileName"))->text(), QStringLiteral("current-first-map.txt"));
+    const QSize area = window->screen()->availableGeometry().size();
+    QVERIFY(firstShow.size.width() >= area.width() * 80 / 100);
+    QVERIFY(firstShow.size.height() >= area.height() * 80 / 100);
+}
 
 void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
 {

@@ -14,6 +14,9 @@ public:
     explicit PreviewWindow(bool diagnostics = false);
     explicit PreviewWindow(const FileResource &resource, bool diagnostics = false);
     void setResource(const FileResource &resource);
+    // Resolve the initial screen/normal size before an asynchronous first load.
+    void preparePresentation();
+    bool hasBeenShown() const { return shown_; }
     void present(const QString &activationToken = {});
     // Takes ownership; replacing content destroys its widgets/documents.
     void setContent(QWidget *content);
@@ -34,6 +37,7 @@ private:
     void fitScreen(QScreen *screen);
     bool diagnostics_;
     bool shown_ = false;
+    bool presentationPrepared_ = false;
     bool trackingScreen_ = false;
     bool informationMode_ = false;
     bool informationRestorePending_ = false;

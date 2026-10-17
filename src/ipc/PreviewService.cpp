@@ -28,7 +28,7 @@ void PreviewService::open(const QString &url, bool toggle, const QVariantMap &op
     ResourceError failure = ResourceError::InvalidUrl;
     QString error;
     if (!parsed.isValid() || parsed.scheme().isEmpty()) {
-        error = QStringLiteral("Expected an absolute file:// URL.");
+        error = QStringLiteral("Expected an absolute file:// or smb:// URL.");
     } else if (controller_.show(url, error, &failure, token.toString())) {
         return;
     }

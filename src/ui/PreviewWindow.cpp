@@ -83,14 +83,15 @@ void PreviewWindow::setResource(const FileResource &resource)
     setWindowTitle(QStringLiteral("Dzurkel — %1").arg(name));
     setAccessibleName(windowTitle());
     findChild<QLabel *>(QStringLiteral("fileName"))->setText(name);
-    findChild<QLabel *>(QStringLiteral("filePath"))->setText(resource.path);
+    findChild<QLabel *>(QStringLiteral("filePath"))->setText(resource.url.isLocalFile()
+        ? resource.path : resource.url.toDisplayString());
 }
 void PreviewWindow::present(const QString &activationToken)
 {
     // Wayland places a newly mapped surface using its initial dimensions.
     // Restore before mapping: growing an already placed compact window leaves
     // its top-left corner fixed, and clients cannot reposition it afterward.
-    if (!isVisible() && informationMode_) {
+    if (!isVisible() && informationMode_ && shown_) {
         resize(previewWindowSize_);
         setWindowState(previewWindowState_);
         // Keep information mode until the provider completes so a late compact
@@ -193,6 +194,25 @@ void PreviewWindow::resizeEvent(QResizeEvent *event)
 void PreviewWindow::showEvent(QShowEvent *event)
 {
     if (!event->spontaneous()) {
+        if (!presentationPrepared_) preparePresentation();
+        presentationPrepared_ = false;
+        shown_ = true;
+        mappedWindowSize_ = size();
+        requestedWindowSize_ = size();
+        mappingResizePending_ = true;
+    }
+    QWidget::showEvent(event);
+    if (!trackingScreen_ && windowHandle()) {
+        trackingScreen_ = true;
+        connect(windowHandle(), &QWindow::screenChanged, this, [this](QScreen *target) {
+            watchScreen(target);
+            fitScreen(target);
+        });
+    }
+}
+void PreviewWindow::preparePresentation()
+{
+    if (!presentationPrepared_) {
         QScreen *target = QGuiApplication::screenAt(QCursor::pos());
         if (!target) target = screen();
         if (!target) target = QGuiApplication::primaryScreen();
@@ -206,20 +226,9 @@ void PreviewWindow::showEvent(QShowEvent *event)
             if (!shown_) resize(initial);
             else if (!isMaximized()) resize(size().boundedTo(area.size()));
             if (!isMaximized()) move(area.center() - rect().center());
-            shown_ = true;
             watchScreen(target);
-            mappedWindowSize_ = size();
-            requestedWindowSize_ = size();
-            mappingResizePending_ = true;
+            presentationPrepared_ = true;
         }
-    }
-    QWidget::showEvent(event);
-    if (!trackingScreen_ && windowHandle()) {
-        trackingScreen_ = true;
-        connect(windowHandle(), &QWindow::screenChanged, this, [this](QScreen *target) {
-            watchScreen(target);
-            fitScreen(target);
-        });
     }
 }
 void PreviewWindow::watchScreen(QScreen *target)

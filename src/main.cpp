@@ -4,6 +4,7 @@
 #include "desktop/DesktopIntegration.h"
 #include "ipc/PreviewService.h"
 #include "resources/FileResource.h"
+#include "resources/ResourcePreparation.h"
 
 #include <QApplication>
 #include <QTextStream>
@@ -26,6 +27,10 @@ int main(int argc, char *argv[])
         QCoreApplication commandLine(argc, argv);
         commandLine.setApplicationName(QStringLiteral("dzurkel"));
         commandLine.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
+        if (commandLine.arguments().value(1) == QStringLiteral("--internal-prepare-resource")) {
+            if (commandLine.arguments().size() != 4) return 2;
+            return dzurkel::prepareResourceSnapshot(commandLine.arguments().at(2), commandLine.arguments().at(3));
+        }
         if (!dzurkel::parseCommandLine(commandLine.arguments(), request, error)) return fail(error, 2);
         request.activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN");
         if (request.command == dzurkel::Command::Help) {
@@ -38,7 +43,7 @@ int main(int argc, char *argv[])
         }
         if (request.command == dzurkel::Command::Show) {
             dzurkel::FileResource resource;
-            if (!dzurkel::resolveFileResource(request.url, resource, error)) return fail(error);
+            if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
         }
         dzurkel::InstanceCoordinator client(QStringLiteral("dzurkel-cli"));
         const auto result = client.forward(request, error);
@@ -47,7 +52,7 @@ int main(int argc, char *argv[])
         // Hiding or quitting an absent instance is a successful no-op.
         if (request.command == dzurkel::Command::Hide || request.command == dzurkel::Command::Quit) return 0;
         dzurkel::FileResource resource;
-        if (!dzurkel::resolveFileResource(request.url, resource, error)) return fail(error);
+        if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
     }
 
     // KDE consumes the saved token on the actual show request. Avoid also

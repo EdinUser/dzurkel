@@ -1,7 +1,7 @@
 # Performance and footprint
 
 Dzurkel uses shared Qt/KDE libraries and one resident process. It keeps one
-worker and one coalesced pending request, bounds image/text/PDF input, and frees
+active decoder worker and one coalesced pending request, bounds image/text/PDF input, and frees
 the visible preview on dismissal. It does not index files or start a decoder
 process for every preview. The results below describe small synthetic fixtures
 on the tested Fedora 44 machine, not arbitrary documents or other hardware.
@@ -89,7 +89,7 @@ explain why retaining one document object avoids repeated PDFium startup.
 The separate malformed/password-protected PDF parser limitation and its narrow
 sanitizer suppression remain documented in [testing](testing.md).
 
-## Measured results: 2026-10-16
+## Build sizes and benchmark scope
 
 These benchmark and size results describe version 0.5.0. Version 0.5.1 adds a
 lazily created Settings dialog and shortcut setup using existing Qt libraries;
@@ -98,10 +98,34 @@ library dependency. The figures below are retained as the 0.5.0 optimization
 baseline; the long-run measurements have not been repeated for 0.5.1.
 
 Version 0.6.0's redesigned settings and graceful Dolphin restart use the existing
-Qt libraries. Its installed stripped executable is 229,248 bytes (223.9 KiB).
+Qt libraries. Before the focus and cold-placement follow-ups, its installed
+stripped executable was 229,248 bytes (223.9 KiB). The current local 0.6.0 build
+with those fixes is 241,632 bytes (236.0 KiB); its two desktop entries total
+510 bytes, for a three-file installation of 242,142 bytes. These are measured
+installed sizes, not a new latency or memory benchmark.
 Process discovery and polling occur only during an explicit shortcut change;
 there is no added background watcher. The long-run memory/latency benchmark has
 not been repeated for this version.
+
+## Resident process and thread rows
+
+Hiding the preview leaves the primary process alive until `dzurkel --quit` or
+session shutdown. htop can display threads as separate rows with identical
+command lines and memory figures. Those rows share one address space; their RSS
+must not be added together. Virtual memory includes reserved address space and
+is not a measure of physical RAM usage.
+
+During a read-only check after the user dismissed an ODT preview on 2026-10-17,
+the installed process had four sleeping threads: main, D-Bus, and two Wayland
+event threads. RSS was 94,732 KiB (about 92.5 MiB) for the process as a whole.
+The user observed the row count fall after a short idle period. Temporary Qt
+thread-pool workers expire when idle ([Qt's default timeout is 30 seconds](https://doc.qt.io/qt-6/qthreadpool.html#expiryTimeout-prop)).
+Four is an observation, not a fixed thread-count requirement: PDF rendering,
+platform helpers, and explicit setup work can create more threads. This single
+sample does not establish a memory plateau or regression against the 0.5.0
+fixtures. No resident process scanning was added.
+
+## Historical measured results: 2026-10-16 (0.5.0)
 
 Fedora 44, Qt 6.11.2, GCC 16.2.1; shared system libraries and KDE activation
 enabled. The original Debug executable was 6,258,680 bytes. The size-focused
@@ -166,3 +190,12 @@ allocator retention. Lazy PDF isolation could change the tradeoff between initia
 footprint and repeated-preview latency; it needs a separate design decision.
 The viewer-dependency/bundling policy remains deferred. Shared libraries should
 not be removed just to reduce this checkout's apparent footprint.
+
+## Resource preparation change
+
+The development SMB/resource-loading implementation adds a short-lived helper
+process and a bounded temporary copy before decoding, including local files.
+Earlier latency and memory measurements above predate this change and must not
+be treated as current preparation costs. CLI acknowledgement now covers syntax
+validation/submission rather than filesystem validation. Re-measure cold/warm
+local and mounted/direct SMB previews before making release performance claims.

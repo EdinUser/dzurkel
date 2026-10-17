@@ -19,9 +19,16 @@ These project identifiers remain provisional until the first public release.
 | `ToggleWithOptions(string url, dict options)` | Toggle with optional launch context. |
 | `Quit()` | Acknowledge the request and gracefully terminate the service. |
 
-`url` must be a fully encoded absolute local `file://` URL. A visible Toggle
-ignores its unused URL, including invalid URLs. Invalid Show requests or Toggle
-requests while hidden return an error and preserve the previous preview/state.
+`url` must be a fully encoded absolute `file://` or `smb://` URL. SMB URLs may
+include a username, but not a password, explicit port, query or fragment.
+Resource arguments are limited to 16,384 characters. A visible Toggle ignores
+its unused URL, including invalid URLs. Malformed/unsupported Show requests or
+Toggle requests while hidden return an error and preserve the previous state.
+
+A successful reply acknowledges the request before filesystem/network checks.
+Missing, unreadable or unavailable resources become an `information` preview
+with an explanation; they do not produce a delayed D-Bus error. The original
+SMB URL remains in `FileUrl`, never the temporary backing path.
 
 `options` is an `a{sv}` dictionary. The optional `activation-token` string carries
 the caller's Wayland launch token. The CLI forwards `XDG_ACTIVATION_TOKEN` through
@@ -34,7 +41,9 @@ Toggle ignores its unused options as well as its URL.
 
 Read-only properties are available through standard D-Bus Properties.Get:
 
-- `Visible` (boolean): whether the window is shown, including its loading state.
+- `Visible` (boolean): whether a preview is requested, including loading and
+  initial provider selection before the first window maps. Hide/Toggle cancels
+  that pending presentation too.
 - `FileUrl` (string): the last accepted URL; retained while hidden.
 - `Loading` (boolean): whether the current preview is being prepared.
 - `PreviewKind` (string): `loading`, `image`, `pdf`, `text`, `information`, or
@@ -49,14 +58,17 @@ previews. Properties do not currently emit change notifications.
 Errors use the prefix `io.github.EdinUser.Dzurkel.Error.`:
 
 - `InvalidUrl`: malformed/relative URLs, remote file hosts, queries, or fragments.
-- `UnsupportedScheme`: non-file URL schemes.
-- `NotFound`: the local file does not exist.
-- `NotReadable`: permissions or file-open failure.
+- `UnsupportedScheme`: schemes other than file and smb.
 
-Only lightweight resource validation and the loading view happen before command
-acknowledgement. Image/text/PDF loading runs on a bounded worker queue. New
-requests and dismissal invalidate obsolete results. Decoding errors after
-acceptance appear as a fallback view, rather than a delayed D-Bus error reply.
+`NotFound` and `NotReadable` were synchronous errors in earlier development
+builds; filesystem failures now appear asynchronously in the information view.
+
+Only URL syntax checks and loading-state setup happen before acknowledgement.
+An isolated helper resolves and copies supported content into a bounded local
+snapshot, with a 30-second preparation deadline. Image/text/PDF decoding then
+runs on a bounded worker queue. New requests and dismissal cancel preparation
+and invalidate obsolete results. The first window maps after fast provider
+selection or a 150 ms loading grace period, whichever comes first.
 
 ## Example
 

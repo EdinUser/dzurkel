@@ -8,7 +8,7 @@ namespace dzurkel {
 namespace {
 void configure(QCommandLineParser &parser)
 {
-    parser.setApplicationDescription(QStringLiteral("Dzurkel: a single-instance local file preview service."));
+    parser.setApplicationDescription(QStringLiteral("Dzurkel: a single-instance file preview service."));
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addOption({QStringLiteral("show"), QStringLiteral("Show or replace the preview.")});
@@ -16,7 +16,7 @@ void configure(QCommandLineParser &parser)
     parser.addOption({QStringLiteral("toggle"), QStringLiteral("Hide a visible preview, or show the supplied file.")});
     parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running service.")});
     parser.addOption({QStringLiteral("diagnostics"), QStringLiteral("Log startup and focus information for a new primary instance.")});
-    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("One local path or file:// URL for Show/Toggle."), QStringLiteral("[file]"));
+    parser.addPositionalArgument(QStringLiteral("file"), QStringLiteral("One local path, file:// or smb:// URL for Show/Toggle."), QStringLiteral("[file]"));
 }
 }
 
@@ -49,7 +49,7 @@ bool parseCommandLine(const QStringList &arguments, Request &request, QString &e
     const bool needsFile = request.command == Command::Show || request.command == Command::Toggle;
     const auto paths = parser.positionalArguments();
     if (paths.size() != (needsFile ? 1 : 0)) {
-        error = needsFile ? QStringLiteral("Expected exactly one local file.")
+        error = needsFile ? QStringLiteral("Expected exactly one file path or URL.")
                           : QStringLiteral("This command does not accept a file argument.");
         return false;
     }

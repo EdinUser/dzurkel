@@ -18,6 +18,8 @@ public:
     Snapshot inspect() const;
     QString closeAndWait(const Snapshot &snapshot, int timeoutMs = 30000) const;
     bool isRunning() const;
+    // Worker-thread readiness probe, bounded and cancellable; never activates Dolphin.
+    bool waitForActiveWindow(const std::function<bool()> &cancelled, int timeoutMs = 10000) const;
 private:
     QDBusConnection bus_;
     ProcessFinder processes_;

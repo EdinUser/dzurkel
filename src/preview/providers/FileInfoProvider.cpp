@@ -13,6 +13,16 @@ PreviewData FileInfoProvider::describe(const FileResource &resource)
 {
     PreviewData data;
     data.resource = resource;
+    if (!resource.metadata.isEmpty()) {
+        const auto &metadata = resource.metadata;
+        data.mimeType = metadata.value(QStringLiteral("mime")).toString();
+        data.description = metadata.value(QStringLiteral("description")).toString();
+        data.size = qint64(metadata.value(QStringLiteral("size")).toDouble());
+        data.modified = QDateTime::fromString(metadata.value(QStringLiteral("modified")).toString(), Qt::ISODateWithMs);
+        data.linkTarget = metadata.value(QStringLiteral("linkTarget")).toString();
+        data.message = metadata.value(QStringLiteral("message")).toString();
+        return data;
+    }
     const QFileInfo info(resource.path);
     const auto mime = QMimeDatabase().mimeTypeForFile(info, QMimeDatabase::MatchExtension);
     data.mimeType = mime.name();

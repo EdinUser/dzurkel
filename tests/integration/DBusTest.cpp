@@ -197,8 +197,10 @@ void DBusTest::reusesPrimaryAndWindowLifecycle()
     // Toggle is based on visibility, not file identity or validity.
     QCOMPARE(cli({QStringLiteral("--toggle"), directory_.filePath(QStringLiteral("missing"))}), 0);
     QVERIFY(!property(QStringLiteral("Visible")).toBool());
-    QCOMPARE(cli({QStringLiteral("--toggle"), directory_.filePath(QStringLiteral("missing"))}), 1);
-    QVERIFY(!property(QStringLiteral("Visible")).toBool());
+    QCOMPARE(cli({QStringLiteral("--toggle"), directory_.filePath(QStringLiteral("missing"))}), 0);
+    QTRY_COMPARE(property(QStringLiteral("PreviewKind")).toString(), QStringLiteral("information"));
+    QVERIFY(property(QStringLiteral("Visible")).toBool());
+    QCOMPARE(call(QStringLiteral("Hide")).type(), QDBusMessage::ReplyMessage);
     for (int i = 0; i < 10; ++i) {
         QCOMPARE(cli({first_}), 0);
         QVERIFY(property(QStringLiteral("Visible")).toBool());
@@ -221,7 +223,7 @@ void DBusTest::returnsResourceErrors()
         {QStringLiteral("https://example.com/file"), QStringLiteral("UnsupportedScheme")},
         {QStringLiteral("file:///tmp/invalid%ZZ"), QStringLiteral("InvalidUrl")},
         {QStringLiteral("file://remote/tmp/test"), QStringLiteral("InvalidUrl")},
-        {QUrl::fromLocalFile(directory_.filePath(QStringLiteral("missing"))).toString(), QStringLiteral("NotFound")}
+        {QStringLiteral("smb://user:password@server/share/file"), QStringLiteral("InvalidUrl")}
     };
     for (const auto &entry : cases) {
         const auto reply = call(QStringLiteral("Show"), {entry.first});
@@ -230,15 +232,21 @@ void DBusTest::returnsResourceErrors()
         QCOMPARE(property(QStringLiteral("FileUrl")).toString(), previous);
         QVERIFY(property(QStringLiteral("Visible")).toBool());
     }
+    QCOMPARE(call(QStringLiteral("Show"), {QUrl::fromLocalFile(directory_.filePath(QStringLiteral("missing"))).toString()}).type(),
+        QDBusMessage::ReplyMessage);
+    QTRY_COMPARE(property(QStringLiteral("PreviewKind")).toString(), QStringLiteral("information"));
+    QVERIFY(!property(QStringLiteral("Loading")).toBool());
     QFile file(second_);
     QVERIFY(file.setPermissions(QFileDevice::WriteOwner));
     const auto reply = call(QStringLiteral("Show"), {QUrl::fromLocalFile(second_).toString(QUrl::FullyEncoded)});
+    QTRY_COMPARE(property(QStringLiteral("PreviewKind")).toString(), QStringLiteral("information"));
     QUrl localhost = QUrl::fromLocalFile(second_);
     localhost.setHost(QStringLiteral("localhost"));
     const auto localReply = call(QStringLiteral("Show"), {localhost.toString(QUrl::FullyEncoded)});
+    QTRY_COMPARE(property(QStringLiteral("PreviewKind")).toString(), QStringLiteral("information"));
     QVERIFY(file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner));
-    QCOMPARE(reply.errorName(), QStringLiteral("io.github.EdinUser.Dzurkel.Error.NotReadable"));
-    QCOMPARE(localReply.errorName(), reply.errorName());
+    QCOMPARE(reply.type(), QDBusMessage::ReplyMessage);
+    QCOMPARE(localReply.type(), QDBusMessage::ReplyMessage);
     QCOMPARE(call(QStringLiteral("Toggle"), {QStringLiteral("invalid")}).type(), QDBusMessage::ReplyMessage);
     QVERIFY(!property(QStringLiteral("Visible")).toBool());
     QCOMPARE(call(QStringLiteral("Toggle"), {QStringLiteral("invalid")}).errorName(), QStringLiteral("io.github.EdinUser.Dzurkel.Error.InvalidUrl"));

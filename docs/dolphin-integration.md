@@ -2,7 +2,7 @@
 
 ## Setup
 
-Build and install using the README. Select exactly one local regular file in
+Build and install using the README. Select exactly one local or authenticated SMB file in
 Dolphin. The service menu restricts selection to one URL and the `file` protocol;
 `%u` passes that URL directly to the application, without a shell wrapper.
 
@@ -27,9 +27,16 @@ No process is killed. Dolphin's startup settings control window/tab restoration;
 the confirmation explains that all previous views may not return. A launch
 failure is reported with instructions to open Dolphin manually.
 
-Known limitation in 0.6.0: the reopened Dolphin can take focus and cover Dzurkel
-Settings. Switch back to Dzurkel to continue; automatic focus restoration after
-the restart has not been implemented.
+After successful editing and reopening, Dzurkel waits asynchronously for a
+Dolphin window to report active, with a ten-second readiness budget. It requests
+Settings activation once. KDE Frameworks 6.19+ captures a Wayland token from the
+confirmed restart action; Qt-only/older KDE builds use a best-effort Qt request.
+Closing, minimizing, or destroying Settings, or starting another shortcut change,
+cancels the pending handoff. Reopening Settings does not revive an old request.
+There are no repeated activation requests or always-on-top flags. The compositor
+may reject activation, including after intervening input in another application.
+Automated tests verify the request lifecycle; native focus acceptance remains
+a desktop check.
 
 Restoring uses the same restart flow. This changes per-user bindings only;
 it neither needs sudo nor runs automatically when Settings opens. It removes
@@ -64,12 +71,16 @@ Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 - [ ] Assign Space using Settings or Dolphin's shortcut editor; verify backup/restore.
 - [ ] Cancel restart: no Dolphin window closes and no shortcut configuration changes.
 - [ ] Confirm restart with multiple windows/tabs; respond to close prompts and check startup restoration.
+- [ ] After apply and restore, Settings receives keyboard input once Dolphin reopens.
+- [ ] Close/minimize Settings during reopening; it is not raised afterward, even if restored.
+- [ ] Switch applications during restart; verify compositor focus policy is respected.
 - [ ] Refuse a Dolphin close prompt; after the timeout, shortcut files remain unchanged.
 - [ ] Select a file and press Space; preview opens and receives keyboard focus.
 - [ ] Press Space again; the window closes and Dolphin is usable immediately.
 - [ ] Repeat with Escape and Alt+F4 for dismissal.
 - [ ] Repeat the open/dismiss cycle at least 20 times with different files.
 - [ ] Resize from each border, maximize/restore, and reopen: chosen size persists.
+- [ ] Quit Dzurkel, then preview an unsupported file: its first window is compact and placed correctly.
 - [ ] Test light/dark themes, scaling, and each monitor in a multi-screen setup.
 - [ ] If Space is unreliable, test Shift+Space and record the exact limitation.
 
@@ -77,8 +88,10 @@ Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 
 The preview is an ordinary reusable top-level Qt window. Dismissal now hides
 it while the primary process remains resident; `dzurkel --quit` ends the service.
-It requests a position near the pointer's screen and starts at 85% of available
-screen width and height. Standard window borders allow resizing and maximizing;
+It targets the pointer's screen; content previews start at 85% of available
+screen width and height. The first information-only view maps at its compact
+size, after asynchronous provider selection, so it does not inherit a large
+loading window's top-left position. Standard window borders allow resizing and maximizing;
 the initial size is not a maximum. A resized window keeps its size across previews
 within the running process, fitting a smaller screen on reopening. Screen and
 available-geometry changes also fit a normal window to its current display. The Wayland
@@ -112,3 +125,11 @@ Quit any old resident binary before testing an updated installation.
 - [Dolphin 26.04 service-menu shortcut support](https://blogs.kde.org/2026/05/03/dolphin-26.04-release/)
 - [Qt top-level window behavior](https://doc.qt.io/qt-6/qwidget.html)
 - [KDE activation API](https://api.kde.org/kwindowsystem.html)
+
+## Direct SMB locations
+
+The service menu accepts `file` and `smb` URLs. Open an `smb://` location in Dolphin
+and authenticate first, then use the same preview action/shortcut. Dzurkel resolves
+the original URL through KIO-FUSE rather than mapping it to an existing `/mnt`
+configuration. See [SMB requirements and limits](previews.md#smb-resources).
+Native authenticated-share acceptance remains recorded in [testing](testing.md).

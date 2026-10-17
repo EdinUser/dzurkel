@@ -9,8 +9,11 @@ temporary: a supported content preview restores the previous preview dimensions
 and maximized state, fitting the current display. Resizing an information window
 does not replace the remembered content-preview size. Repeated information views
 remain compact, and image decoding still targets the larger preview size.
-The icon and metadata appear without manual resizing, including on first open;
-closing an information view does not make the next PDF preview compact.
+The icon and metadata appear without manual resizing, including on first open.
+The first information-only preview is sized before mapping so Wayland can place
+the compact window correctly. Initial provider selection runs asynchronously;
+supported files show the normal loading window before decoding completes.
+Closing an information view does not make the next PDF preview compact.
 On reopening, normal dimensions are restored before the window is shown so
 Wayland can place the full preview within the screen.
 
@@ -44,7 +47,7 @@ information view rather than a text dump.
 
 Limits are configured in the provider source files:
 
-- Images: 64 MiB Qt image-allocation budget; decoded previews are bounded to
+- Images: 64 MiB source-copy limit and 64 MiB Qt image-allocation budget; decoded previews are bounded to
   2,048 pixels per axis. Readers without native scaled decoding reject originals
   exceeding the pixel budget before loading. Qt's `QT_IMAGEIO_MAXALLOC`
   environment setting can override its library allocation limit.
@@ -62,16 +65,55 @@ On shutdown, Dzurkel waits for that worker before releasing application state.
 These limits reduce resource use; in-process Qt decoding is not a security
 sandbox. Dedicated decoder isolation remains future work.
 
-## Local filesystem policy
+## Filesystem policy
 
-Only local paths and `file://` URLs are accepted. Relative paths use the caller's
-working directory. Every symbolic link, including broken/cyclic links, receives
-an information view without following its target for content preview. Directories
-are not enumerated; FIFOs, sockets, and devices are never read for content.
-Regular files are reopened with nonblocking/no-follow flags and checked by file
-descriptor, preventing a replaced path from blocking on a FIFO or following a
-new link. Missing/unreadable files return CLI or D-Bus errors; decoding failures
-after a request is accepted display a fallback in the window.
+Local paths, `file://` URLs and `smb://` URLs are accepted. Relative paths use
+the caller's working directory. Local/mounted filesystem checks run in a
+separate resource helper, keeping slow mounts away from the UI thread.
+Every symbolic link, including broken/cyclic links, receives information only;
+targets are not opened. Directories are not enumerated; FIFOs, sockets and
+devices are never opened for content. Regular files are opened with
+nonblocking/no-follow flags and checked by descriptor.
+
+Supported content is copied into a private temporary directory before decoding.
+Text copies contain at most 2 MiB plus one byte for truncation detection; image
+and PDF copies are limited to 64 MiB. Unsupported types and oversized image/PDF
+files receive information views without a content copy. Original metadata and
+URLs remain visible. Temporary backing files are released when their resources
+are no longer needed; the parent retains a cancelled helper's directory until
+that helper exits. This is a bounded copy, not an atomic filesystem snapshot.
+
+Malformed/unsupported URLs return CLI/D-Bus errors. Filesystem, connection and
+decoding failures after acceptance display an information view instead. A CLI
+exit status of zero acknowledges submission, not successful content rendering.
+
+## SMB resources
+
+Use `smb://server/share/path` (optionally `smb://user@server/share/path`). Passwords
+in URLs, explicit ports, queries and fragments are rejected. Authenticate by
+opening the location in Dolphin first; use the same username-qualified URL
+Dolphin displays when applicable. Kernel CIFS mount credentials are not
+assumed to be available to the desktop. Dzurkel does not read mount credential
+files, edit `fstab`, install packages or unmount shares.
+
+Direct SMB uses the session-bus `org.kde.KIOFuse.VFS.mountUrl` service. Fedora
+requires the optional runtime packages `kio-fuse` and `kio-extras`; failures show
+setup/authentication guidance. No KIO development library is required. This route
+is available in Qt-only builds too when the service exists; it is not a claim of
+GNOME integration. Transport caching and actual network transfer volume depend
+on KIO-FUSE, so the snapshot limit is not a network-bandwidth guarantee.
+
+Preparation times out after 30 seconds (the mount call can time out earlier).
+Hide/replacement kills the helper without waiting on the UI thread. At most two
+helpers may exist while a cancelled helper is being reaped; another request gets
+a retry explanation if both slots are still occupied. A kernel-stuck filesystem
+operation may delay process exit and temporary-directory cleanup despite kill.
+Native decoder cancellation/shutdown limitations still apply separately.
+
+Fast information views retain compact first-map sizing. If preparation takes
+more than 150 ms, a normal-sized loading window appears; it may shrink when an
+information result arrives. File replacement keeps the current loading view
+size, with normal preview dimensions restored when reopening a compact window.
 
 ## Examples
 

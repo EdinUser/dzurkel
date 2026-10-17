@@ -35,6 +35,24 @@ QDBusMessage introspect(const QDBusConnection &bus, const QString &owner, const 
 DolphinSession::DolphinSession(QDBusConnection bus, ProcessFinder finder)
     : bus_(std::move(bus)), processes_(finder ? std::move(finder) : dolphinProcesses) {}
 bool DolphinSession::isRunning() const { return !processes_().isEmpty(); }
+bool DolphinSession::waitForActiveWindow(const std::function<bool()> &cancelled, int timeoutMs) const
+{
+    QElapsedTimer timer;
+    timer.start();
+    do {
+        if (cancelled()) return false;
+        const auto snapshot = inspect();
+        for (const auto &window : snapshot.windows) {
+            if (cancelled() || timer.elapsed() >= timeoutMs) return false;
+            const QDBusReply<bool> active = bus_.call(QDBusMessage::createMethodCall(
+                window.owner, window.path, QStringLiteral("org.kde.dolphin.MainWindow"),
+                QStringLiteral("isActiveWindow")), QDBus::Block, 500);
+            if (active.isValid() && active.value()) return !cancelled();
+        }
+        QThread::msleep(100);
+    } while (timer.elapsed() < timeoutMs);
+    return false;
+}
 DolphinSession::Snapshot DolphinSession::inspect() const
 {
     Snapshot snapshot;

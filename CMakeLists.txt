@@ -28,6 +28,7 @@ add_library(dzurkel_core STATIC
     src/preview/providers/TextPreviewProvider.cpp
     src/preview/providers/FileInfoProvider.cpp
     src/resources/FileResource.cpp
+    src/resources/ResourcePreparation.cpp
     src/ui/PreviewWindow.cpp
     src/ui/SettingsDialog.cpp
 )
@@ -99,10 +100,12 @@ if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
     add_executable(dzurkel_tests tests/unit/DzurkelTest.cpp)
+    add_dependencies(dzurkel_tests dzurkel)
     target_link_libraries(dzurkel_tests PRIVATE dzurkel_core Qt6::Test)
     add_test(NAME dzurkel_tests COMMAND dzurkel_tests)
     set_tests_properties(dzurkel_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_executable(dzurkel_preview_tests tests/unit/PreviewTest.cpp)
+    add_dependencies(dzurkel_preview_tests dzurkel)
     target_link_libraries(dzurkel_preview_tests PRIVATE dzurkel_core Qt6::Test)
     target_compile_definitions(dzurkel_preview_tests PRIVATE DZURKEL_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     add_test(NAME dzurkel_previews COMMAND dzurkel_preview_tests)
@@ -117,6 +120,11 @@ if(BUILD_TESTING)
     target_link_libraries(dzurkel_settings_tests PRIVATE dzurkel_core Qt6::Test)
     add_test(NAME dzurkel_settings COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_settings_tests>)
     set_tests_properties(dzurkel_settings PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_executable(dzurkel_resource_tests tests/integration/ResourceTest.cpp)
+    target_link_libraries(dzurkel_resource_tests PRIVATE dzurkel_core Qt6::Test)
+    add_dependencies(dzurkel_resource_tests dzurkel)
+    add_test(NAME dzurkel_resources COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_resource_tests>)
+    set_tests_properties(dzurkel_resources PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
     add_test(NAME dzurkel_cli COMMAND ${CMAKE_COMMAND}
         -DDZURKEL=$<TARGET_FILE:dzurkel>
         -DEXPECTED_VERSION=${PROJECT_VERSION}

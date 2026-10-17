@@ -5,9 +5,12 @@
 Dzurkel (Дзъркел, Bulgarian slang for “eye”) is a standalone C++20 / Qt 6
 Widgets file-preview application for Fedora KDE Wayland.
 
-## Current scope: Milestone 4
+## Current scope: local 0.6.0 build
 
-Dzurkel previews images, PDFs, and plain text for local paths or `file://` URLs.
+Dzurkel previews images, PDFs, and plain text from local paths, `file://` URLs,
+and direct `smb://` URLs through the desktop KIO-FUSE service. Mounted shares
+continue to work as filesystem paths. Direct SMB requires desktop authentication;
+see [remote resources](docs/previews.md#smb-resources).
 Unsupported files, directories, links, and special objects get an information
 view. One primary process owns the session-bus service and reuses one preview
 window. Later CLI invocations forward their commands to that process.
@@ -20,16 +23,22 @@ window. Later CLI invocations forward their commands to that process.
 
 Space, Shift+Space, Escape, and ordinary window close hide the preview. Hide/Quit with no
 running instance succeed without starting one. Relative paths resolve against
-the invoking client's directory. Invalid requests leave the current preview
-unchanged. Content loads asynchronously, and newer requests supersede unfinished
+the invoking client's directory. Malformed or unsupported URLs leave the current preview unchanged. Missing,
+unreadable, or unavailable resources produce an asynchronous information view. Content loads asynchronously, and newer requests supersede unfinished
 previews. See [supported formats and limits](docs/previews.md).
 
-The preview initially fills 85% of the usable screen width and height. Drag its
+Closing the window leaves one process resident for faster reopening. Process
+monitors may list its Qt/D-Bus/Wayland threads as separate rows sharing the same
+memory. Temporary worker threads can disappear after an idle timeout; this does
+not indicate extra application instances. Use `dzurkel --quit` to exit fully.
+
+Content previews initially fill 85% of the usable screen width and height. Drag the
 window borders to resize, or maximize it using the KDE title bar. Your chosen
 size is retained across previews until the process exits; reopening on a smaller
 screen fits it to that screen. Images retain their proportions as the window
 changes size, and PDF pages scale to the available width.
 Files without a content preview temporarily use a compact information window.
+On a fresh launch, that compact size is chosen before the first window appears.
 Opening an image, PDF, or text preview restores your previous preview size and
 maximized state.
 
@@ -40,8 +49,10 @@ bindings and reassigns Space; **Restore previous shortcuts** undoes that setup
 while preserving unrelated settings. If Dolphin is running, Dzurkel asks to
 restart it, waits for all its processes to close normally, applies the change,
 and reopens it. If it stays open, no shortcut files are changed. Window and tab
-restoration follows Dolphin's startup settings. Opening Settings alone changes
-nothing and needs no sudo.
+restoration follows Dolphin's startup settings. After Dolphin becomes active,
+Dzurkel requests Settings focus once; closing or minimizing Settings cancels
+that handoff. The desktop controls whether activation is allowed. Opening
+Settings alone changes nothing and needs no sudo.
 
 ## Build and run
 
@@ -105,8 +116,9 @@ before building rather than overriding it at install time. With a custom
 `kio/servicemenus/` directory and mark it executable.
 
 Right-click one local file in Dolphin and choose **Dzurkel**. If needed, enable
-it under Dolphin's context-menu settings and reopen Dolphin. In Dolphin 26.04+,
-open **Configure Keyboard Shortcuts**, search for **Dzurkel**, and assign Space
+it under Dolphin's context-menu settings and reopen Dolphin. Use Dzurkel's
+**Settings** link for backed-up shortcut setup, or in Dolphin 26.04+ open
+**Configure Keyboard Shortcuts**, search for **Dzurkel**, and assign Space
 manually. Review any conflict before changing an existing binding. If Space
 conflicts or does not work, test Shift+Space and record the result.
 
@@ -123,6 +135,8 @@ listed above; retain your source checkout and any unrelated menu entries.
 
 ## Documentation
 
+- [Architecture](docs/architecture.md): module boundaries, asynchronous loading,
+  resident lifecycle, and desktop setup.
 - [Fedora installation](docs/installation.md): tested source installation,
   staging, dependency checks, and removal.
 - [Performance and footprint](docs/performance.md): optimization settings,

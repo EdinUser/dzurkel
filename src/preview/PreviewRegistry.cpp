@@ -9,7 +9,7 @@
 
 namespace dzurkel {
 PreviewData PreviewRegistry::load(const FileResource &resource, const QSize &target,
-                                  const Cancellation &cancel)
+                                  const Cancellation &cancel, const std::function<void()> &contentSelected)
 {
     auto data = FileInfoProvider::describe(resource);
     if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
@@ -27,7 +27,10 @@ PreviewData PreviewRegistry::load(const FileResource &resource, const QSize &tar
     ImagePreviewProvider image;
     PdfPreviewProvider pdf;
     TextPreviewProvider text;
-    if (pdf.supports(mime) || file->peek(1024).startsWith("%PDF-")) return pdf.load(std::move(file), std::move(data), target, cancel);
+    if (pdf.supports(mime) || file->peek(1024).startsWith("%PDF-")) {
+        if (contentSelected) contentSelected();
+        return pdf.load(std::move(file), std::move(data), target, cancel);
+    }
     // Actual image-reader capability wins over misleading file extensions.
     bool canReadImage = false;
     {
@@ -35,8 +38,14 @@ PreviewData PreviewRegistry::load(const FileResource &resource, const QSize &tar
         canReadImage = reader.canRead();
     }
     file->seek(0);
-    if (canReadImage || image.supports(mime)) return image.load(std::move(file), std::move(data), target, cancel);
-    if (text.supports(mime)) return text.load(std::move(file), std::move(data), target, cancel);
+    if (canReadImage || image.supports(mime)) {
+        if (contentSelected) contentSelected();
+        return image.load(std::move(file), std::move(data), target, cancel);
+    }
+    if (text.supports(mime)) {
+        if (contentSelected) contentSelected();
+        return text.load(std::move(file), std::move(data), target, cancel);
+    }
     return data;
 }
 QWidget *PreviewRegistry::createWidget(const PreviewData &data, QWidget *parent)

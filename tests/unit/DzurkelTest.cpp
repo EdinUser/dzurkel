@@ -242,7 +242,7 @@ void DzurkelTest::controllerReusesWindow()
     QVERIFY(controller.show(QUrl::fromLocalFile(second).toString(), error));
     QCOMPARE(controller.window(), window);
     QCOMPARE(window->findChild<QLabel *>("fileName")->text(), QStringLiteral("second.txt"));
-    QVERIFY(!controller.show(directory.filePath("missing"), error));
+    QVERIFY(!controller.show(QStringLiteral("https://example.com/unsupported"), error));
     QVERIFY(controller.isVisible());
     QCOMPARE(controller.fileUrl(), QUrl::fromLocalFile(second).toString(QUrl::FullyEncoded));
     QVERIFY(controller.toggle("unused invalid path", error));
@@ -283,7 +283,7 @@ void DzurkelTest::rejectsInvalidResources_data()
     QTest::addColumn<QString>("message");
     QTest::newRow("empty") << "" << "required";
     QTest::newRow("https") << "https://example.com/test" << "Unsupported URL scheme";
-    QTest::newRow("smb") << "smb://server/test" << "Unsupported URL scheme";
+    QTest::newRow("smb") << "smb://server/test" << "asynchronous preparation";
     QTest::newRow("remote-file") << "file://server/test" << "Remote file URLs";
     QTest::newRow("malformed") << "file:///tmp/bad%ZZ" << "Malformed URL";
     QTest::newRow("query") << "file:///tmp/test?query" << "query or fragment";
@@ -337,7 +337,10 @@ void DzurkelTest::dismissesWithKeyboard()
 {
     QFETCH(int, key);
     const QString path = QString::fromUtf8("/tmp/пример <b>name</b>.txt");
-    dzurkel::PreviewWindow window({path, QUrl::fromLocalFile(path)});
+    dzurkel::FileResource resource;
+    resource.path = path;
+    resource.url = QUrl::fromLocalFile(path);
+    dzurkel::PreviewWindow window(resource);
     auto *label = window.findChild<QLabel *>(QStringLiteral("filePath"));
     QVERIFY(label);
     QCOMPARE(label->text(), path);

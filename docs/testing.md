@@ -15,7 +15,7 @@ cmake --build --preset compact
 ctest --preset compact
 ```
 
-Six suites pass:
+The current development checkout has seven suites:
 
 - Qt Test: 25 checks including setup/cleanup, resource validation, special and
   Unicode filenames, localhost URLs, command parsing, window reuse, and
@@ -25,7 +25,7 @@ Six suites pass:
   keyboard behavior and dialog reuse, shortcut backup/restore with alternate
   bindings and unrelated toolbar edits preserved, malformed/custom-scheme
   rejection, and refusal to overwrite newer managed-shortcut changes.
-- Preview providers: 26 checks including setup/cleanup cover PNG/JPEG/BMP,
+- Preview providers and lifecycle checks cover PNG/JPEG/BMP,
   orientation, image budgets, UTF-8/16/32 and Latin-1, newline normalization,
   text truncation/binary fallback, multipage/encrypted/damaged/oversized PDFs,
   directories/links/FIFOs, safe file replacement, bounded request coalescing,
@@ -34,6 +34,9 @@ Six suites pass:
   Information-only views also compact temporarily, preserve normal/maximized
   preview dimensions across repeated fallback views and hide/reopen, and keep
   the next image's decode target at preview resolution.
+  Cold ZIP/ODT cases record compact dimensions at the first Show event and then
+  verify large PDF restoration. Hide/Toggle and supersession before first
+  mapping prevent obsolete worker results from presenting a window.
 - Isolated D-Bus: eight checks including setup/cleanup, absent-instance no-ops,
   headless secondary forwarding, caller-relative paths, visibility-based Toggle,
   resource errors, ten show/hide cycles, eight simultaneous startup contenders,
@@ -41,7 +44,7 @@ Six suites pass:
   forwarding for Show/Toggle without a GUI backend, and invalid-option rejection
   without changing the previous preview.
 - Headless CLI: 12 cases covering help/version, conflicting commands, unexpected
-  file arguments, missing arguments/files, and unsupported schemes/options.
+  file arguments, missing arguments, password-bearing SMB URLs, and unsupported schemes/options.
 - Staged installation: exact three-file manifest, desktop permissions and IDs,
   stripped binary version, and Show/Hide/Quit through headless secondary commands
   against the installed executable on its own session bus.
@@ -58,7 +61,21 @@ Unix sockets; restricted sandboxes may need permission to create a test bus.
 Tests never use the desktop's normal session bus. Offscreen dismissal cannot
 prove Wayland focus restoration to Dolphin.
 
-The default KDE WindowSystem build and a separate Qt-only build both compile.
+Settings restart focus tests cover delayed Dolphin activation, one activation
+request per apply/restore, close/reopen and minimize/restore cancellation,
+destruction, readiness timeout, and worker cancellation. They use an isolated
+bus and temporary configuration; they do not prove compositor focus acceptance.
+On native KDE Wayland, apply and restore with Dolphin running and check that
+Settings receives keyboard input after Dolphin reopens. Include slow startup,
+close prompts, multiple windows, switching applications during restart, and
+closing/minimizing Settings before Dolphin appears. Verify no later activation
+or always-on-top behavior. Qt-only and KDE Frameworks before 6.19 use a single
+best-effort Qt activation request; newer KDE builds capture a Wayland activation
+token from the confirmed restart action. Compositor policy can reject it,
+particularly after intervening user input.
+
+The default KDE WindowSystem build compiles. A separate Qt-only build was last
+checked during the Settings focus follow-up, before the cold-placement change.
 The application desktop entry passes `desktop-file-validate`. A staged install
 contains the executable, executable Dolphin service menu, and hidden application
 identity with the configured absolute command. Light/dark offscreen captures
@@ -66,8 +83,11 @@ were visually inspected; these do not verify Breeze theme switching on Plasma.
 
 ## Sanitizers and PDF cleanup
 
-An AddressSanitizer/UndefinedBehaviorSanitizer build passes all six suites with
-leak detection enabled and a narrow Qt PDF suppression:
+Earlier AddressSanitizer/UndefinedBehaviorSanitizer validation passed all six
+suites with leak detection and a narrow Qt PDF suppression. After the latest
+cold-placement and queued-presentation changes, the preview suite was rerun and
+passed with the same settings. This is not a claim that every sanitizer suite
+was rerun after that follow-up. To run all suites:
 
 ```bash
 cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug \
@@ -94,7 +114,8 @@ thread leak. Document and backing-file ownership are tested across replacements.
 
 ## Fedora packaging and optimization
 
-Release and MinSizeRel/LTO builds pass all five suites. The Fedora script was
+Original Release and MinSizeRel/LTO checks passed the five suites then present;
+the current Fedora MinSizeRel/LTO install reran all six successfully. The Fedora script was
 also run from a fresh build directory with prefix `/opt/Dzurkel test` and a
 checkout-local `DESTDIR`. Build, tests, desktop validation, and stripped install
 succeeded without writing to `/opt` or modifying the source. A fresh Fedora VM
@@ -135,9 +156,10 @@ windows. Its hidden RSS sample was 113,588 KiB. Screen inventory showed two
 1920×1080 displays at scale 1. This does not establish resizing, focus restoration,
 or screen transfer through Dolphin: those interactions remain manual below.
 
-## Dolphin acceptance remains manual
+## Desktop feedback and remaining acceptance
 
-Version 0.6.0's compact stripped build is installed locally with the executable, service menu, and hidden
+Version 0.6.0's compact stripped build, including the Settings focus and cold
+information-placement fixes, is installed locally with the executable, service menu, and hidden
 application identity. The user confirmed that resizing works and reported that
 the window "kind of remembers the size." Size retention is process-local and
 may be reduced to fit a smaller display; full cross-monitor retention remains
@@ -161,10 +183,28 @@ platform's dialog backend.
 User-session window/tab restoration, Space invocation and Restore through the
 real Dolphin installation remain manual checks.
 
-The user confirmed that the 0.6.0 settings work, and reported that the reopened
-Dolphin takes focus and covers Dzurkel Settings. Automatic focus restoration
-after restart is not implemented. This feedback does not establish exact
-window/tab restoration or complete the other desktop acceptance checks.
+The user confirmed that the 0.6.0 settings work, then reported that reopened
+Dolphin covered Settings. A one-time activation handoff is now implemented and
+installed; isolated-bus tests cover readiness, apply/restore, cancellation and
+timeout. The user has not explicitly confirmed native focus acceptance after
+this fix. Exact window/tab restoration and the other desktop checks remain open.
+
+The user subsequently reported a fresh-process ODT information view at the
+large loading window's top-left position. Initial provider selection now happens
+before mapping; information results map compactly. Targeted native Wayland tests
+passed for first-open ZIP/ODT, repeated information/PDF reopening and cancellation
+before mapping. A temporary read-only KWin observer measured centred frames
+`(2690, 348, 380, 340)` for ZIP and `(2690, 339, 380, 358)` for ODT within usable
+area `(1920, 0, 1920, 1036)`; reopened PDFs were `(2064, 45, 1632, 946)`.
+The observer was unloaded without changing window rules. The user explicitly
+confirmed that the first icon opening is fixed. These results do not complete
+the broader shortcut, theme, scaling or cross-monitor acceptance matrix.
+
+A read-only process check after dismissal confirmed one resident process with
+four sleeping threads (main, D-Bus, two Wayland event threads), using 94,732 KiB
+RSS in total. The user saw htop's row count drop after idling. Shared thread RSS
+must not be summed; this is expected resident behaviour, not evidence of
+duplicate instances. It is a single observation, not a new long-run benchmark.
 
 Temporary compact information-window sizing and restoration passed three
 targeted native Wayland tests, including four cold-information/PDF close/reopen
@@ -196,3 +236,49 @@ Select → Space → Preview → Space/Escape → Return flow has not been recor
 verified. Milestone 1 changed dismissal from process exit to hiding a resident window.
 Milestone 2 adds actual content, so repeat desktop acceptance against the updated
 binary. Milestone 3 remains the desktop integration acceptance phase.
+
+## SMB and asynchronous resource loading
+
+The resource suite uses an isolated fake KIO-FUSE service and real helper
+processes. It verifies exact URL delivery, username/Unicode handling, image/PDF/
+text snapshots, source mutation after copying, bounded text and oversized PDF
+handling, directory/link/FIFO information views, authentication failure, missing
+local files, responsive dismissal/replacement, stale-result rejection, timeout
+and backing-directory cleanup. It does not contact a real SMB server.
+
+CLI/D-Bus tests now distinguish synchronous URL errors from asynchronous
+filesystem failures. The staged executable exercises its own helper mode; the
+installation remains three files. Existing window placement, decoder lifecycle
+and settings suites remain required regressions.
+
+Validation on 2026-10-17: the main and Qt-only builds compile, and all seven
+main-build suites pass. The optional live test decoded and exposed real PDF and
+JPEG previews in the native KDE Wayland session through authenticated SMB URLs,
+without using `/mnt`. Username-free URLs failed access even after Dolphin login;
+using the same username-qualified URL as Dolphin succeeded. No credentials or
+server files were changed. Controlled slow-share dismissal/replacement and
+timeout tests also pass with Wayland windows and an isolated fake service.
+
+To repeat the opt-in real-share check (it briefly opens a preview window):
+
+```bash
+DZURKEL_LIVE_SMB_URL='smb://user@server/share/example.pdf' \
+  QT_QPA_PLATFORM=wayland ./build/dzurkel_resource_tests liveAuthenticatedSmbPreview
+```
+
+Run only that test on the desktop bus; the default suite uses its own fake
+service and skips the live check. No file contents are printed.
+
+Remaining native checks: trigger the updated installed Dolphin action/shortcut;
+real SMB text content (covered by the fake service so far); authentication
+cancellation/retry; actual connection loss; and visual acceptance of slow loader
+placement and repeated navigation/reopening. Keep existing mounts and server
+files unchanged. The development implementation was subsequently reinstalled under `~/.local`
+at the user's request: the Fedora MinSizeRel/LTO installer passed all seven
+suites (18.41 seconds), installed both desktop entries and the stripped binary,
+and KDE's service cache was refreshed. The installed menu accepts file and smb.
+
+Final resource-loading sanitizer check: ASan/UBSan builds compiled and the
+preview/resource suites both passed with leak detection and the existing narrow
+Qt PDF suppression (12.77 seconds). Other sanitizer suites were not rerun for
+this cycle. The final normal run passed all seven suites in 18.76 seconds.

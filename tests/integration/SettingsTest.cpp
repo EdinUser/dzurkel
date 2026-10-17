@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -21,9 +22,12 @@ class FakeDolphin : public QObject {
     Q_CLASSINFO("D-Bus Interface", "org.kde.dolphin.MainWindow")
 public:
     std::atomic_bool alive{true};
+    std::atomic_bool active{false};
+    std::atomic_int activeQueries{0};
     int requests = 0;
     bool permit = true;
 public slots:
+    bool isActiveWindow() { ++activeQueries; return alive && active; }
     void quit() {
         ++requests;
         if (permit) QTimer::singleShot(200, this, [this] { alive = false; });
@@ -42,6 +46,10 @@ private slots:
     void unknownProcessPreventsSetup();
     void newProcessPreventsSetup();
     void reopenFailureKeepsAppliedChange();
+    void restartFocusWaitsAndRunsOncePerChange();
+    void pendingRestartFocusIsCancelled_data();
+    void pendingRestartFocusIsCancelled();
+    void readinessTimesOutAndCancels();
     void realDolphinClosesGracefully();
 private:
     DolphinShortcuts shortcuts() const;
@@ -56,6 +64,8 @@ void SettingsTest::init()
     first_.alive = true; second_.alive = true;
     first_.permit = second_.permit = true;
     first_.requests = second_.requests = 0;
+    first_.active = second_.active = false;
+    first_.activeQueries = second_.activeQueries = 0;
     QFile::remove(directory_.filePath(QStringLiteral("dolphinui.rc")));
     QFile::remove(directory_.filePath(QStringLiteral("backup.json")));
     if (QByteArray(QTest::currentTestFunction()) == "realDolphinClosesGracefully") return;
@@ -266,6 +276,81 @@ void SettingsTest::reopenFailureKeepsAppliedChange()
     QTRY_VERIFY(informed);
     QVERIFY(shortcuts().usesSpace());
     QVERIFY(shortcuts().hasBackup());
+}
+void SettingsTest::restartFocusWaitsAndRunsOncePerChange()
+{
+    int reopened = 0;
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [&] {
+        ++reopened;
+        first_.alive = second_.alive = true;
+        return true;
+    });
+    QSignalSpy focus(&dialog, &SettingsDialog::restartFocusRequested);
+    dialog.show();
+    QTimer timer;
+    answer(timer, true);
+    for (const auto &action : {"useSpace", "restoreShortcuts"}) {
+        first_.active = false;
+        const int previous = reopened;
+        const int queries = first_.activeQueries;
+        dialog.findChild<QPushButton *>(QString::fromLatin1(action))->click();
+        QTRY_COMPARE(reopened, previous + 1);
+        QTRY_VERIFY(first_.activeQueries > queries);
+        QCOMPARE(focus.count(), previous); // D-Bus registration alone is too early.
+        first_.active = true;
+        QTRY_COMPARE(focus.count(), reopened);
+        QTest::qWait(300);
+        QCOMPARE(focus.count(), reopened);
+        QVERIFY(!(dialog.windowFlags() & Qt::WindowStaysOnTopHint));
+    }
+    QVERIFY(!shortcuts().hasBackup());
+}
+void SettingsTest::pendingRestartFocusIsCancelled_data()
+{
+    QTest::addColumn<int>("action");
+    QTest::newRow("closed-and-reopened") << 0;
+    QTest::newRow("minimized-and-restored") << 1;
+    QTest::newRow("destroyed") << 2;
+}
+void SettingsTest::pendingRestartFocusIsCancelled()
+{
+    QFETCH(int, action);
+    auto dialog = std::make_unique<SettingsDialog>(nullptr, shortcuts(), session(), [&] {
+        first_.alive = second_.alive = true;
+        return true;
+    });
+    QSignalSpy focus(dialog.get(), &SettingsDialog::restartFocusRequested);
+    dialog->show();
+    QTimer timer;
+    answer(timer, true);
+    dialog->findChild<QPushButton *>(QStringLiteral("useSpace"))->click();
+    QTRY_VERIFY(first_.activeQueries > 0);
+    if (action == 0) { dialog->close(); dialog->show(); }
+    else if (action == 1) { dialog->showMinimized(); dialog->showNormal(); }
+    else dialog.reset();
+    first_.active = true;
+    QTest::qWait(350);
+    QCOMPARE(focus.count(), 0);
+    QVERIFY(shortcuts().usesSpace());
+}
+void SettingsTest::readinessTimesOutAndCancels()
+{
+    const auto controller = session();
+    QFutureWatcher<bool> ready;
+    ready.setFuture(QtConcurrent::run([controller] {
+        return controller.waitForActiveWindow([] { return false; }, 150);
+    }));
+    QTRY_VERIFY(ready.isFinished());
+    QVERIFY(!ready.result());
+    QVERIFY(first_.activeQueries > 0);
+    first_.activeQueries = 0;
+    first_.active = true;
+    ready.setFuture(QtConcurrent::run([controller] {
+        return controller.waitForActiveWindow([] { return true; });
+    }));
+    QTRY_VERIFY(ready.isFinished());
+    QVERIFY(!ready.result());
+    QCOMPARE(first_.activeQueries.load(), 0);
 }
 int main(int argc, char **argv)
 {

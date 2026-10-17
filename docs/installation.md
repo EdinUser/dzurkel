@@ -20,6 +20,18 @@ or installing. Missing dependencies produce a suggested command and a nonzero
 exit. Optional image-reader plugins and the future viewer-dependency policy
 are separate from this source-build procedure.
 
+## Optional SMB runtime support
+
+Direct `smb://` previews use the desktop's KIO-FUSE service and SMB worker:
+
+```bash
+sudo dnf install kio-fuse kio-extras
+```
+
+Authenticate through Dolphin before previewing. Existing CIFS mounts remain
+usable as filesystem paths without this route. These optional packages are not
+installed or configured automatically. See [SMB behavior](previews.md#smb-resources).
+
 ## User-local installation
 
 Run from a source checkout as your regular user:
@@ -29,7 +41,7 @@ Run from a source checkout as your regular user:
 ```
 
 The script configures `build-fedora/` with `MinSizeRel`, link-time optimization,
-and unused-section removal, then builds, runs all five test suites, validates the
+and unused-section removal, then builds, runs all seven test suites, validates the
 application desktop entry, and installs a stripped executable. A failed build or
 test stops before the live installation is changed. If the target already has
 Dzurkel installed, the script first requests shutdown through the current user's

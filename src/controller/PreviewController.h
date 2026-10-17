@@ -8,6 +8,7 @@
 #include <optional>
 
 namespace dzurkel {
+class ResourcePreparation;
 class PreviewController : public QObject {
 public:
     using Loader = std::function<PreviewData(const FileResource &, const QSize &, const Cancellation &)>;
@@ -23,7 +24,7 @@ public:
     QString fileUrl() const;
     const PreviewWindow *window() const { return &window_; }
 private:
-    struct Job { FileResource resource; QSize target; quint64 generation; };
+    struct Job { FileResource resource; QSize target; quint64 generation; QString activationToken; };
     void startPending();
     void cancelAndClear();
     // Empty document keeps Qt's PDF runtime initialized after the first PDF.
@@ -32,6 +33,7 @@ private:
     PreviewWindow window_;
     QThreadPool pool_;
     QPointer<QFutureWatcher<PreviewData>> watcher_;
+    QPointer<ResourcePreparation> preparation_;
     Loader loader_;
     Cancellation cancellation_;
     std::optional<Job> pending_;
@@ -39,5 +41,6 @@ private:
     QString fileUrl_;
     PreviewKind kind_ = PreviewKind::Cancelled;
     bool loading_ = false;
+    bool presentationPending_ = false;
 };
 } // namespace dzurkel

@@ -2,8 +2,11 @@
 
 #include <QString>
 #include <QUrl>
+#include <QJsonObject>
+#include <memory>
 
 class QFile;
+class QTemporaryDir;
 
 namespace dzurkel {
 
@@ -13,11 +16,18 @@ struct FileResource {
     QString path;
     QUrl url;
     bool informationOnly = false;
+    // Original identity stays in path/url; decoding uses an owned local snapshot.
+    QString backingPath;
+    QJsonObject metadata;
+    std::shared_ptr<QTemporaryDir> backingStore;
 };
 
 bool openPreviewFile(const FileResource &resource, QFile &file, QString &error);
 
-// No remote resolution, shell expansion, decoding, or writes to the target file.
+// Syntax/normalization only: no filesystem or network access.
+bool parseFileResource(const QString &argument, FileResource &resource, QString &error,
+                       ResourceError *failure = nullptr);
+// Synchronous filesystem validation. Use only outside the GUI/IPC thread.
 bool resolveFileResource(const QString &argument, FileResource &resource, QString &error,
                          ResourceError *failure = nullptr);
 

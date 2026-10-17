@@ -14,7 +14,7 @@ namespace dzurkel {
 
 bool openPreviewFile(const FileResource &resource, QFile &file, QString &error)
 {
-    const QByteArray path = QFile::encodeName(resource.path);
+    const QByteArray path = QFile::encodeName(resource.backingPath.isEmpty() ? resource.path : resource.backingPath);
     const int descriptor = ::open(path.constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC | O_NOFOLLOW);
     if (descriptor < 0) {
         error = QStringLiteral("File is not readable: %1 (%2)").arg(resource.path, QString::fromLocal8Bit(std::strerror(errno)));
@@ -34,14 +34,18 @@ bool openPreviewFile(const FileResource &resource, QFile &file, QString &error)
     return true;
 }
 
-bool resolveFileResource(const QString &argument, FileResource &resource, QString &error,
+bool parseFileResource(const QString &argument, FileResource &resource, QString &error,
                          ResourceError *failure)
 {
     resource = {};
     if (failure) *failure = ResourceError::InvalidUrl;
     error.clear();
     if (argument.isEmpty()) {
-        error = QStringLiteral("A local file path or file URL is required.");
+        error = QStringLiteral("A file path, file URL or SMB URL is required.");
+        return false;
+    }
+    if (argument.size() > 16384 || argument.contains(QChar::Null)) {
+        error = QStringLiteral("Resource arguments must be at most 16,384 characters and contain no NUL characters.");
         return false;
     }
 
@@ -53,9 +57,26 @@ bool resolveFileResource(const QString &argument, FileResource &resource, QStrin
             error = QStringLiteral("Malformed URL: %1").arg(url.errorString());
             return false;
         }
+        if (url.scheme().compare(QStringLiteral("smb"), Qt::CaseInsensitive) == 0) {
+            if (url.host().isEmpty() || url.path().section('/', 1, 1).isEmpty()
+                || url.userInfo(QUrl::FullyEncoded).contains(QChar(':')) || url.hasQuery() || url.hasFragment()
+                || url.port() != -1 || url.path().contains(QChar::Null)) {
+                error = QStringLiteral("Expected smb://[user@]host/share/path without passwords, port, query or fragment.");
+                return false;
+            }
+            resource.url = url.adjusted(QUrl::NormalizePathSegments);
+            if (resource.url.path().section('/', 1, 1).isEmpty()) {
+                error = QStringLiteral("An SMB share name is required.");
+                resource = {};
+                return false;
+            }
+            resource.path = resource.url.path();
+            if (failure) *failure = ResourceError::None;
+            return true;
+        }
         if (url.scheme().compare(QStringLiteral("file"), Qt::CaseInsensitive) != 0) {
             if (failure) *failure = ResourceError::UnsupportedScheme;
-            error = QStringLiteral("Unsupported URL scheme: %1. Only local files are supported.")
+            error = QStringLiteral("Unsupported URL scheme: %1. Use file or smb.")
                         .arg(url.scheme());
             return false;
         }
@@ -81,10 +102,31 @@ bool resolveFileResource(const QString &argument, FileResource &resource, QStrin
         error = QStringLiteral("File paths must not contain NUL characters.");
         return false;
     }
-    const QFileInfo info(QDir::current().absoluteFilePath(path));
-    if (!info.exists() && !info.isSymLink()) {
-        if (failure) *failure = ResourceError::NotFound;
-        error = QStringLiteral("File does not exist: %1").arg(info.absoluteFilePath());
+    resource.path = QDir::cleanPath(QDir::current().absoluteFilePath(path));
+    resource.url = QUrl::fromLocalFile(resource.path);
+    if (failure) *failure = ResourceError::None;
+    return true;
+}
+
+bool resolveFileResource(const QString &argument, FileResource &resource, QString &error,
+                         ResourceError *failure)
+{
+    if (!parseFileResource(argument, resource, error, failure)) return false;
+    if (!resource.url.isLocalFile()) {
+        error = QStringLiteral("Remote resources require asynchronous preparation.");
+        resource = {};
+        return false;
+    }
+    const QFileInfo info(resource.path);
+    struct stat status {};
+    if (::lstat(QFile::encodeName(resource.path).constData(), &status) != 0) {
+        const int code = errno;
+        if (failure) *failure = code == ENOENT || code == ENOTDIR ? ResourceError::NotFound : ResourceError::NotReadable;
+        error = code == ENOENT || code == ENOTDIR
+            ? QStringLiteral("File does not exist: %1").arg(info.absoluteFilePath())
+            : QStringLiteral("File metadata is not readable: %1 (%2)").arg(info.absoluteFilePath(),
+                QString::fromLocal8Bit(std::strerror(code)));
+        resource = {};
         return false;
     }
     resource.path = info.absoluteFilePath();
