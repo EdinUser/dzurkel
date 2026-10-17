@@ -9,7 +9,8 @@ Fedora releases, DEB, Arch and AppImage are not certified by this workflow.
 and manual dispatch. It builds in Fedora 44 containers on standard GitHub-hosted
 Ubuntu runners. The GCC job builds a native RPM and SRPM with `rpmbuild`; the
 spec's `%check` runs every registered CTest suite. Clang builds and runs CTest
-separately. A fresh Fedora container installs the binary package, verifies its
+separately. Compilation and tests run as an unprivileged build user so file
+permission checks behave like a normal desktop session. A fresh Fedora container installs the binary package, verifies its
 files, exercises preview IPC on a private bus, and checks removal.
 
 This is a container-based build, not a Mock buildroot. A future Copr/Mock pipeline
