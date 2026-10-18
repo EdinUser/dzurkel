@@ -2,8 +2,8 @@
 #include <QString>
 
 namespace dzurkel {
-enum class FileManagerIntegration { Dolphin, Nautilus, Unavailable };
-FileManagerIntegration detectFileManager(const QString &desktop, bool dolphin, bool nautilus);
+enum class FileManagerIntegration { Dolphin, Nautilus, Thunar, Unavailable };
+FileManagerIntegration detectFileManager(const QString &desktop, bool dolphin, bool nautilus, bool thunar = false);
 FileManagerIntegration detectFileManager();
 
 // Opt-in user override only; packaged/system preview providers are never edited.

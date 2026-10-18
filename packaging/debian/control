@@ -13,8 +13,8 @@ Package: dzurkel
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, qt6-wayland
 Recommends: qt6-image-formats-plugins
-Suggests: dolphin, kio-fuse, kio-extras
-Description: Quick file previews for KDE Dolphin
+Suggests: dolphin, nautilus, thunar, kio-fuse, kio-extras
+Description: Quick file previews for Dolphin, Nautilus and Thunar
  Preview images, PDFs, text and CSV/TSV/XLSX spreadsheets in a reusable
  window. Open Dzurkel Settings to configure the optional Space shortcut
- (requires Dolphin 26.04 or newer).
+ in Dolphin (26.04 or newer), Nautilus or Thunar.

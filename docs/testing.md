@@ -911,3 +911,44 @@ offscreen-only CI gap for this desktop configuration; hardware GPUs, physical
 multi-monitor/fractional-scale layouts, real Sushi fallback, other GNOME versions
 and subjective animation continuity remain separate acceptance work. The older
 rapid information/reopen stress caveat is not claimed resolved by this test work.
+
+## Thunar setup and Arch XFCE validation
+
+Thunar integration is opt-in through Settings and uses the shipped Custom Actions
+and accelerator system. The `dzurkel_thunar` suite covers XFCE detection while
+preserving KDE/GNOME choices, single-file action generation and executable quoting,
+exact original-file/permission restore, system-action defaults, conflicting Space
+bindings, unrelated edits, Thunar's XML/accelerator reformatting, malformed files,
+symlinks, incomplete and large backups, process races and cancelled restart.
+The Settings enable/restore flow is exercised without touching live Thunar state.
+
+The Arch XFCE/X11 VM with Thunar 4.20.10, Qt 6.12.0, GCC 16.2.1 and CMake 4.4.4
+passed all 15 registered suites in 25.28 seconds. Native validation used a private
+session bus, temporary Thunar profile and synthetic files. Production setup code
+generated the configuration; actual Thunar keyboard events exercised cold Space
+activation, the context-menu action, Escape/Space dismissal and multi-selection
+exclusion from Dzurkel. Both an executable path and a filename containing spaces,
+apostrophes, hash and percent characters worked, including a Unicode filename.
+Restore succeeded after Thunar generated default accelerator entries, preserving
+those defaults while removing Dzurkel's binding and setup backup.
+
+The native driver is a development experiment, not a required CI compositor job.
+CI includes the new configuration/Settings suite through ordinary CTest. The
+Fedora run of the existing preview suite hit one cold-information first-map width
+assertion during concurrent building; that suite passed on rerun without preview
+code changes. No new GNOME remapping, resizing, controller or KWin behavior was
+introduced by Thunar integration. Real XFCE Wayland and other Thunar versions
+remain outside the native validation. See [Thunar integration](thunar-integration.md).
+
+Thunar restart focus is also protected by automatic cases: process startup alone
+must not reactivate Settings, the request runs once after window readiness, and
+closing/reopening, minimizing/restoring or destroying Settings cancels it. The
+opt-in `realThunarRestartReturnsFocusToSettings` case passed on the native Arch
+XFCE/X11 desktop (3 passed, 0 failed, 0 skipped; 1.381s). It launches a separate
+Thunar on a private bus and profile, accepts the real Settings restart flow, and
+checks both a single focus request and that Settings is actually active afterward.
+The user's normal Thunar/configuration are outside this test. The ordinary CI
+run skips this native-only case while retaining the deterministic cancellation
+checks. Window readiness uses existing public KF WindowSystem X11 support to
+identify the active process; no window-control dependency or compositor script
+is introduced, and Dolphin's focus path is unchanged.

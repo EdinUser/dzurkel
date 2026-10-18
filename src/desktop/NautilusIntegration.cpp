@@ -38,19 +38,22 @@ bool manifest(const QString &path, QJsonObject &object)
 }
 constexpr auto privatePermissions = QFile::ReadOwner | QFile::WriteOwner;
 }
-FileManagerIntegration detectFileManager(const QString &desktop, bool dolphin, bool nautilus)
+FileManagerIntegration detectFileManager(const QString &desktop, bool dolphin, bool nautilus, bool thunar)
 {
     const auto parts = desktop.toUpper().split(':');
     if (parts.contains(QStringLiteral("GNOME"))) return nautilus ? FileManagerIntegration::Nautilus : FileManagerIntegration::Unavailable;
     if (parts.contains(QStringLiteral("KDE"))) return dolphin ? FileManagerIntegration::Dolphin : FileManagerIntegration::Unavailable;
-    if (dolphin != nautilus) return dolphin ? FileManagerIntegration::Dolphin : FileManagerIntegration::Nautilus;
+    if (parts.contains(QStringLiteral("XFCE"))) return thunar ? FileManagerIntegration::Thunar : FileManagerIntegration::Unavailable;
+    if (int(dolphin) + int(nautilus) + int(thunar) == 1)
+        return dolphin ? FileManagerIntegration::Dolphin : nautilus ? FileManagerIntegration::Nautilus : FileManagerIntegration::Thunar;
     return FileManagerIntegration::Unavailable;
 }
 FileManagerIntegration detectFileManager()
 {
     return detectFileManager(qEnvironmentVariable("XDG_CURRENT_DESKTOP"),
         !QStandardPaths::findExecutable(QStringLiteral("dolphin")).isEmpty(),
-        !QStandardPaths::findExecutable(QStringLiteral("nautilus")).isEmpty());
+        !QStandardPaths::findExecutable(QStringLiteral("nautilus")).isEmpty(),
+        !QStandardPaths::findExecutable(QStringLiteral("thunar")).isEmpty());
 }
 NautilusIntegration::NautilusIntegration()
     : NautilusIntegration(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation),

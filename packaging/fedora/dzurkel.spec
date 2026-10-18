@@ -1,7 +1,7 @@
 Name:           dzurkel
-Version:        0.6.1
+Version:        0.6.2
 Release:        1%{?dist}
-Summary:        Quick file previews for KDE Dolphin
+Summary:        Quick file previews for Dolphin, Nautilus and Thunar
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/EdinUser/dzurkel
@@ -22,12 +22,15 @@ BuildRequires:  desktop-file-utils
 Requires:       qt6-qtwayland
 Recommends:     qt6-qtimageformats
 Suggests:       dolphin >= 26.04
+Suggests:       nautilus
+Suggests:       thunar
 Suggests:       kio-fuse
 Suggests:       kio-extras
 
 %description
 Dzurkel previews images, PDFs, text and CSV/TSV/XLSX spreadsheets in a reusable
-window. It integrates with KDE Dolphin and supports an optional Space shortcut.
+window. It integrates with Dolphin, Nautilus and Thunar through optional Space
+shortcut setup.
 Open Dzurkel Settings after installation to configure the shortcut for your user.
 
 %prep
@@ -58,6 +61,10 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/kio/servicemenus/dzurkel.desktop
 
 %changelog
+* Sun Oct 18 2026 Dzurkel contributors - 0.6.2-1
+- Add reversible Thunar Space/context-menu setup and Settings restart focus.
+- Publish runtime installers with a concise checksum manifest.
+
 * Sun Oct 18 2026 Dzurkel contributors - 0.6.1-1
 - Add opt-in Nautilus Space previews and GNOME Wayland placement fixes.
 

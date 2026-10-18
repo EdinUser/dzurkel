@@ -1,4 +1,4 @@
-# Dzurkel — quick file previews for KDE Dolphin
+# Dzurkel — quick file previews for Linux
 
 **Peek-a-Dzurkel!** Preview a file without opening a full application.
 Dzurkel is a Qt 6 file previewer for Linux, built for Fedora, KDE Plasma and
@@ -72,6 +72,11 @@ If another provider such as Sushi is running, close its preview and quit it
 before enabling Dzurkel. Setup does not change system packages or global keys.
 See [GNOME and Nautilus testing](docs/gnome-testing.md) for scope and validation.
 
+On XFCE with Thunar installed, Settings shows **Thunar shortcut**. Enable setup
+there to add Space previews and **Preview with Dzurkel** to Thunar's context menu.
+Finish file operations before allowing Thunar to restart. Setup is reversible
+and preserves unrelated actions and shortcuts. See [Thunar integration](docs/thunar-integration.md).
+
 ## Compatibility
 
 | Environment or location | Status |
@@ -79,6 +84,7 @@ See [GNOME and Nautilus testing](docs/gnome-testing.md) for scope and validation
 | Fedora 44, KDE Plasma 6, Wayland | Primary development and desktop validation environment |
 | Dolphin 26.04+ | Target for Space shortcut integration |
 | Ubuntu 26.04.1, GNOME 50, Nautilus 50.2.2, Wayland | VM validation; opt-in Space previews for local files |
+| Arch Linux, XFCE 4.20, Thunar 4.20.10, X11 | VM validation; opt-in Space and context-menu previews for single local files |
 | Other distributions or desktops | Not yet validated; source builds may work |
 | Local files and mounted shares | Supported |
 | Direct SMB URLs | Optional KIO-FUSE/KIO workers required; authenticate in Dolphin |

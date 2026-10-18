@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.6.1 LANGUAGES CXX)
+project(Dzurkel VERSION 0.6.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,6 +25,7 @@ add_library(dzurkel_core STATIC
     src/desktop/DolphinShortcuts.cpp
     src/desktop/DolphinSession.cpp
     src/desktop/NautilusIntegration.cpp
+    src/desktop/ThunarIntegration.cpp
     src/ipc/NautilusPreviewService.cpp
     src/ipc/PreviewService.cpp
     src/preview/PreviewRegistry.cpp
@@ -118,6 +119,10 @@ endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+    add_executable(dzurkel_thunar_tests tests/integration/ThunarTest.cpp)
+    target_link_libraries(dzurkel_thunar_tests PRIVATE dzurkel_core Qt6::Test)
+    add_test(NAME dzurkel_thunar COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_thunar_tests>)
+    set_tests_properties(dzurkel_thunar PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
     add_executable(dzurkel_nautilus_adapter_tests tests/integration/NautilusTest.cpp)
     target_link_libraries(dzurkel_nautilus_adapter_tests PRIVATE dzurkel_core Qt6::Test)
     target_compile_definitions(dzurkel_nautilus_adapter_tests PRIVATE DZURKEL_EXECUTABLE="$<TARGET_FILE:dzurkel>")

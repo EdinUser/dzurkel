@@ -5,6 +5,7 @@
 #include "preview/PreviewLibrary.h"
 #include <QCheckBox>
 #include <QEvent>
+#include <QElapsedTimer>
 #include <QDialogButtonBox>
 #include <QFutureWatcher>
 #include <QGridLayout>
@@ -18,6 +19,8 @@
 #include <QShowEvent>
 #include <QSignalBlocker>
 #include <QStyle>
+#include <QThread>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWindow>
@@ -56,8 +59,8 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     : SettingsDialog(parent, DolphinShortcuts{}, DolphinSession{}, {}, detectFileManager()) {}
 SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
                                DolphinSession session, std::function<bool()> reopen,
-                               FileManagerIntegration integration, NautilusPreviewService *nautilus)
-    : QDialog(parent), shortcuts_(std::move(shortcuts)), integration_(integration), nautilus_(nautilus), session_(std::move(session)),
+                               FileManagerIntegration integration, NautilusPreviewService *nautilus, ThunarIntegration thunar)
+    : QDialog(parent), shortcuts_(std::move(shortcuts)), integration_(integration), nautilus_(nautilus), thunar_(std::move(thunar)), session_(std::move(session)),
       reopen_(reopen ? std::move(reopen) : [] { return QProcess::startDetached(QStringLiteral("dolphin"), QStringList{}); })
 {
     setObjectName(QStringLiteral("settingsDialog"));
@@ -72,8 +75,10 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     heading->addWidget(icon);
     const bool dolphin = integration_ == FileManagerIntegration::Dolphin;
     const bool nautilusSelected = integration_ == FileManagerIntegration::Nautilus;
+    const bool thunarSelected = integration_ == FileManagerIntegration::Thunar;
     const QString headingText = dolphin ? QStringLiteral("Dolphin shortcut")
-        : nautilusSelected ? QStringLiteral("Nautilus shortcut") : QStringLiteral("File manager shortcut");
+        : nautilusSelected ? QStringLiteral("Nautilus shortcut")
+        : thunarSelected ? QStringLiteral("Thunar shortcut") : QStringLiteral("File manager shortcut");
     auto *title = label(this, headingText);
     title->setObjectName(QStringLiteral("integrationTitle"));
     auto font = title->font();
@@ -83,6 +88,7 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     heading->addStretch();
     heading->addWidget(information(this, QStringLiteral("shortcutInfo"), headingText,
         dolphin ? QStringLiteral("Preview selected files with Space in Dolphin 26.04 or newer. If Space stops working while the context-menu action still works, close all Dolphin windows and reopen Dolphin. This replaces Space selection and conflicting Space shortcuts; alternate bindings are kept. Restore previous shortcuts uses the backup to undo only Dzurkel’s changes, preserving unrelated toolbar and menu edits.")
+        : thunarSelected ? QStringLiteral("Preview one selected local file with Space or Preview with Dzurkel in Thunar’s context menu. Setup uses Thunar’s built-in custom actions and shortcuts, with no extra plugin or global shortcut. Conflicting Space bindings are backed up. Restore removes Dzurkel’s action and restores those bindings, preserving unrelated edits. Thunar must restart when applying or restoring setup.")
         : QStringLiteral("Preview selected local files with Space in Nautilus (Files). Dzurkel becomes the user’s Nautilus preview provider. Arrow navigation follows the selection in Files; Alt+arrows work while reading documents. Restore returns the previous user registration, allowing a system provider such as Sushi to be used again. No GNOME extension or global shortcut change is needed.")));
     layout->addLayout(heading);
     status_ = label(this, {});
@@ -92,6 +98,7 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     shortcutChanges_->setObjectName(QStringLiteral("shortcutChanges"));
     layout->addWidget(shortcutChanges_);
     auto *restart = label(this, dolphin ? QStringLiteral("If Dolphin is open, you’ll be asked to restart it.")
+        : thunarSelected ? QStringLiteral("Finish file operations first. If Thunar is open, you’ll be asked to restart it.")
         : QStringLiteral("If another preview provider is running, close its preview and quit it before enabling Dzurkel."), true);
     restart->setVisible(integration_ != FileManagerIntegration::Unavailable);
     if (dolphin) restart->setToolTip(QStringLiteral("Dolphin closes before the shortcut file is updated, so it cannot overwrite the change while saving its own settings."));
@@ -99,9 +106,10 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     auto *actions = new QHBoxLayout;
     apply_ = new QPushButton(QStringLiteral("Enable Space shortcut…"), this);
     apply_->setObjectName(QStringLiteral("useSpace"));
-    restore_ = new QPushButton(dolphin ? QStringLiteral("Restore previous shortcuts…") : QStringLiteral("Restore previous previews"), this);
+    restore_ = new QPushButton(dolphin || thunarSelected ? QStringLiteral("Restore previous shortcuts…") : QStringLiteral("Restore previous previews"), this);
     restore_->setObjectName(QStringLiteral("restoreShortcuts"));
-    restore_->setToolTip(dolphin ? QStringLiteral("Restore only the shortcut entries changed by Dzurkel. Unrelated toolbar and menu changes are preserved.")
+    restore_->setToolTip(thunarSelected ? QStringLiteral("Remove Dzurkel’s Thunar action and restore its shortcut changes. Unrelated actions and shortcuts are preserved.")
+        : dolphin ? QStringLiteral("Restore only the shortcut entries changed by Dzurkel. Unrelated toolbar and menu changes are preserved.")
         : QStringLiteral("Restore the previous user preview registration. System providers are preserved."));
     if (nautilusSelected) apply_->setText(QStringLiteral("Enable Space shortcut"));
     apply_->setAutoDefault(false);
@@ -179,6 +187,7 @@ void SettingsDialog::reject()
 void SettingsDialog::changeShortcuts(bool restore)
 {
     if (busy_) return;
+    if (integration_ == FileManagerIntegration::Thunar) { changeThunar(restore); return; }
     if (integration_ != FileManagerIntegration::Dolphin) {
         QString error;
         if (integration_ == FileManagerIntegration::Nautilus && nautilus_) nautilus_->configure(!restore, error);
@@ -223,6 +232,79 @@ void SettingsDialog::changeShortcuts(bool restore)
     });
     const auto session = session_;
     watcher->setFuture(QtConcurrent::run([session] { return session.inspect(); }));
+}
+void SettingsDialog::changeThunar(bool restore)
+{
+    cancelPendingFocus();
+    const bool restart = thunar_.running();
+    if (restart) {
+        QMessageBox confirmation(QMessageBox::Question, QStringLiteral("Restart Thunar?"),
+            QStringLiteral("Finish all file operations before continuing. Thunar will close to apply this change, then reopen. Its current windows and tabs may not be restored."),
+            QMessageBox::Cancel, this);
+        confirmation.setObjectName(QStringLiteral("thunarRestartConfirmation"));
+        auto *accept = confirmation.addButton(QStringLiteral("Restart Thunar and apply"), QMessageBox::AcceptRole);
+        confirmation.setDefaultButton(QMessageBox::Cancel);
+        confirmation.exec();
+        if (confirmation.clickedButton() != accept) return;
+    }
+    focusCancelled_ = std::make_shared<std::atomic_bool>(false);
+    busy_ = true;
+    apply_->setEnabled(false);
+    restore_->setEnabled(false);
+    buttons_->setEnabled(false);
+    status_->setText(QStringLiteral("Updating Thunar preview setup…"));
+    auto setup = thunar_;
+    auto *watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, restart] {
+        const auto error = watcher->result();
+        watcher->deleteLater();
+        finish(error);
+        if (restart && error.isEmpty()) restoreThunarFocusAfterRestart();
+        else cancelPendingFocus();
+    });
+    watcher->setFuture(QtConcurrent::run([setup, restore, restart]() mutable {
+        QString error;
+        if (restart) {
+            QProcess quit;
+            quit.start(QStringLiteral("thunar"), {QStringLiteral("--quit")});
+            if (!quit.waitForFinished(5000) || quit.exitStatus() != QProcess::NormalExit || quit.exitCode() != 0)
+                return QStringLiteral("Thunar could not close normally. No setup changes were made.");
+            for (int i = 0; i < 50 && setup.running(); ++i) QThread::msleep(100);
+        }
+        if (restore) setup.restore(error); else setup.enable(error);
+        if (restart && !setup.running() && !QProcess::startDetached(QStringLiteral("thunar"), QStringList{}))
+            error += (error.isEmpty() ? QString() : QStringLiteral("\n\n")) + QStringLiteral("Thunar could not reopen. Open it from your application menu.");
+        return error;
+    }));
+}
+void SettingsDialog::restoreThunarFocusAfterRestart()
+{
+    const auto cancelled = focusCancelled_;
+    if (!cancelled || *cancelled) return;
+    auto *timer = new QTimer(this);
+    timer->setInterval(50);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    const auto setup = thunar_;
+    connect(timer, &QTimer::timeout, this, [this, timer, elapsed, cancelled, setup] {
+        if (*cancelled || elapsed.elapsed() >= 10000 || !isVisible() || isMinimized()
+            || (parentWidget() && parentWidget()->isMinimized())) {
+            *cancelled = true;
+            timer->stop();
+            timer->deleteLater();
+            return;
+        }
+        // Process startup is too early: wait until the reopened file manager
+        // has actually taken focus, then return it once to this Settings dialog.
+        if (!setup.activeWindow()) return;
+        timer->stop();
+        timer->deleteLater();
+        if (cancelled->exchange(true)) return;
+        raise();
+        activatePreview(windowHandle(), {}, false);
+        emit restartFocusRequested();
+    });
+    timer->start();
 }
 void SettingsDialog::applyChange(bool restore, bool reopen)
 {
@@ -282,13 +364,27 @@ void SettingsDialog::finish(const QString &error)
     buttons_->setEnabled(true);
     refresh();
     if (!error.isEmpty()) QMessageBox::warning(this, integration_ == FileManagerIntegration::Dolphin
-        ? QStringLiteral("Dolphin shortcut") : QStringLiteral("Nautilus shortcut"), error);
+        ? QStringLiteral("Dolphin shortcut") : integration_ == FileManagerIntegration::Thunar
+        ? QStringLiteral("Thunar shortcut") : QStringLiteral("Nautilus shortcut"), error);
 }
 void SettingsDialog::refresh()
 {
     {
         const QSignalBlocker blocker(experimentalSftp_);
         experimentalSftp_->setChecked(ResourceAccessPolicy::experimentalSftpEnabled());
+    }
+    if (integration_ == FileManagerIntegration::Thunar) {
+        const bool active = thunar_.enabled(), backup = thunar_.hasBackup();
+        status_->setText(active ? QStringLiteral("Space and context-menu previews enabled in Thunar")
+            : backup ? QStringLiteral("Thunar preview settings changed after setup. Review them before restoring.")
+            : QStringLiteral("Space and context-menu previews not enabled in Thunar"));
+        shortcutChanges_->setText(QStringLiteral("Use Space or Preview with Dzurkel on one selected local file. Conflicting Space shortcuts will be backed up for restore."));
+        shortcutChanges_->setVisible(!backup);
+        apply_->setVisible(!backup);
+        apply_->setEnabled(!busy_ && !backup);
+        restore_->setVisible(backup);
+        restore_->setEnabled(!busy_ && backup);
+        return;
     }
     if (integration_ != FileManagerIntegration::Dolphin) {
         const auto registration = nautilus_ ? nautilus_->integration() : NautilusIntegration{};

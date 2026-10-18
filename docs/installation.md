@@ -10,7 +10,7 @@ installs a prebuilt package and resolves runtime dependencies through DNF.
 ## Install an RPM
 
 The first package target is Fedora 44 x86_64. Download the matching binary RPM
-from [GitHub Releases](https://github.com/EdinUser/dzurkel/releases) when available.
+from [GitHub Releases](https://github.com/EdinUser/dzurkel/releases).
 Development RPMs are also available as artifacts of successful
 [Fedora CI runs](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml);
 these are testing builds, not published releases.
@@ -50,25 +50,22 @@ Ubuntu, Debian 12 and Arch derivatives are not tested targets. Arch is rolling:
 fully update the system before installing; older Qt/KDE libraries may not satisfy
 a newly built binary.
 
-Download the corresponding artifact from a successful
-[Linux packages CI run](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
-or from Releases when available. Extract the Actions ZIP first. Verify the
-matching manifest in the download directory:
+Download your installer and `SHA256SUMS` from
+[GitHub Releases](https://github.com/EdinUser/dzurkel/releases). Verify the
+downloaded installer in the same directory:
 
 ```bash
-sha256sum --check SHA256SUMS-debian-13-amd64
-# Or, for Arch:
-sha256sum --check SHA256SUMS-arch-x86_64
+sha256sum --check --ignore-missing SHA256SUMS
 ```
 
-Manifests cover the binary and corresponding source/build files; download all
-listed files for a complete check. Packages are unsigned and checksums are not
-signatures. There is no automatic Dzurkel update repository.
+The release contains only the three runtime installers and one checksum manifest;
+GitHub also provides its standard source archive links. Packages are unsigned and
+checksums are not signatures. There is no automatic Dzurkel update repository.
 
 On Debian 13, install the binary (not the optional debug package):
 
 ```bash
-sudo apt install ./dzurkel_0.6.1-1_amd64.deb
+sudo apt install ./dzurkel_0.6.2-1_amd64.deb
 dzurkel --settings
 ```
 
@@ -76,13 +73,15 @@ On current Arch Linux:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -U ./dzurkel-0.6.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./dzurkel-0.6.2-1-x86_64.pkg.tar.zst
 dzurkel --settings
 ```
 
-Use the actual filenames downloaded. The Arch artifact also contains the source
-archive and a PKGBUILD with its checksum for rebuilding with `makepkg`.
-Debian artifacts include the `.dsc`, upstream archive and Debian source tarball.
+Use the actual filenames downloaded. Developers can obtain build metadata,
+debug packages and source packaging from successful
+[Actions artifacts](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml).
+Extract those ZIPs first and use their distribution-specific checksum manifests;
+those manifests cover all files in each artifact.
 
 Both packages install `/usr/bin/dzurkel`, the hidden application identity
 `/usr/share/applications/dzurkel.desktop`, the visible **Dzurkel Settings**

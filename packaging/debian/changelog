@@ -1,3 +1,11 @@
+dzurkel (0.6.2-1) trixie; urgency=medium
+
+  * Add reversible Thunar Space and context-menu setup in Settings.
+  * Return focus to Settings after Thunar restarts.
+  * Publish runtime installers with a concise checksum manifest.
+
+ -- Dzurkel contributors <noreply@github.com>  Sun, 18 Oct 2026 16:45:00 +0000
+
 dzurkel (0.6.1-1) trixie; urgency=medium
 
   * Add opt-in Nautilus Space previews with reversible Settings integration.

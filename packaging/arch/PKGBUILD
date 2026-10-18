@@ -1,7 +1,7 @@
 pkgname=dzurkel
-pkgver=0.6.1
+pkgver=0.6.2
 pkgrel=1
-pkgdesc='Quick file previews for KDE Dolphin'
+pkgdesc='Quick file previews for Dolphin, Nautilus and Thunar'
 arch=('x86_64')
 url='https://github.com/EdinUser/dzurkel'
 license=('GPL-3.0-or-later')
@@ -9,6 +9,8 @@ depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-webengine' 'qt6-wayland' 'kwindowsys
 makedepends=('cmake')
 checkdepends=('dbus' 'python' 'desktop-file-utils')
 optdepends=('dolphin: file manager integration (26.04+ for Space setup)'
+            'nautilus: GNOME Space preview integration'
+            'thunar: XFCE Space and context-menu integration'
             'qt6-imageformats: additional image formats'
             'kio-fuse: direct network URL previews'
             'kio-extras: SMB and SFTP workers')

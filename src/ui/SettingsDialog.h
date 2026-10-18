@@ -6,6 +6,7 @@
 #include "desktop/DolphinShortcuts.h"
 #include "desktop/DolphinSession.h"
 #include "desktop/NautilusIntegration.h"
+#include "desktop/ThunarIntegration.h"
 
 class QLabel;
 class QPushButton;
@@ -20,7 +21,7 @@ public:
     SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
                    DolphinSession session = DolphinSession(), std::function<bool()> reopen = {},
                    FileManagerIntegration integration = FileManagerIntegration::Dolphin,
-                   NautilusPreviewService *nautilus = nullptr);
+                   NautilusPreviewService *nautilus = nullptr, ThunarIntegration thunar = ThunarIntegration());
     ~SettingsDialog() override;
 signals:
     void restartFocusRequested();
@@ -31,13 +32,16 @@ protected:
 private:
     void refresh();
     void changeShortcuts(bool restore);
+    void changeThunar(bool restore);
     void applyChange(bool restore, bool reopen);
     void finish(const QString &error = {});
     void restoreFocusAfterRestart();
+    void restoreThunarFocusAfterRestart();
     void cancelPendingFocus();
     DolphinShortcuts shortcuts_;
     FileManagerIntegration integration_;
     NautilusPreviewService *nautilus_;
+    ThunarIntegration thunar_;
     DolphinSession session_;
     std::function<bool()> reopen_;
     bool busy_ = false;
