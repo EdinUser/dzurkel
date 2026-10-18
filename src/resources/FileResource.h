@@ -16,6 +16,8 @@ struct FileResource {
     QString path;
     QUrl url;
     bool informationOnly = false;
+    // A media source is opened on demand by the playback helper, not snapshotted.
+    bool streaming = false;
     // Original identity stays in path/url; decoding uses an owned local snapshot.
     QString backingPath;
     QJsonObject metadata;

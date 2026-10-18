@@ -29,7 +29,7 @@ resize and zoom do not trigger another automatic fit for that file; explicitly
 maximized/fullscreen windows retain their state. New images choose their own
 natural size. GIF playback controls are included in the size calculation.
 
-Information-only views shrink to fit their icon and text. Both information and
+Information-only views shrink to fit their icon and text. Information, audio and
 image windows temporarily replace the document reading size; returning to PDF,
 text or a table restores that size and maximized state. Resizing these temporary
 views does not replace the remembered document size. On opening a hidden window,
@@ -49,6 +49,7 @@ remain asynchronous, without GUI-thread source-file reads.
 | --- | --- |
 | Images | PNG, JPEG, and BMP; additional formats depend on installed Qt image readers. |
 | PDF | First page on open, fit-to-width display, page count, and multipage scrolling. |
+| Audio | MP3, FLAC, Ogg/Vorbis, Opus, WAV, AAC, M4A (AAC/ALAC) and audio-only MP4, subject to installed Qt decoding support. |
 | CSV / TSV | Read-only table grid; literal values, quoted fields and bounded complete records. |
 | XLSX | Same table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
 | Text | Plain text, logs, JSON, XML, and source files identified as text by Qt. |
@@ -67,6 +68,26 @@ Delays are bounded to 20 ms–60 seconds. Dismissal/replacement releases animati
 frames and stops playback. Other animated image formats still show a static frame.
 Optional formats such as WebP, GIF, and TIFF require the matching Qt runtime
 plugins (Fedora's `qt6-qtimageformats` provides additional readers).
+
+Audio starts playing when its preview opens. Its compact view shows available
+cover art, title, artist and album, with filename/icon fallbacks. Play/Pause (`P`),
+a seek bar, time, volume and mute are available; seeking is enabled only when the
+backend supports it. Volume and mute are remembered within the resident process.
+Clicking the seek-bar track jumps directly to the selected time; clicking the
+volume track sets that level. Both sliders take keyboard focus on click, so
+plain arrows adjust that control rather than browsing files. Dragging a handle
+retains the normal slider behavior, and Alt+arrows still browse files.
+Space/Shift+Space/Escape close the preview, including when a playback control has
+focus. Playback stops on dismissal, replacement or end of track; files do not
+automatically advance. Metadata is shown literally, and available codec/bitrate
+details appear in the footer and file information.
+
+Audio reads and seeks through an isolated helper without copying the complete
+file. Unsupported decoding, invalid media and failed/timed-out reads stop playback
+and show file information with an explanation. No codecs are installed, no
+transcoding is attempted, and package advice is not guessed. Files with moving
+video tracks currently show an explanation instead of playing only their audio.
+See the shared [audio/video policy](preview-library.md#audio-and-video-playback-policy).
 
 PDF search, annotations, editing, printing, and password entry are not supported.
 Password-protected, damaged, oversized, or unsupported documents show an
@@ -97,8 +118,9 @@ information view rather than a text dump.
   explains this. No zoom-sized image bitmap is allocated. Text font zoom is deferred.
 - Opening/replacing a file resets zoom to fit; resizing while fitted recomputes fit.
 - **Previous**/**Next** and Alt+arrows browse sibling files for every provider.
-  Plain Left/Right also browse images and information views. Plain Up/Down browse
-  fitted images and information views; in manually zoomed images they scroll.
+  Plain Left/Right also browse images, audio and information views. Plain Up/Down browse
+  fitted images, audio and information views; in manually zoomed images they scroll.
+  Focused audio sliders use plain arrows for seeking/volume; Alt+arrows still browse.
   Text and PDF keep their normal unmodified arrow behavior. Holding a navigation key does not skip
   through multiple files automatically. Space/Shift+Space/Escape still dismiss.
 
@@ -146,6 +168,11 @@ Limits are configured in the provider source files:
   lines. A multibyte character cut off at the byte limit is omitted safely.
 - PDF: at most 64 MiB and 10,000 pages. File loading happens on a worker;
   `QPdfView` renders and scrolls the accepted document.
+- Audio: no whole-file size/copy limit; one outstanding read of at most 64 KiB,
+  with a two-second source-read deadline. Opening/loading has a 30-second deadline
+  per phase. At most two source helpers may exist while cancellation is reaped.
+  Application-thread reads are rejected. Qt controls decoder buffering and
+  metadata/artwork decoding; the source budget is not a whole-process memory cap.
 - Loading: one active worker and one pending request. New requests replace the
   pending one, and generation checks discard superseded results. Dismissal
   cancels display of unfinished work and releases the visible content.

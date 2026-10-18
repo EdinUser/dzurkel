@@ -58,10 +58,13 @@ Settings leaves the service resident; `dzurkel --quit` stops it.
   that pending presentation too.
 - `FileUrl` (string): the last accepted URL; retained while hidden.
 - `Loading` (boolean): whether the current preview is being prepared.
-- `PreviewKind` (string): `loading`, `image`, `pdf`, `text`, `table`, `information`, or
+- `PreviewKind` (string): `loading`, `image`, `pdf`, `text`, `table`, `audio`, `information`, or
   `none` (hidden/cleared).
 
 Decoder failure produces an `information` preview with an explanation.
+For audio, `Loading` covers resource preparation; the `audio` view can still be
+loading or buffering playback. A later playback failure changes its kind to
+`information` without changing the requested URL.
 Directory, link, and special-object requests are accepted as metadata-only
 previews. Properties do not currently emit change notifications.
 

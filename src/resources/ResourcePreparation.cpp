@@ -111,7 +111,10 @@ void ResourcePreparation::start(const FileResource &resource)
         if (object.contains(QStringLiteral("error"))) { finish(object.value(QStringLiteral("error")).toString()); return; }
         resource_.metadata = object;
         resource_.informationOnly = object.value(QStringLiteral("informationOnly")).toBool();
-        if (!resource_.informationOnly)
+        resource_.streaming = object.value(QStringLiteral("streaming")).toBool() && !resource_.informationOnly;
+        if (resource_.streaming)
+            resource_.backingStore.reset();
+        else if (!resource_.informationOnly)
             resource_.backingPath = resource_.backingStore->filePath(snapshotName(resource_));
         finish();
     });
@@ -176,6 +179,12 @@ int prepareResourceSnapshot(const QString &url, const QString &directory)
     const auto capability = PreviewLibrary::capability(PreviewLibrary::select(input, mime, original.path));
     input.seek(0);
     if (!capability) return report(object);
+    if (capability->access == SourceAccess::Streaming) {
+        object.insert(QStringLiteral("streaming"), true);
+        object.insert(QStringLiteral("informationOnly"), false);
+        object.insert(QStringLiteral("reader"), capability->id);
+        return report(object);
+    }
     const qint64 limit = capability->sourceLimit;
     const bool complete = capability->access == SourceAccess::CompleteSnapshot;
     if (input.size() > limit && complete) {

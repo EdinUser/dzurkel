@@ -5,6 +5,7 @@
 #include "providers/ImagePreviewProvider.h"
 #include "providers/PdfPreviewProvider.h"
 #include "providers/TextPreviewProvider.h"
+#include "providers/AudioPreviewProvider.h"
 #include "readers/CsvReader.h"
 #include <QFile>
 #include <QFileInfo>
@@ -19,6 +20,9 @@ QList<ReaderCapability> PreviewLibrary::readers()
     formats.removeDuplicates();
     std::sort(formats.begin(), formats.end());
     return {
+        {QStringLiteral("audio"), QStringLiteral("Audio"), QStringLiteral("audio-x-generic"), QStringLiteral("audioInfo"),
+         QStringLiteral("Read-only streaming previews for MP3, FLAC, Ogg/Vorbis, Opus, WAV, AAC, M4A and audio-only MP4. Playback depends on the installed Qt media backend and codecs. Play/pause, seeking, volume and mute; Space closes the preview. Unsupported or damaged files show an error. No codecs are installed and no whole-file copy is made."),
+         SourceAccess::Streaming, 0},
         {QStringLiteral("image"), QStringLiteral("Images"), QStringLiteral("image-x-generic"), QStringLiteral("imageInfo"),
          QStringLiteral("Available image readers: %1. Actual support depends on the file and installed Qt plugins. Images fit without enlargement; GIFs play with bounded frames and Pause/Play. Other animations show a static frame.").arg(formats.join(QStringLiteral(", "))),
          SourceAccess::CompleteSnapshot, 64 * 1024 * 1024},
@@ -51,6 +55,7 @@ QString PreviewLibrary::select(QFile &file, const QMimeType &mime, const QString
     }
     file.seek(0);
     if (image || ImagePreviewProvider().supports(mime)) return QStringLiteral("image");
+    if (AudioPreviewProvider::accepts(mime, originalPath)) return QStringLiteral("audio");
     const auto suffix = QFileInfo(originalPath).suffix().toLower();
     if (XlsxPreviewProvider().supports(mime) || suffix == QStringLiteral("xlsx")) return QStringLiteral("xlsx");
     if (CsvPreviewProvider().supports(mime) || suffix == QStringLiteral("csv") || suffix == QStringLiteral("tsv"))
@@ -65,6 +70,7 @@ std::unique_ptr<PreviewProvider> PreviewLibrary::createReader(const QString &id)
     if (id == QStringLiteral("csv")) return std::make_unique<CsvPreviewProvider>();
     if (id == QStringLiteral("xlsx")) return std::make_unique<XlsxPreviewProvider>();
     if (id == QStringLiteral("text")) return std::make_unique<TextPreviewProvider>();
+    if (id == QStringLiteral("audio")) return std::make_unique<AudioPreviewProvider>();
     return {};
 }
 }

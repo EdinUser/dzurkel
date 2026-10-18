@@ -13,7 +13,7 @@ class QWidget;
 namespace dzurkel {
 struct TabularDocument;
 using Cancellation = std::shared_ptr<std::atomic_bool>;
-enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Information };
+enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Audio, Information };
 
 struct PreviewData {
     PreviewKind kind = PreviewKind::Information;
@@ -26,6 +26,7 @@ struct PreviewData {
     QString linkTarget;
     QString message;
     QString detail;
+    QString mediaSummary;
     QImage image;
     QSize imageSize; // Oriented source dimensions; decoded pixels remain bounded.
     QList<QImage> animationFrames;

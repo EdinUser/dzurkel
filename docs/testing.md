@@ -952,3 +952,71 @@ run skips this native-only case while retaining the deterministic cancellation
 checks. Window readiness uses existing public KF WindowSystem X11 support to
 identify the active process; no window-control dependency or compositor script
 is introduced, and Dolphin's focus path is unchanged.
+
+## Audio integration — Fedora 44, Qt 6.11.2
+
+The normal build passed all 17 registered suites after audio integration. The
+opt-in build, which adds the standalone playback probe suite, also passed its
+18-suite regression run. The final integrated audio, source and standalone
+playback suites passed AddressSanitizer/UndefinedBehaviorSanitizer checks;
+leak detection was disabled for external Qt runtime caches.
+
+Read-only, muted checks against local music passed for MP3 and M4A, including
+Dolby Digital Plus audio in M4A, embedded cover art and Cyrillic metadata/paths.
+The same music check passed on native KDE Wayland with an isolated session bus;
+the captured preview was visually inspected. Source sizes and modification
+times remained unchanged. The tested backend was Qt's FFmpeg backend using
+FFmpeg 8.1.3; other Qt/backend combinations remain separate compatibility work.
+
+The integrated widget also passed generated fixtures for MP3, FLAC, Vorbis in
+OGG/OGA, Opus, PCM WAV, AAC/ALAC M4A, standalone AAC and audio-only MP4. A file
+with moving video showed an information error instead of playing only its audio.
+Controls, forward/backward seeking, immediate stop on replacement/dismissal,
+obsolete-result rejection and truncation during playback were checked. Source
+tests verify bounded range reads, stalled-read cancellation, helper limits and
+cleanup; the staged-install test serves byte ranges through the installed
+executable's internal mode without the experiment helper.
+
+To repeat optional local coverage, provide the read-only music root and the
+directory produced by `tests/experiments/run_media_matrix.py`:
+
+```bash
+DZURKEL_TEST_MUSIC_ROOT="$HOME/Music" \
+DZURKEL_TEST_AUDIO_FIXTURES="$PWD/build-media/media-results" \
+ctest --test-dir build -R '^dzurkel_audio$' --output-on-failure
+```
+
+Without those variables, personal-library and generated-format cases are skipped.
+Playback cases requiring an output device are skipped on headless systems;
+source, selection and invalid-media tests still run. Real network-disconnection
+recovery testing is deferred; failed or timed-out reads stop and show an error.
+No file-manager implementation changed for audio integration.
+
+### Slider clicks and keyboard focus
+
+The slider follow-up makes left-clicking a track select that position directly,
+instead of taking a small page step. Both seek and volume sliders receive
+keyboard focus on click. Handle dragging keeps Qt's normal behavior and styling.
+
+`AudioTest::playbackControlsAndDismissalReleaseSource` exercises actual mouse
+clicks and key events against the integrated preview. It verifies that:
+
+- Clicking three quarters along the seek track moves playback to the expected
+  region of a synthetic 90-second WAV and gives the seek slider focus.
+- Clicking the volume track selects the expected level and transfers focus to
+  the volume slider; Right then increments its value.
+- Plain arrows on either slider do not request file navigation, while Right
+  outside a slider still browses files.
+- Space on a playback control dismisses the preview and releases the player.
+
+After this change, the audio regression suite passed (2.21 seconds), and the
+control case passed separately on native KDE Wayland (0.825 seconds). Playback
+was muted. The earlier full-suite and sanitizer results above belong to the
+initial audio integration; the slider follow-up used these targeted checks.
+Repeat them from a desktop audio session with:
+
+```bash
+ctest --test-dir build -R '^dzurkel_audio$' --output-on-failure
+QT_QPA_PLATFORM=wayland dbus-run-session -- \
+  ./build/dzurkel_audio_tests playbackControlsAndDismissalReleaseSource
+```

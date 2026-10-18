@@ -75,13 +75,13 @@ void LibraryTest::initTestCase()
 void LibraryTest::catalogDrivesSelectionAndBudgets()
 {
     const auto readers = PreviewLibrary::readers();
-    QCOMPARE(readers.size(), 5);
+    QCOMPARE(readers.size(), 6);
     QSet<QString> ids;
     for (const auto &entry : readers) {
         QVERIFY(!ids.contains(entry.id));
         ids.insert(entry.id);
         QVERIFY(!entry.description.isEmpty());
-        QVERIFY(entry.sourceLimit > 0);
+        QVERIFY(entry.access == SourceAccess::Streaming ? entry.sourceLimit == 0 : entry.sourceLimit > 0);
         QVERIFY(PreviewLibrary::createReader(entry.id));
     }
     QVERIFY(PreviewLibrary::createReader(QStringLiteral("xlsx")));

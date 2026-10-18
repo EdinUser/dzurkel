@@ -7,6 +7,7 @@
 #include "resources/FileResource.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/FolderNavigation.h"
+#include "resources/media/MediaSourceHelper.h"
 
 #include <QApplication>
 #include <QTextStream>
@@ -29,6 +30,10 @@ int main(int argc, char *argv[])
         QCoreApplication commandLine(argc, argv);
         commandLine.setApplicationName(QStringLiteral("dzurkel"));
         commandLine.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
+        if (commandLine.arguments().value(1) == QStringLiteral("--internal-media-source")) {
+            if (commandLine.arguments().size() != 4 || commandLine.arguments().at(3) != QStringLiteral("0")) return 2;
+            return dzurkel::serveMediaSource(commandLine.arguments().at(2));
+        }
         if (commandLine.arguments().value(1) == QStringLiteral("--internal-list-folder")) {
             if (commandLine.arguments().size() != 4) return 2;
             return dzurkel::enumerateResourceFolder(commandLine.arguments().at(2), commandLine.arguments().at(3) == QStringLiteral("navigate"));

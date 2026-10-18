@@ -141,7 +141,7 @@ void SettingsTest::informationIsAccessibleAndClickable()
 {
     SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
     dialog.show();
-    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo", "csvInfo", "xlsxInfo", "sftpInfo"}) {
+    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo", "csvInfo", "xlsxInfo", "audioInfo", "sftpInfo"}) {
         auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY(button);
         QVERIFY(!button->toolTip().isEmpty());

@@ -2,6 +2,7 @@
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/FileInfoProvider.h"
 #include "preview/providers/ImagePreviewProvider.h"
+#include "preview/media/AudioPreviewWidget.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/FolderNavigation.h"
 #include <QImageReader>
@@ -63,6 +64,7 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
 }
 PreviewController::~PreviewController()
 {
+    window_.stopMedia();
     navigation_->cancel();
     if (preparation_) delete preparation_;
     if (cancellation_) cancellation_->store(true);
@@ -74,6 +76,7 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
 {
     FileResource resource;
     if (!parseFileResource(url, resource, error, failure)) return false;
+    window_.stopMedia();
     externalNavigation_ = externalNavigation;
     window_.setExternalNavigation(externalNavigation);
     if (preparation_) {
@@ -195,8 +198,31 @@ void PreviewController::commitReadyPreview()
     window_.beginPreviewUpdate();
     if (window_.usesGnomePresentation()) window_.setResource(ready.job.resource);
     window_.setContent(PreviewRegistry::createWidget(data, nullptr));
+    if (auto *audio = window_.findChild<AudioPreviewWidget *>()) {
+        const auto generation = generation_;
+        connect(audio, &AudioPreviewWidget::detailsChanged, this,
+            [this, generation, media = data](const QString &summary, const QString &details) mutable {
+                if (generation != generation_ || !isVisible()) return;
+                media.mediaSummary = summary;
+                media.detail = details;
+                window_.setPreviewData(media, false);
+            });
+        connect(audio, &AudioPreviewWidget::failed, this,
+            [this, generation, job = ready.job, data](const QString &message, const QString &details) {
+                // Defer deletion until the widget/source signal stack unwinds.
+                QTimer::singleShot(0, this, [this, generation, job, data, message, details] {
+                    if (generation != generation_ || !isVisible()) return;
+                    auto fallback = data;
+                    fallback.kind = PreviewKind::Information;
+                    fallback.message = message;
+                    fallback.detail = details;
+                    ready_ = ReadyPreview{job, fallback};
+                    commitReadyPreview();
+                });
+            });
+    }
     window_.setPreviewData(data);
-    window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information);
+    window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information || data.kind == PreviewKind::Audio);
     window_.endPreviewUpdate();
     if (presentationPending_) {
         presentationPending_ = false;
@@ -206,6 +232,7 @@ void PreviewController::commitReadyPreview()
 }
 void PreviewController::cancelAndClear()
 {
+    window_.stopMedia();
     navigation_->cancel();
     navigationUrls_.clear();
     navigationNotice_.clear();

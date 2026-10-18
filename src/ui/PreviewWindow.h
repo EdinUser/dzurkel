@@ -27,7 +27,8 @@ public:
     // Takes ownership; replacing content destroys its widgets/documents.
     void setContent(QWidget *content);
     void setStatus(const QString &status);
-    void setPreviewData(const PreviewData &data);
+    void setPreviewData(const PreviewData &data, bool updateGeometry = true);
+    void stopMedia();
     bool usesGnomePresentation() const;
     bool canCommitPreview() const;
     // Synchronous provider commit. GNOME remaps only if sizing/state changes.

@@ -15,6 +15,7 @@ BuildRequires:  ninja-build
 BuildRequires:  pkgconfig(libzip) >= 1.7
 BuildRequires:  qt6-qtbase-devel >= 6.4
 BuildRequires:  qt6-qtpdf-devel
+BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  kf6-kwindowsystem-devel
 BuildRequires:  dbus-daemon
 BuildRequires:  python3
@@ -28,7 +29,7 @@ Suggests:       kio-fuse
 Suggests:       kio-extras
 
 %description
-Dzurkel previews images, PDFs, text and CSV/TSV/XLSX spreadsheets in a reusable
+Dzurkel previews images, PDFs, audio, text and CSV/TSV/XLSX spreadsheets in a reusable
 window. It integrates with Dolphin, Nautilus and Thunar through optional Space
 shortcut setup.
 Open Dzurkel Settings after installation to configure the shortcut for your user.

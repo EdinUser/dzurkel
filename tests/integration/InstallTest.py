@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import selectors
 import shlex
+import socket
+import struct
 import sys
 import tempfile
 import time
@@ -16,6 +18,36 @@ def smoke(binary, launcher=None):
     with tempfile.TemporaryDirectory(prefix="dzurkel smoke ") as temporary:
         sample = Path(temporary) / "пример space.txt"
         sample.write_text("Installed Dzurkel smoke test\n")
+        # The installed binary must serve media ranges itself, without relying
+        # on the uninstalled experiment helper or copying the source file.
+        channel, helper_channel = socket.socketpair()
+        channel.settimeout(5)
+        helper = subprocess.Popen([binary, "--internal-media-source", str(sample), "0"],
+                                  stdin=helper_channel, stdout=helper_channel,
+                                  stderr=subprocess.PIPE)
+        helper_channel.close()
+        try:
+            def receive(count):
+                data = b""
+                while len(data) < count:
+                    chunk = channel.recv(count - len(data))
+                    assert chunk, "Installed media helper closed its channel"
+                    data += chunk
+                return data
+
+            expected = sample.read_bytes()
+            assert struct.unpack(">qq", receive(16)) == (len(expected), 0)
+            channel.sendall(struct.pack(">qq", 0, len(expected)))
+            assert struct.unpack(">qq", receive(16)) == (len(expected), 0)
+            assert receive(len(expected)) == expected
+        finally:
+            channel.close()
+            try:
+                helper.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                helper.kill()
+                helper.wait()
+        assert helper.returncode == 0, helper.stderr.read().decode(errors="replace")
         environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
         environment.pop("XDG_ACTIVATION_TOKEN", None)
         command = [binary, "--diagnostics", str(sample)]

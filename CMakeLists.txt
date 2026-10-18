@@ -9,13 +9,16 @@ include(GNUInstallDirs)
 include(CTest)
 
 # Bounded worker-thread decoding with native Qt widgets and PDF rendering.
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus Concurrent Pdf PdfWidgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus Concurrent Pdf PdfWidgets Multimedia)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip>=1.7)
 option(DZURKEL_WITH_KDE_ACTIVATION "Use KDE's public Wayland activation support" ON)
 if(DZURKEL_WITH_KDE_ACTIVATION)
     find_package(KF6WindowSystem 6.0 REQUIRED)
 endif()
+add_library(dzurkel_media_source STATIC src/resources/media/StreamingMediaSource.cpp)
+target_include_directories(dzurkel_media_source PUBLIC src)
+target_link_libraries(dzurkel_media_source PUBLIC Qt6::Core)
 add_library(dzurkel_core STATIC
     src/application/CommandLine.cpp
     src/application/InstanceCoordinator.cpp
@@ -40,6 +43,9 @@ add_library(dzurkel_core STATIC
     src/preview/providers/PdfPreviewProvider.cpp
     src/preview/providers/TextPreviewProvider.cpp
     src/preview/providers/FileInfoProvider.cpp
+    src/preview/providers/AudioPreviewProvider.cpp
+    src/preview/media/AudioPreviewWidget.cpp
+    src/resources/media/MediaSourceHelper.cpp
     src/resources/FolderNavigation.cpp
     src/resources/FileResource.cpp
     src/resources/ResourceAccessPolicy.cpp
@@ -49,7 +55,7 @@ add_library(dzurkel_core STATIC
     src/ui/SettingsDialog.cpp
 )
 target_include_directories(dzurkel_core PUBLIC src)
-target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets)
+target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets Qt6::Multimedia dzurkel_media_source)
 target_link_libraries(dzurkel_core PRIVATE PkgConfig::LIBZIP)
 if(DZURKEL_WITH_KDE_ACTIVATION)
     target_link_libraries(dzurkel_core PRIVATE KF6::WindowSystem)
@@ -57,6 +63,7 @@ if(DZURKEL_WITH_KDE_ACTIVATION)
 endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dzurkel_core PUBLIC -Wall -Wextra -Wpedantic)
+    target_compile_options(dzurkel_media_source PUBLIC -Wall -Wextra -Wpedantic)
 endif()
 
 add_executable(dzurkel src/main.cpp)
@@ -116,9 +123,48 @@ if(DZURKEL_BUILD_BENCHMARKS)
     add_dependencies(dzurkel_benchmark dzurkel)
 endif()
 
+option(DZURKEL_BUILD_MEDIA_EXPERIMENT "Build the uninstalled helper-backed media experiment" OFF)
+if(DZURKEL_BUILD_MEDIA_EXPERIMENT OR BUILD_TESTING)
+    add_executable(dzurkel_media_source_helper tests/experiments/MediaSourceHelper.cpp)
+    target_link_libraries(dzurkel_media_source_helper PRIVATE dzurkel_core dzurkel_media_source)
+endif()
+if(DZURKEL_BUILD_MEDIA_EXPERIMENT)
+    add_executable(dzurkel_media_experiment tests/experiments/MediaExperiment.cpp)
+    target_link_libraries(dzurkel_media_experiment PRIVATE dzurkel_media_source Qt6::Multimedia)
+    target_compile_definitions(dzurkel_media_experiment PRIVATE
+        DZURKEL_MEDIA_HELPER="$<TARGET_FILE:dzurkel_media_source_helper>")
+    add_dependencies(dzurkel_media_experiment dzurkel_media_source_helper)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(dzurkel_media_experiment PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    if(BUILD_TESTING)
+        find_package(Qt6 REQUIRED COMPONENTS Test Concurrent)
+        find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+        add_executable(dzurkel_media_playback_tests tests/integration/MediaPlaybackTest.cpp)
+        target_link_libraries(dzurkel_media_playback_tests PRIVATE dzurkel_media_source Qt6::Multimedia Qt6::Test)
+        target_compile_definitions(dzurkel_media_playback_tests PRIVATE
+            DZURKEL_MEDIA_HELPER="$<TARGET_FILE:dzurkel_media_source_helper>")
+        add_dependencies(dzurkel_media_playback_tests dzurkel_media_source_helper)
+        add_test(NAME dzurkel_media_playback COMMAND dzurkel_media_playback_tests)
+        set_tests_properties(dzurkel_media_playback PROPERTIES TIMEOUT 45 ENVIRONMENT "QT_MEDIA_BACKEND=ffmpeg")
+    endif()
+endif()
+
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+    add_executable(dzurkel_audio_tests tests/integration/AudioTest.cpp)
+    target_link_libraries(dzurkel_audio_tests PRIVATE dzurkel_core Qt6::Test)
+    add_dependencies(dzurkel_audio_tests dzurkel)
+    add_test(NAME dzurkel_audio COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_audio_tests>)
+    set_tests_properties(dzurkel_audio PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
+    add_executable(dzurkel_media_source_tests tests/integration/MediaSourceTest.cpp)
+    target_link_libraries(dzurkel_media_source_tests PRIVATE dzurkel_media_source Qt6::Test Qt6::Concurrent Qt6::DBus)
+    target_compile_definitions(dzurkel_media_source_tests PRIVATE
+        DZURKEL_MEDIA_HELPER="$<TARGET_FILE:dzurkel_media_source_helper>")
+    add_dependencies(dzurkel_media_source_tests dzurkel_media_source_helper)
+    add_test(NAME dzurkel_media_source COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_media_source_tests>)
+    set_tests_properties(dzurkel_media_source PROPERTIES TIMEOUT 45)
     add_executable(dzurkel_thunar_tests tests/integration/ThunarTest.cpp)
     target_link_libraries(dzurkel_thunar_tests PRIVATE dzurkel_core Qt6::Test)
     add_test(NAME dzurkel_thunar COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_thunar_tests>)

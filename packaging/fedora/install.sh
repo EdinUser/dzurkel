@@ -43,7 +43,7 @@ done
 [[ $jobs =~ ^[1-9][0-9]?$ && $jobs -le 64 ]] || die '--jobs must be an integer from 1 to 64'
 [[ -r /etc/fedora-release ]] || die 'this installer targets Fedora; use the documented CMake build elsewhere'
 
-packages=(gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel dbus-daemon python3 desktop-file-utils)
+packages=(gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel dbus-daemon python3 desktop-file-utils)
 [[ $kde = OFF ]] || packages+=(kf6-kwindowsystem-devel)
 missing=()
 for package in "${packages[@]}"; do

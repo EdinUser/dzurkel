@@ -9,7 +9,7 @@ service resident; use `dzurkel --quit` to exit fully.
 
 ## Preview behavior
 
-Dzurkel previews images, PDFs, CSV/TSV/XLSX tables, and plain text from local paths, `file://` URLs,
+Dzurkel previews images, PDFs, audio, CSV/TSV/XLSX tables, and plain text from local paths, `file://` URLs,
 and direct `smb://` URLs through the desktop KIO-FUSE service. Mounted shares
 continue to work as filesystem paths. Direct SMB requires desktop authentication;
 see [remote resources](previews.md#smb-resources).
@@ -70,8 +70,16 @@ Use Ctrl+wheel or `+`/`-` to zoom images and PDFs; `0` or **Fit** restores fit.
 Plain wheel scrolls content. Zoom snaps to 10 percentage-point steps, and image
 fit does not enlarge small images above 100%. GIFs play with Pause/Play controls.
 **Previous**/**Next** and Alt+arrows browse files in natural filename order;
-images/information views also accept plain Left/Right. Up/Down browse fitted
-images/information views and scroll zoomed images, PDFs and text. See [preview controls and limits](previews.md#zoom-and-file-navigation).
+images/audio/information views also accept plain Left/Right. Up/Down browse fitted
+images/audio/information views and scroll zoomed images, PDFs and text. See [preview controls and limits](previews.md#zoom-and-file-navigation).
+
+Audio plays automatically with Play/Pause (`P`), a seek bar, volume and mute.
+Click either slider to jump to that position and give it keyboard focus; dragging
+the handle continues to adjust it normally.
+Focused audio sliders use plain arrows to adjust their value; Alt+arrows still
+browse files. Space/Escape dismiss and stop playback. Supported decoding depends
+on the installed Qt media backend. Damaged or unsupported audio shows a clear
+error instead of triggering codec installation.
 
 ## Preview library foundation
 

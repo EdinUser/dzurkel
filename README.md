@@ -16,6 +16,8 @@ selected files in a reusable window.
 
 - **Images**, including animated GIFs, with zoom and natural-size display.
 - **PDF documents**, with page navigation and zoom.
+- **Music/audio**, with playback, seeking, volume/mute and available track metadata.
+  Formats depend on the installed Qt media backend and codecs.
 - **Plain text** and **CSV/TSV tables**.
 - **XLSX spreadsheets**, with sheet selection and saved formula results.
 - **File information** for unsupported formats, directories and symbolic links.
@@ -111,10 +113,10 @@ with a dash. See `dzurkel --help` and the [D-Bus API](docs/dbus-api.md) for more
 ## Build and contribute
 
 Build dependencies: C++20, CMake 3.22+, Qt 6 Core/Gui/Widgets/DBus/Concurrent/
-Pdf/PdfWidgets/Test, libzip 1.7+, and KDE Frameworks 6 WindowSystem.
+Pdf/PdfWidgets/Multimedia/Test, libzip 1.7+, and KDE Frameworks 6 WindowSystem.
 
 ```bash
-sudo dnf install gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel \
+sudo dnf install gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel \
   kf6-kwindowsystem-devel dbus-daemon python3 desktop-file-utils
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build --parallel

@@ -10,9 +10,11 @@ bounded reader for the same table view.
 1. The resource helper inspects the source and asks `PreviewLibrary` to select
    a reader. PDF signatures and actual Qt image readers retain priority over a
    misleading CSV/text extension.
-2. The selected capability supplies a complete-snapshot or bounded-prefix source
+2. The selected capability supplies a complete-snapshot, bounded-prefix or streaming source
    policy and byte limit. Image/PDF snapshots remain capped at 64 MiB; CSV/text
    prefixes at 2 MiB plus one truncation-detection byte.
+   Audio retains its original identity and uses helper-backed range reads, with
+   no media snapshot or total source-size limit.
 3. The existing single decoder worker creates `PreviewData`. Each result names
    its reader. Cancellation and request-generation checks remain in the controller.
 4. The GUI chooses a view from the result kind. A table payload goes to
@@ -120,3 +122,48 @@ cancellation cannot interrupt an individual synchronous library call.
 Builds require libzip 1.7+ development files and pkg-config. Legacy XLS, XLSB,
 XLSM, DOCX and video require separate decisions/readers. No office suite, formula
 engine, broker service or reader-package installer is introduced.
+
+## Audio and video playback policy
+
+Audio and future video previews use the decoding support available through the
+installed Qt Multimedia backend. Dzurkel is a quick viewer: it does not bundle
+additional decoders, transcode files, try a second playback engine, or install
+codec packages. Playback in another application is not proof of support in
+Dzurkel, because that application may use different decoder libraries.
+
+The initial audio candidates are MP3, FLAC, Ogg/Vorbis (`.ogg` and `.oga`), Opus,
+PCM WAV, M4A with AAC or ALAC, standalone AAC and audio-only MP4. These identify
+the intended preview scope, not an unconditional promise that every installed
+backend can decode every file. Future video candidates follow the same policy.
+
+Use Qt's runtime decoding-capability queries to describe available support.
+Actual opening and playback determine whether a particular file can be
+previewed; neither its suffix nor a capability entry guarantees valid content,
+a supported codec profile or successful decoding. Capability checks must not
+turn an uncertain diagnosis into a claim that a codec package is missing.
+
+On failure, stop playback, cancel source access, and show file information with a
+clear error. Source read failures, timeouts, truncation and invalid media use this
+same terminal error path. Automatic reconnection, retries and complete-file
+download fallbacks are outside the agreed scope. A network-disconnection
+recovery experiment is not a prerequisite for integrating the audio preview.
+
+Use a specific explanation when the cause is established, such as an unreadable
+source or a known missing decoder. For an ambiguous format/decode failure, use
+wording such as "This audio file couldn't be previewed. Its format may be
+unsupported, or the file may be damaged." Keep backend diagnostics in optional
+details rather than displaying raw technical output as the main message.
+
+Installation advice is optional and must name a verified remedy for the user's
+distribution and active backend. If no reliable package recommendation is known,
+give the general explanation without guessing an install command or promising
+that adding codecs will repair damaged media. Dzurkel never installs packages
+as part of previewing a file.
+
+Compatibility validation checks our source adapter's threading, seeking,
+cancellation and cleanup on supported Qt/backend combinations. It does not
+require every codec to be present on every system: missing decoding support is
+an expected, gracefully reported outcome. The
+[streaming experiment](media-streaming-experiment.md) supplies the current
+source-access evidence. Audio is integrated into the normal reader catalog;
+video rendering remains future work.

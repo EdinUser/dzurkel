@@ -3,6 +3,7 @@
 #include "ZoomPreview.h"
 #include "preview/PreviewProvider.h"
 #include "preview/table/TabularDocument.h"
+#include "preview/media/AudioPreviewWidget.h"
 #include <QWheelEvent>
 #include "desktop/DesktopIntegration.h"
 #include "desktop/WindowPlacement.h"
@@ -14,6 +15,7 @@
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QStyle>
+#include <QSlider>
 #include <QTabWidget>
 #include <QScrollArea>
 #include <QCursor>
@@ -203,6 +205,10 @@ void PreviewWindow::setContent(QWidget *content)
         else setFocus(Qt::OtherFocusReason);
     }
 }
+void PreviewWindow::stopMedia()
+{
+    if (auto *audio = qobject_cast<AudioPreviewWidget *>(content_)) audio->stop();
+}
 bool PreviewWindow::usesGnomePresentation() const
 {
     // Desktop entries may be e.g. ubuntu:GNOME. A missing KWin service alone
@@ -299,19 +305,21 @@ void PreviewWindow::setStatus(const QString &status)
     status_->setAccessibleName(status);
     status_->setVisible(!status.isEmpty());
 }
-void PreviewWindow::setPreviewData(const PreviewData &data)
+void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
 {
-    if (data.kind != PreviewKind::Image && imageMode_) {
+    if (updateGeometry && data.kind != PreviewKind::Image && imageMode_) {
         imageMode_ = false;
         imageRestorePending_ = false;
-        if (data.kind != PreviewKind::Information) restoreDocumentSize();
+        if (data.kind != PreviewKind::Information && data.kind != PreviewKind::Audio) restoreDocumentSize();
         else {
             // Keep the reading size saved before entering the image preview.
             informationMode_ = true;
         }
     }
-    if (data.kind == PreviewKind::Image) enterImageMode();
-    else setInformationMode(data.kind == PreviewKind::Information);
+    if (updateGeometry) {
+        if (data.kind == PreviewKind::Image) enterImageMode();
+        else setInformationMode(data.kind == PreviewKind::Information || data.kind == PreviewKind::Audio);
+    }
     QStringList plain;
     QString rows;
     const auto add = [&](const QString &name, const QString &value) {
@@ -365,7 +373,8 @@ void PreviewWindow::setPreviewData(const PreviewData &data)
     } else if (data.kind == PreviewKind::Text) {
         summary_->setText(QStringLiteral("%1 · %2 %3").arg(data.detail).arg(data.textLineCount)
             .arg(data.textLineCount == 1 ? QStringLiteral("line") : QStringLiteral("lines")));
-    } else summary_->setText(data.description);
+    } else if (data.kind == PreviewKind::Audio) summary_->setText(data.mediaSummary);
+    else summary_->setText(data.description);
     summary_->setToolTip(fileInformation_);
     setStatus(data.kind == PreviewKind::Information ? QString() : data.message);
     if (data.kind == PreviewKind::Table && data.readerId == QStringLiteral("xlsx") && data.message.isEmpty())
@@ -692,11 +701,12 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
         int direction = 0;
         auto *zoom = qobject_cast<ZoomPreview *>(content_);
         const bool verticalBrowsing = arrowNavigation_ && (!zoom || zoom->isFit());
-        if (modifiers == Qt::AltModifier || (arrowNavigation_ && modifiers == Qt::NoModifier)) {
+        const bool mediaSlider = qobject_cast<AudioPreviewWidget *>(content_) && qobject_cast<QSlider *>(target);
+        if (modifiers == Qt::AltModifier || (arrowNavigation_ && modifiers == Qt::NoModifier && !mediaSlider)) {
             if (key->key() == Qt::Key_Left) direction = -1;
             if (key->key() == Qt::Key_Right) direction = 1;
         }
-        if (modifiers == Qt::AltModifier || (verticalBrowsing && modifiers == Qt::NoModifier)) {
+        if (modifiers == Qt::AltModifier || (verticalBrowsing && modifiers == Qt::NoModifier && !mediaSlider)) {
             if (key->key() == Qt::Key_Up) direction = -1;
             if (key->key() == Qt::Key_Down) direction = 1;
         }

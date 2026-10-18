@@ -31,8 +31,9 @@ adapter after opt-in rather than a separate broker or new preview provider.
 
 URL syntax validation happens before accepting a Show request; filesystem
 validation does not. A QProcess helper (an internal mode of the same installed
-executable) resolves SMB via KIO-FUSE, inspects files and copies supported content
-into an owned, bounded temporary resource. Preparation has a 30-second deadline.
+executable) resolves SMB via KIO-FUSE, inspects files and copies document/image
+content into an owned, bounded temporary resource. Audio is identified here but
+not copied. Preparation has a 30-second deadline.
 Cancellation kills the helper without a synchronous GUI wait and retains its
 directory until exit. No new file is added to the installation manifest.
 
@@ -41,6 +42,15 @@ one controller-owned thread pool with one active job and one replaceable pending
 job. Each request gets a generation identifier and cancellation flag. A result
 can update the UI only if it still belongs to the current requested preview.
 Widgets are created and replaced on the GUI thread under Qt parent ownership.
+
+Audio uses `AudioPreviewWidget` and Qt Multimedia with a seekable
+`StreamingMediaSource`. The same installed executable's internal media mode
+holds the source descriptor and serves bounded byte ranges over a private Unix
+socket. Qt's decoder threads read the device; application-thread reads fail
+without waiting on filesystem I/O. Dismissal or replacement mutes the output,
+cancels the source, then releases the player before deleting the device. Source
+failures and Qt decode errors become information previews guarded by the current
+request generation. Existing file-manager integrations are unchanged.
 
 A hidden-window request prepares the target screen and remembered reading
 size. Fast worker results are constructed and fitted before mapping, so Wayland
@@ -132,3 +142,8 @@ and Qt XML parsing for saved values and number formats identifying dates/times;
 visual styling, charts and formula evaluation are outside its scope. Neither
 reader depends on QXlsx, LibreOffice or external
 converters. See [the library contract](preview-library.md).
+
+The opt-in [media streaming probe](media-streaming-experiment.md) exercises the
+same seekable source implementation used by audio. The probe is uninstalled;
+the normal executable contains its own media helper mode. Future video previews
+can reuse this source access and the shared playback policy.
