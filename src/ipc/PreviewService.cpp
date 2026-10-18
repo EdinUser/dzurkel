@@ -1,11 +1,13 @@
 #include "PreviewService.h"
+#include "NautilusPreviewService.h"
 #include "controller/PreviewController.h"
 #include <QCoreApplication>
 #include <QTimer>
 #include <QUrl>
 
 namespace dzurkel {
-PreviewService::PreviewService(PreviewController &controller) : controller_(controller) {}
+PreviewService::PreviewService(PreviewController &controller, NautilusPreviewService *nautilus)
+    : controller_(controller), nautilus_(nautilus) {}
 bool PreviewService::isVisible() const { return controller_.isVisible(); }
 QString PreviewService::fileUrl() const { return controller_.fileUrl(); }
 QString PreviewService::previewKind() const { return controller_.previewKind(); }
@@ -60,5 +62,13 @@ void PreviewService::Quit()
 {
     // Return the D-Bus acknowledgement before ending the event loop.
     QTimer::singleShot(0, QCoreApplication::instance(), &QCoreApplication::quit);
+}
+void PreviewService::StartNautilusPreviewer()
+{
+    QString error;
+    if (!nautilus_ || !nautilus_->start(error)) {
+        if (calledFromDBus()) sendErrorReply(QStringLiteral("io.github.EdinUser.Dzurkel.Error.NautilusUnavailable"),
+            error.isEmpty() ? QStringLiteral("Nautilus preview service is unavailable.") : error);
+    }
 }
 } // namespace dzurkel

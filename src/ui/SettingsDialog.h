@@ -5,17 +5,22 @@
 #include <memory>
 #include "desktop/DolphinShortcuts.h"
 #include "desktop/DolphinSession.h"
+#include "desktop/NautilusIntegration.h"
 
 class QLabel;
 class QPushButton;
 class QDialogButtonBox;
 class QCheckBox;
 namespace dzurkel {
+class NautilusPreviewService;
 class SettingsDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit SettingsDialog(QWidget *parent = nullptr, DolphinShortcuts shortcuts = {},
-                            DolphinSession session = DolphinSession(), std::function<bool()> reopen = {});
+    explicit SettingsDialog(QWidget *parent = nullptr);
+    SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
+                   DolphinSession session = DolphinSession(), std::function<bool()> reopen = {},
+                   FileManagerIntegration integration = FileManagerIntegration::Dolphin,
+                   NautilusPreviewService *nautilus = nullptr);
     ~SettingsDialog() override;
 signals:
     void restartFocusRequested();
@@ -31,6 +36,8 @@ private:
     void restoreFocusAfterRestart();
     void cancelPendingFocus();
     DolphinShortcuts shortcuts_;
+    FileManagerIntegration integration_;
+    NautilusPreviewService *nautilus_;
     DolphinSession session_;
     std::function<bool()> reopen_;
     bool busy_ = false;

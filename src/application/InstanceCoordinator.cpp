@@ -38,6 +38,7 @@ InstanceCoordinator::ForwardResult InstanceCoordinator::forward(const Request &r
     case Command::Toggle: method = QStringLiteral("Toggle"); break;
     case Command::Quit: method = QStringLiteral("Quit"); break;
     case Command::Settings: method = QStringLiteral("ShowSettings"); break;
+    case Command::NautilusPreviewService: method = QStringLiteral("StartNautilusPreviewer"); break;
     default: error = QStringLiteral("Invalid service command."); return ForwardResult::Failed;
     }
     const bool opens = request.command == Command::Show || request.command == Command::Toggle;

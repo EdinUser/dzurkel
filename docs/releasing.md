@@ -81,7 +81,7 @@ absent. These headless tests do not establish KDE desktop acceptance.
 2. Ensure CI passes for the intended commit. Check the package on a real Fedora
    KDE Wayland desktop: previews, Settings, Dolphin Space setup/restoration,
    scaling/focus, upgrade from the previous package and removal.
-3. Create and push a matching tag, for example `v0.6.0`. Tag creation is a
+3. Create and push a matching tag, for example `v0.6.1`. Tag creation is a
    maintainer action; the workflow does not create tags itself.
 4. The tag workflow repeats checks and creates a **draft** GitHub release with
    RPM, Debian and Arch packages and checksums. It refuses to overwrite assets

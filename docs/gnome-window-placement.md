@@ -1,108 +1,61 @@
-# GNOME window placement investigation
+# GNOME Wayland preview placement
 
-Investigated on 2026-10-18, after fixing resident-window resizing. This document
-records findings and possible approaches, not a new integration requirement.
-No additional extension or window-management application was installed.
+Dzurkel uses Mutter's initial placement for adaptive preview changes on GNOME
+Wayland. It retains its Qt window and native Wayland surface, prepares changed
+dimensions while hidden, then maps a new top-level role. It does not request
+absolute coordinates. The desktop's placement preferences determine the result;
+centering was already enabled in the tested GNOME session.
 
-## Observed behavior and available interfaces
+The path requires a native Wayland Qt backend and a GNOME entry in
+`XDG_CURRENT_DESKTOP` (including `ubuntu:GNOME`). An available KWin placement
+adapter takes precedence. KDE/KWin keeps its existing mapped-window workflow;
+other desktops and X11 do not enable GNOME remapping.
 
-On Ubuntu 26.04.1, GNOME Shell 50.1 and native Qt Wayland, direct spreadsheet
-opening was correctly placed. Growing an already-visible small image preview
-into a spreadsheet could leave part of the larger window off-screen. The user
-confirmed the separate small-image size restoration fix works.
+## Provider updates and lifecycle
 
-Both `org.gnome.mutter center-new-windows` and `auto-maximize` were already true.
-These are independent preferences. Centering places new windows; it does not
-continuously re-center an existing window after content-driven resizing. GNOME's
-[setting definitions](https://github.com/GNOME/mutter/blob/gnome-50/data/org.gnome.mutter.gschema.xml.in)
-and [placement code](https://github.com/GNOME/mutter/blob/gnome-50/src/core/place.c)
-describe initial placement. Dzurkel should respect the user's desktop settings.
+The current preview stays visible while another file loads. Early image metadata
+does not resize that old presentation on GNOME. A completed result replaces the
+provider synchronously; if sizing or normal/maximized state changes, the window
+hides internally before applying the change. Equal-size updates stay mapped.
+Internal hiding cancels obsolete resize requests but does not emit dismissal or
+cancel the controller's navigation and loading generation.
 
-A Qt connection-only probe inspected the VM's actual Wayland registry without
-mapping a window. It advertised `xdg_wm_base` version 7, GTK shell, activation,
-foreign-parenting, toplevel drag and toplevel tag protocols. It did not advertise
-`xx_zone_manager_v1`, a layer-shell interface or wlroots foreign-toplevel
-management. Merely installing a client tool cannot add these compositor APIs.
+Cold previews retain the existing 150 ms loading fallback. If that fallback maps
+before the result arrives, the final adaptive size uses the same internal remap.
+Remembered reading size/state and explicit image maximization remain in use.
+For a normal remap, the initial maximum size temporarily bounds Mutter's first
+configure so it cannot automatically maximize a remembered normal reading view.
+The bound is released on exposure, allowing ordinary resizing and maximization.
 
-Shell D-Bus introspection exposed no built-in general MoveResize operation.
-Ubuntu's enabled Tiling Assistant did not export a D-Bus window-control interface
-in the installed sources. The Window Calls and Window Control object paths had
-no exported interfaces in this session.
+Mutter can focus a new top-level role even when Qt makes no activation request.
+Consequently completed GNOME results wait while the preview is inactive or
+Settings is visible. The old view remains in place. Returning to the preview
+commits the newest result; a new request or dismissal discards the held result.
+Only one completed result is retained. The controller reports loading until that
+result is presented. Folder-navigation commits do not request activation.
 
-## Approaches considered
+No GNOME Shell extension, compositor script, external window-control executable,
+XWayland fallback, or desktop configuration change is required by this path.
+Earlier suggestions to use an optional Shell extension are superseded.
 
-| Approach | What it provides | Limit for Dzurkel |
-| --- | --- | --- |
-| Mutter `center-new-windows` | Native placement of new windows | Already enabled; does not solve a mapped preview growing |
-| Qt `resize()` and `move()` on native Wayland | Client-size requests | Absolute top-level positions are not generally available |
-| Existing GNOME Shell window-control extension | Compositor-side frame movement over D-Bus | Optional extension installation and version validation |
-| Qt `xcb` through XWayland | Existing X11 resize and placement path | Changes rendering/backend behavior; requires XWayland |
-| Recreate or remap the preview | Lets Mutter perform initial placement again | Potential flicker, focus changes and dismissal/lifecycle regressions |
-| Shell `Eval` scripts | Access to Shell internals | Guarded by unsafe mode; unsuitable as a default app dependency |
-| Experimental zones protocol | Client-relative explicit placement | Not advertised by the tested compositor |
+## Validation and limits
 
-Qt explicitly documents that top-level positions may be unavailable or
-artificial on some platforms; calling `move()` is not proof of movement.
-See [QWindow positioning](https://doc.qt.io/qt-6/qwindow.html#position).
-The [xdg-shell protocol](https://wayland.app/protocols/xdg-shell) provides
-interactive movement rather than an absolute top-level positioning request.
+Use the acceptance sequence in [GNOME testing](gnome-testing.md), testing visible
+navigation separately from Escape followed by reopening. Automated offscreen
+checks establish lifecycle and sizing behavior, not global placement or focus.
+Native GNOME checks cover delayed results, cancellation, equal-size mapping,
+retained Qt identity, remembered reading geometry, maximized-document navigation
+and explicit image maximization.
 
-Existing tools do exist. [Window Calls](https://extensions.gnome.org/extension/4724/window-calls/)
-lists GNOME 50 support and exports List, Details and MoveResize operations.
-Its [source](https://github.com/ickyicky/window-calls/blob/main/extension.js)
-uses Mutter's frame APIs, and its move/resize handlers unmaximize windows.
-The reviewed main-branch source also contains an apparent undefined-variable
-check in `_get_window_by_wid`; validate a specific published artifact before
-relying on it. Source review alone does not establish runtime compatibility.
+The development VM is Ubuntu 26.04.1, GNOME Shell 50.1, Qt 6.10.2, one 1280×800
+display at 100% scale. Its existing `center-new-windows` and `auto-maximize`
+settings are true. Framebuffer measurements are required: native Wayland Qt
+positions and frame geometry can be artificial. Initial placement experiments
+and the implementation checks do not establish behavior with centering disabled,
+multiple monitors, fractional scaling, tiling, or other GNOME versions.
 
-[Window Control](https://extensions.gnome.org/extension/10886/window-control/)
-also lists GNOME 45–50 support. Its optional `wctl` executable is unnecessary
-for a Qt application: Dzurkel already uses Qt D-Bus. The
-[implementation](https://github.com/carlo9890/gnome-window-control/blob/main/window-control%40carlo9890.github.io/extension.js)
-exposes geometry operations and refuses maximized/tiled/fullscreen targets;
-the [project documentation](https://github.com/carlo9890/gnome-window-control#d-bus-interface)
-describes its interface. These are candidates for an opt-in backend, not yet
-runtime-tested dependencies. Their general interfaces let session applications
-inspect/control windows, a relevant tradeoff when choosing to enable them.
-
-Mutter's [move_resize_frame API](https://gnome.pages.gitlab.gnome.org/mutter/meta/method.Window.move_resize_frame.html)
-operates inside the compositor. Linking an ordinary client to a library does
-not give it access to the running Shell's Meta.Window objects. GNOME's
-[Shell Eval implementation](https://github.com/GNOME/gnome-shell/blob/main/js/ui/shellDBus.js)
-checks unsafe mode; Dzurkel should not change that setting.
-
-GNOME Sushi is a useful native comparison. Its current
-[window implementation](https://github.com/GNOME/sushi/blob/main/src/core/mainWindow.js)
-requests content-based sizes and limits natural content relative to half the
-monitor dimensions. That code does not supply an absolute positioning helper
-for a different application's mapped window. Conservative sizing reduces the
-likelihood of overflow but cannot guarantee placement of a large reading view.
-
-## Direction and validation still needed
-
-Keep normal resizing inside Dzurkel and retain native Wayland as the default.
-For precise mapped-window placement, evaluate an existing GNOME D-Bus extension
-before considering custom Shell code. This would require an explicit opt-in,
-not a mandatory second executable or a new package dependency. An alternative
-to evaluate is running only Dzurkel through the existing XWayland backend.
-
-The VM already runs XWayland. An isolated `QT_QPA_PLATFORM=xcb` run passed the
-mapped small-image/table regression, including explicit assertions that both
-frames stay inside the available desktop area. However, the broader image
-sequence failed when restoring a reading window after dismissal (400×400
-instead of 740×700). XWayland is therefore a demonstrated positioning route,
-not a validated workaround for the complete workflow. No launcher or backend
-default was changed. Qt documents the
-[xcb backend](https://doc.qt.io/qt-6/linux-requirements.html) as its X11 platform
-plugin; using it would also require separate focus and scaling acceptance.
-
-A placement backend must identify Dzurkel's own preview by PID and window
-identity, distinguish Settings, use the correct monitor's usable work area,
-account for frame/client dimensions, preserve manual maximization and avoid
-moving unrelated windows. Geometry requests must be cancelled when the file or
-window changes. Verify the resulting frame after the asynchronous request.
-
-Desktop acceptance must cover image↔CSV/XLSX navigation, dismissal/reopening,
-focus/Escape, rapid requests, manual movement/resizing, tiling/maximization,
-panels/docks, multiple monitors and fractional scaling. No extension behavior
-or complete placement acceptance is established by the resize tests.
+Remapping can trigger Mutter's ordinary mapping animation. Settled placement and
+focus do not establish frame-perfect continuity or absence of flicker. Do not
+disable global animations to hide this limitation. The older rapid information
+fallback/reopen stress case is intermittent on native GNOME; it must not be
+reported as fixed by the placement change.

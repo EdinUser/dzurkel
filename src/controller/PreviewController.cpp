@@ -19,7 +19,7 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
     navigation_ = new FolderNavigation(this);
     connect(navigation_, &FolderNavigation::ready, this,
         [this](const QStringList &urls, int index, const QString &message, const QString &selected) {
-            if (!isVisible()) return;
+            if (!isVisible() || externalNavigation_) return;
             if (index < 0) {
                 window_.setNavigation(false, false, message);
                 return;
@@ -42,15 +42,24 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
             }
         });
     connect(&window_, &PreviewWindow::navigateRequested, this, [this](int direction) {
+        if (externalNavigation_) {
+            if (isVisible()) emit externalNavigationRequested(direction < 0 ? 4u : 5u);
+            return;
+        }
         FileResource resource;
         QString error;
         if (!isVisible() || !parseFileResource(fileUrl_, resource, error)) return;
         window_.setNavigation(false, false, QStringLiteral("Checking folder…"));
         navigation_->start(resource, direction);
     });
+    connect(&window_, &PreviewWindow::externalNavigationRequested, this, [this](uint direction) {
+        if (isVisible() && externalNavigation_) emit externalNavigationRequested(direction);
+    });
     pool_.setMaxThreadCount(1);
     QImageReader::setAllocationLimit(ImagePreviewProvider::AllocationLimitMiB);
     connect(&window_, &PreviewWindow::dismissed, this, &PreviewController::cancelAndClear);
+    connect(&window_, &PreviewWindow::presentationActivated, this,
+        &PreviewController::commitReadyPreview, Qt::QueuedConnection);
 }
 PreviewController::~PreviewController()
 {
@@ -61,10 +70,12 @@ PreviewController::~PreviewController()
     pool_.waitForDone();
 }
 bool PreviewController::show(const QString &url, QString &error, ResourceError *failure,
-                             const QString &activationToken, bool requestActivation)
+                             const QString &activationToken, bool requestActivation, bool externalNavigation)
 {
     FileResource resource;
     if (!parseFileResource(url, resource, error, failure)) return false;
+    externalNavigation_ = externalNavigation;
+    window_.setExternalNavigation(externalNavigation);
     if (preparation_) {
         delete preparation_;
         preparation_ = nullptr;
@@ -78,18 +89,21 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     }
     navigation_->cancel();
     window_.setArrowNavigation(false);
-    window_.setNavigation(false, false, QStringLiteral("Checking folder…"));
+    window_.setNavigation(externalNavigation, externalNavigation,
+        externalNavigation ? QStringLiteral("Files") : QStringLiteral("Checking folder…"));
     ++generation_;
+    ready_.reset();
     fileUrl_ = resource.url.toString(QUrl::FullyEncoded);
     loading_ = true;
     kind_ = PreviewKind::Cancelled;
-    window_.setResource(resource);
+    // GNOME keeps the old content and its identity until the new result is ready.
+    if (!window_.usesGnomePresentation() || !window_.isVisible()) window_.setResource(resource);
     if (!window_.isVisible()) {
         auto *label = new QLabel(QStringLiteral("Loading preview…"));
         label->setAlignment(Qt::AlignCenter);
         window_.setContent(label);
     }
-    window_.setStatus({});
+    if (!window_.usesGnomePresentation() || !window_.isVisible()) window_.setStatus({});
     // Wayland placement uses the initial mapped size. Keep the very first
     // surface hidden until a fast result determines its natural window size.
     // Slow loads still present a loading window through the timer below.
@@ -111,7 +125,8 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
         });
     }
     if (!watcher_) startPending();
-    if (!loader_) navigation_->start(resource);
+    if (!loader_ && !externalNavigation_) navigation_->start(resource);
+    emit stateChanged();
     return true;
 }
 void PreviewController::startPending()
@@ -142,20 +157,8 @@ void PreviewController::startPending()
         watcher->deleteLater();
         if (job.generation == generation_ && !cancel->load() && isVisible()
             && data.kind != PreviewKind::Cancelled) {
-            kind_ = data.kind;
-            loading_ = false;
-            // Repeatedly initializing/destroying PDFium is costly and grows
-            // allocator retention on Qt 6.11. Keep only its runtime alive;
-            // each actual document and backing file still dies on dismissal.
-            if (data.kind == PreviewKind::Pdf && !pdfRuntime_)
-                pdfRuntime_ = std::make_unique<QPdfDocument>();
-            window_.setContent(PreviewRegistry::createWidget(data, nullptr));
-            window_.setPreviewData(data);
-            window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information);
-            if (presentationPending_) {
-                presentationPending_ = false;
-                window_.present(job.activationToken);
-            }
+            ready_ = ReadyPreview{job, data};
+            commitReadyPreview();
         }
         if (pending_ && isVisible()) startPending();
     });
@@ -167,7 +170,7 @@ void PreviewController::startPending()
                 [this, job, cancel](const QSize &imageSize) {
                     QMetaObject::invokeMethod(this, [this, job, cancel, imageSize] {
                         if (job.generation != generation_ || cancel->load() || !isVisible()) return;
-                        window_.prepareImage(imageSize);
+                        if (!window_.usesGnomePresentation()) window_.prepareImage(imageSize);
                     }, Qt::QueuedConnection);
                 });
         } catch (...) {
@@ -176,6 +179,30 @@ void PreviewController::startPending()
             return data;
         }
     }));
+}
+void PreviewController::commitReadyPreview()
+{
+    if (!ready_ || ready_->job.generation != generation_ || !isVisible()
+        || !window_.canCommitPreview()) return;
+    const auto ready = std::move(*ready_);
+    ready_.reset();
+    const auto &data = ready.data;
+    kind_ = data.kind;
+    loading_ = false;
+    // Retain only PDFium's runtime; provider widgets own actual documents.
+    if (data.kind == PreviewKind::Pdf && !pdfRuntime_)
+        pdfRuntime_ = std::make_unique<QPdfDocument>();
+    window_.beginPreviewUpdate();
+    if (window_.usesGnomePresentation()) window_.setResource(ready.job.resource);
+    window_.setContent(PreviewRegistry::createWidget(data, nullptr));
+    window_.setPreviewData(data);
+    window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information);
+    window_.endPreviewUpdate();
+    if (presentationPending_) {
+        presentationPending_ = false;
+        window_.present(ready.job.activationToken);
+    }
+    emit stateChanged();
 }
 void PreviewController::cancelAndClear()
 {
@@ -192,9 +219,11 @@ void PreviewController::cancelAndClear()
         preparation_ = nullptr;
     }
     pending_.reset();
+    ready_.reset();
     loading_ = false;
     presentationPending_ = false;
     kind_ = PreviewKind::Cancelled;
+    emit stateChanged();
     const auto dismissedGeneration = generation_;
     // A key event may still target a child editor/view during dismissal.
     QTimer::singleShot(0, this, [this, dismissedGeneration] {
@@ -208,6 +237,16 @@ void PreviewController::hide()
 {
     if (window_.isVisible()) window_.hide();
     else cancelAndClear();
+}
+void PreviewController::releaseExternalNavigation()
+{
+    if (!externalNavigation_) return;
+    externalNavigation_ = false;
+    window_.setExternalNavigation(false);
+    FileResource resource;
+    QString error;
+    if (isVisible() && parseFileResource(fileUrl_, resource, error)) navigation_->start(resource);
+    emit stateChanged();
 }
 bool PreviewController::toggle(const QString &url, QString &error)
 {

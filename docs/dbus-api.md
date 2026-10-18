@@ -19,6 +19,7 @@ These project identifiers remain provisional until the first public release.
 | `ToggleWithOptions(string url, dict options)` | Toggle with optional launch context. |
 | `Quit()` | Acknowledge the request and gracefully terminate the service. |
 | `ShowSettings(dict options)` | Open or raise Settings without opening a preview; accepts the same activation option. |
+| `StartNautilusPreviewer()` | Claim the Nautilus preview service if its user registration was enabled in Settings. Used by `--nautilus-preview-service` for D-Bus activation; opens no window. |
 
 By default, `url` must be a fully encoded absolute `file://` or `smb://` URL. SMB URLs may
 include a username, but not a password, explicit port, query or fragment.
@@ -92,8 +93,27 @@ gdbus call --session \
   --method io.github.EdinUser.Dzurkel.Previewer1.Hide
 ```
 
-There is no D-Bus auto-activation file yet. CLI Show/Toggle can create the
+There is no auto-activation file for the project-owned service. CLI Show/Toggle can create the
 primary instance. Hide/Quit against an absent service are successful CLI no-ops.
+
+## Nautilus adapter
+
+Settings can install a reversible user registration for
+`org.gnome.NautilusPreviewer`, object `/org/gnome/NautilusPreviewer`, interface
+`org.gnome.NautilusPreviewer2`. It implements `ShowFile(s uri, s windowHandle,
+b closeIfAlreadyShown, s activationToken)`, `Close()`, read-only `Visible` and
+`ParentHandle`, `PropertiesChanged` notifications and `SelectionEvent(u direction)`
+(GTK Up=2, Down=3, Left=4, Right=5). The Nautilus 50 contract is separate from the
+project-owned API. Requests currently accept local file URLs only.
+
+The generated registration runs `dzurkel --nautilus-preview-service`. This
+forwards to an existing Dzurkel instance or starts a resident one without opening
+a preview. It requires prior opt-in in Settings. The adapter never replaces or
+queues behind an existing owner. It toggles only an already-visible matching
+URI; a different URI replaces the content. Navigation delegates to Files rather
+than enumerating the folder. Standalone CLI/Dolphin previews retain their own
+navigation and do not appear as visible Nautilus previews. The parent handle
+identifies the requesting window but is not used to attach the preview.
 
 ## Ownership and delivery
 

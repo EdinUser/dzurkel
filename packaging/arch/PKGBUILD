@@ -1,5 +1,5 @@
 pkgname=dzurkel
-pkgver=0.6.0
+pkgver=0.6.1
 pkgrel=1
 pkgdesc='Quick file previews for KDE Dolphin'
 arch=('x86_64')

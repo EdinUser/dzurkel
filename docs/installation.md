@@ -68,7 +68,7 @@ signatures. There is no automatic Dzurkel update repository.
 On Debian 13, install the binary (not the optional debug package):
 
 ```bash
-sudo apt install ./dzurkel_0.6.0-1_amd64.deb
+sudo apt install ./dzurkel_0.6.1-1_amd64.deb
 dzurkel --settings
 ```
 
@@ -76,7 +76,7 @@ On current Arch Linux:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -U ./dzurkel-0.6.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./dzurkel-0.6.1-1-x86_64.pkg.tar.zst
 dzurkel --settings
 ```
 

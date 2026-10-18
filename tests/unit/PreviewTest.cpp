@@ -5,6 +5,7 @@
 #include "ui/ZoomPreview.h"
 #include "desktop/DesktopIntegration.h"
 #include <QFile>
+#include <QFileInfo>
 #include <QEvent>
 #include <QElapsedTimer>
 #include <QApplication>
@@ -39,10 +40,14 @@ using namespace dzurkel;
 class FirstShowSize : public QObject {
 public:
     QSize size;
+    QList<QSize> mappings;
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override {
-        if (event->type() == QEvent::Show && size.isEmpty())
-            size = qobject_cast<QWidget *>(watched)->size();
+        if (event->type() == QEvent::Show && !event->spontaneous()) {
+            const auto mapped = qobject_cast<QWidget *>(watched)->size();
+            if (size.isEmpty()) size = mapped;
+            mappings.append(mapped);
+        }
         return false;
     }
 };
@@ -80,12 +85,112 @@ private slots:
     void hideBeforeFirstMappingPreventsResurrection();
     void newestRequestBeforeFirstMappingWins();
     void visiblePreviewReactivatesOnExplicitShow();
+    void gnomePresentationKeepsPendingContentAndDismissal();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
 };
+
+void PreviewTest::gnomePresentationKeepsPendingContentAndDismissal()
+{
+    PreviewWindow policy;
+    if (!policy.usesGnomePresentation()) QSKIP("Requires native GNOME Wayland");
+    const auto first = write(QStringLiteral("remap-first.png"), "placeholder");
+    const auto second = write(QStringLiteral("remap-second.png"), "placeholder");
+    const auto large = write(QStringLiteral("remap-wide.png"), "placeholder");
+    PreviewController controller(false, [large](const FileResource &resource, const QSize &, const Cancellation &cancel) {
+        // Cooperatively delayed result also exercises cancellation on dismissal.
+        for (int i = 0; i < 25 && !cancel->load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        PreviewData data;
+        data.resource = resource;
+        data.kind = cancel->load() ? PreviewKind::Cancelled : PreviewKind::Image;
+        data.imageSize = resource.path == large ? QSize(700, 420) : QSize(40, 30);
+        data.image = QImage(data.imageSize, QImage::Format_RGB32);
+        data.image.fill(Qt::blue);
+        return data;
+    });
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QSignalSpy dismissed(window, &PreviewWindow::dismissed);
+    FirstShowSize shows;
+    window->installEventFilter(&shows);
+    QString error;
+    QVERIFY(controller.show(first, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    const auto *handle = window->windowHandle();
+    const auto id = window->winId();
+    auto *canvas = window->findChild<QWidget *>(QStringLiteral("imageCanvas"));
+    QVERIFY(canvas);
+    int mappings = shows.mappings.size();
+    QVERIFY(controller.show(second, error));
+    QTest::qWait(180);
+    QVERIFY(controller.loading());
+    QCOMPARE(window->findChild<QWidget *>(QStringLiteral("imageCanvas")), canvas);
+    QCOMPARE(window->windowTitle(), QFileInfo(first).fileName());
+    QCOMPARE(window->size(), QSize(400, 400));
+    QCOMPARE(shows.mappings.size(), mappings);
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(shows.mappings.size(), mappings); // Same final size needs no remap.
+    QVERIFY(controller.show(large, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QCOMPARE(shows.mappings.size(), mappings + 1);
+    QCOMPARE(shows.mappings.last(), window->size());
+    QVERIFY(window->width() >= 700);
+    QCOMPARE(window->windowHandle(), handle);
+    QCOMPARE(window->winId(), id);
+    QCOMPARE(dismissed.count(), 0);
+    QCOMPARE(window->maximumSize(), QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX));
+    QVERIFY(controller.show(first, error));
+    QVERIFY(controller.show(second, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(window->windowTitle(), QFileInfo(second).fileName());
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    QVERIFY(controller.show(large, error));
+    window->showSettings();
+    auto *settings = window->findChild<QWidget *>(QStringLiteral("settingsDialog"));
+    QVERIFY(settings);
+    QVERIFY(settings->isVisible());
+    QTest::qWait(400);
+    QVERIFY(controller.loading());
+    QVERIFY(settings->isVisible());
+    QCOMPARE(window->windowTitle(), QFileInfo(second).fileName());
+    QCOMPARE(dismissed.count(), 0);
+    // Supersede an already completed result while Settings still owns focus.
+    QVERIFY(controller.show(first, error, nullptr, {}, false));
+    QTest::qWait(400);
+    QVERIFY(controller.loading());
+    QCOMPARE(window->windowTitle(), QFileInfo(second).fileName());
+    settings->hide();
+    window->present();
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QCOMPARE(window->windowTitle(), QFileInfo(first).fileName());
+    QCOMPARE(window->size(), QSize(400, 400));
+    QVERIFY(controller.show(second, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(controller.show(large, error));
+    QTest::keyClick(window, Qt::Key_Escape);
+    QCOMPARE(dismissed.count(), 1);
+    QTest::qWait(400);
+    QVERIFY(!controller.isVisible());
+    QVERIFY(!window->isVisible());
+    QVERIFY(controller.show(second, error));
+    QTRY_VERIFY(!controller.loading());
+    window->showSettings();
+    QVERIFY(controller.show(large, error, nullptr, {}, false));
+    QTest::qWait(400);
+    QVERIFY(controller.loading());
+    controller.hide(); // Also discard a completed result held behind Settings.
+    QCOMPARE(dismissed.count(), 2);
+    QVERIFY(!settings->isVisible());
+    QTest::qWait(400);
+    QVERIFY(!controller.isVisible());
+}
 
 void PreviewTest::visiblePreviewReactivatesOnExplicitShow()
 {

@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "ipc/NautilusPreviewService.h"
 #include "desktop/DesktopIntegration.h"
 #include "resources/ResourceAccessPolicy.h"
 #include "preview/PreviewLibrary.h"
@@ -51,9 +52,12 @@ QLabel *label(QWidget *parent, const QString &text, bool secondary = false)
     return result;
 }
 }
+SettingsDialog::SettingsDialog(QWidget *parent)
+    : SettingsDialog(parent, DolphinShortcuts{}, DolphinSession{}, {}, detectFileManager()) {}
 SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
-                               DolphinSession session, std::function<bool()> reopen)
-    : QDialog(parent), shortcuts_(std::move(shortcuts)), session_(std::move(session)),
+                               DolphinSession session, std::function<bool()> reopen,
+                               FileManagerIntegration integration, NautilusPreviewService *nautilus)
+    : QDialog(parent), shortcuts_(std::move(shortcuts)), integration_(integration), nautilus_(nautilus), session_(std::move(session)),
       reopen_(reopen ? std::move(reopen) : [] { return QProcess::startDetached(QStringLiteral("dolphin"), QStringList{}); })
 {
     setObjectName(QStringLiteral("settingsDialog"));
@@ -66,14 +70,20 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     auto *icon = new QLabel(this);
     icon->setPixmap(QIcon::fromTheme(QStringLiteral("system-file-manager"), style()->standardIcon(QStyle::SP_DirIcon)).pixmap(32, 32));
     heading->addWidget(icon);
-    auto *title = label(this, QStringLiteral("Dolphin shortcut"));
+    const bool dolphin = integration_ == FileManagerIntegration::Dolphin;
+    const bool nautilusSelected = integration_ == FileManagerIntegration::Nautilus;
+    const QString headingText = dolphin ? QStringLiteral("Dolphin shortcut")
+        : nautilusSelected ? QStringLiteral("Nautilus shortcut") : QStringLiteral("File manager shortcut");
+    auto *title = label(this, headingText);
+    title->setObjectName(QStringLiteral("integrationTitle"));
     auto font = title->font();
     font.setBold(true);
     title->setFont(font);
     heading->addWidget(title);
     heading->addStretch();
-    heading->addWidget(information(this, QStringLiteral("shortcutInfo"), QStringLiteral("Dolphin shortcut"),
-        QStringLiteral("Preview selected files with Space in Dolphin 26.04 or newer. If Space stops working while the context-menu action still works, close all Dolphin windows and reopen Dolphin. This replaces Space selection and conflicting Space shortcuts; alternate bindings are kept. Restore previous shortcuts uses the backup to undo only Dzurkel’s changes, preserving unrelated toolbar and menu edits.")));
+    heading->addWidget(information(this, QStringLiteral("shortcutInfo"), headingText,
+        dolphin ? QStringLiteral("Preview selected files with Space in Dolphin 26.04 or newer. If Space stops working while the context-menu action still works, close all Dolphin windows and reopen Dolphin. This replaces Space selection and conflicting Space shortcuts; alternate bindings are kept. Restore previous shortcuts uses the backup to undo only Dzurkel’s changes, preserving unrelated toolbar and menu edits.")
+        : QStringLiteral("Preview selected local files with Space in Nautilus (Files). Dzurkel becomes the user’s Nautilus preview provider. Arrow navigation follows the selection in Files; Alt+arrows work while reading documents. Restore returns the previous user registration, allowing a system provider such as Sushi to be used again. No GNOME extension or global shortcut change is needed.")));
     layout->addLayout(heading);
     status_ = label(this, {});
     status_->setObjectName(QStringLiteral("shortcutStatus"));
@@ -81,15 +91,19 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     shortcutChanges_ = label(this, {}, true);
     shortcutChanges_->setObjectName(QStringLiteral("shortcutChanges"));
     layout->addWidget(shortcutChanges_);
-    auto *restart = label(this, QStringLiteral("If Dolphin is open, you’ll be asked to restart it."), true);
-    restart->setToolTip(QStringLiteral("Dolphin closes before the shortcut file is updated, so it cannot overwrite the change while saving its own settings."));
+    auto *restart = label(this, dolphin ? QStringLiteral("If Dolphin is open, you’ll be asked to restart it.")
+        : QStringLiteral("If another preview provider is running, close its preview and quit it before enabling Dzurkel."), true);
+    restart->setVisible(integration_ != FileManagerIntegration::Unavailable);
+    if (dolphin) restart->setToolTip(QStringLiteral("Dolphin closes before the shortcut file is updated, so it cannot overwrite the change while saving its own settings."));
     layout->addWidget(restart);
     auto *actions = new QHBoxLayout;
     apply_ = new QPushButton(QStringLiteral("Enable Space shortcut…"), this);
     apply_->setObjectName(QStringLiteral("useSpace"));
-    restore_ = new QPushButton(QStringLiteral("Restore previous shortcuts…"), this);
+    restore_ = new QPushButton(dolphin ? QStringLiteral("Restore previous shortcuts…") : QStringLiteral("Restore previous previews"), this);
     restore_->setObjectName(QStringLiteral("restoreShortcuts"));
-    restore_->setToolTip(QStringLiteral("Restore only the shortcut entries changed by Dzurkel. Unrelated toolbar and menu changes are preserved."));
+    restore_->setToolTip(dolphin ? QStringLiteral("Restore only the shortcut entries changed by Dzurkel. Unrelated toolbar and menu changes are preserved.")
+        : QStringLiteral("Restore the previous user preview registration. System providers are preserved."));
+    if (nautilusSelected) apply_->setText(QStringLiteral("Enable Space shortcut"));
     apply_->setAutoDefault(false);
     restore_->setAutoDefault(false);
     actions->addWidget(apply_);
@@ -165,6 +179,13 @@ void SettingsDialog::reject()
 void SettingsDialog::changeShortcuts(bool restore)
 {
     if (busy_) return;
+    if (integration_ != FileManagerIntegration::Dolphin) {
+        QString error;
+        if (integration_ == FileManagerIntegration::Nautilus && nautilus_) nautilus_->configure(!restore, error);
+        else error = QStringLiteral("Nautilus preview setup is unavailable in this instance.");
+        finish(error);
+        return;
+    }
     cancelPendingFocus();
     focusCancelled_ = std::make_shared<std::atomic_bool>(false);
     busy_ = true;
@@ -260,13 +281,33 @@ void SettingsDialog::finish(const QString &error)
     busy_ = false;
     buttons_->setEnabled(true);
     refresh();
-    if (!error.isEmpty()) QMessageBox::warning(this, QStringLiteral("Dolphin shortcut"), error);
+    if (!error.isEmpty()) QMessageBox::warning(this, integration_ == FileManagerIntegration::Dolphin
+        ? QStringLiteral("Dolphin shortcut") : QStringLiteral("Nautilus shortcut"), error);
 }
 void SettingsDialog::refresh()
 {
     {
         const QSignalBlocker blocker(experimentalSftp_);
         experimentalSftp_->setChecked(ResourceAccessPolicy::experimentalSftpEnabled());
+    }
+    if (integration_ != FileManagerIntegration::Dolphin) {
+        const auto registration = nautilus_ ? nautilus_->integration() : NautilusIntegration{};
+        const bool active = registration.enabled();
+        const bool backup = registration.hasBackup();
+        const bool available = integration_ == FileManagerIntegration::Nautilus && nautilus_;
+        status_->setText(integration_ == FileManagerIntegration::Unavailable
+            ? QStringLiteral("No supported file manager was detected for this desktop.")
+            : active ? (nautilus_ && nautilus_->running() ? QStringLiteral("Space previews enabled in Nautilus (Files)")
+                : QStringLiteral("Registration enabled; retry Enable to start the preview service."))
+            : backup ? QStringLiteral("The preview registration changed after setup. Review it before restoring.")
+            : QStringLiteral("Space previews not enabled in Nautilus (Files)"));
+        shortcutChanges_->setText(QStringLiteral("Use Space on a selected local file in Files. Dzurkel will start automatically when needed."));
+        shortcutChanges_->setVisible(integration_ == FileManagerIntegration::Nautilus);
+        apply_->setVisible(!backup || active);
+        apply_->setEnabled(available && !busy_ && (!backup || active) && !(nautilus_ && nautilus_->running()));
+        restore_->setVisible(backup);
+        restore_->setEnabled(available && backup && !busy_);
+        return;
     }
     const bool installed = !QStandardPaths::locate(QStandardPaths::GenericDataLocation,
         QStringLiteral("kio/servicemenus/dzurkel.desktop")).isEmpty();

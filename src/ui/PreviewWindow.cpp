@@ -144,7 +144,7 @@ PreviewWindow::PreviewWindow(bool diagnostics)
 }
 void PreviewWindow::showSettings(const QString &activationToken)
 {
-    if (!settings_) settings_ = new SettingsDialog(this);
+    if (!settings_) settings_ = new SettingsDialog(this, DolphinShortcuts{}, DolphinSession{}, {}, detectFileManager(), nautilusService_);
     settings_->show();
     settings_->raise();
     activatePreview(settings_->windowHandle(), activationToken, diagnostics_);
@@ -202,6 +202,66 @@ void PreviewWindow::setContent(QWidget *content)
             content_->setFocus(Qt::OtherFocusReason);
         else setFocus(Qt::OtherFocusReason);
     }
+}
+bool PreviewWindow::usesGnomePresentation() const
+{
+    // Desktop entries may be e.g. ubuntu:GNOME. A missing KWin service alone
+    // does not identify Mutter, and must never enable this on other desktops.
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland"))
+        && !placement_->available()
+        && qEnvironmentVariable("XDG_CURRENT_DESKTOP").split(QChar(':'))
+            .contains(QStringLiteral("GNOME"), Qt::CaseInsensitive);
+}
+void PreviewWindow::beginPreviewUpdate()
+{
+    previewUpdate_ = usesGnomePresentation() && isVisible() && canCommitPreview();
+    internalRemap_ = false;
+    if (previewUpdate_) ++resizeRevision_;
+}
+bool PreviewWindow::canCommitPreview() const
+{
+    // A new Mutter role can acquire focus even without requestActivate().
+    // Keep the current presentation until the user returns to this preview.
+    return !usesGnomePresentation() || !isVisible()
+        || (isActiveWindow() && !(settings_ && settings_->isVisible()));
+}
+void PreviewWindow::hideForPreviewUpdate()
+{
+    if (!previewUpdate_ || internalRemap_) return;
+    internalRemap_ = true;
+    hide();
+    // This is the same screen and reading session, not a reopen at the cursor.
+    presentationPrepared_ = true;
+    imageRestorePending_ = false;
+    informationRestorePending_ = false;
+}
+void PreviewWindow::setPreviewState(Qt::WindowStates state)
+{
+    if ((state & ~Qt::WindowActive) != (windowState() & ~Qt::WindowActive))
+        hideForPreviewUpdate();
+    setWindowState(state);
+}
+void PreviewWindow::setPreviewMinimum(const QSize &minimum)
+{
+    if (size().expandedTo(minimum) != size())
+        hideForPreviewUpdate();
+    setMinimumSize(minimum);
+}
+void PreviewWindow::endPreviewUpdate()
+{
+    const bool remapped = internalRemap_;
+    previewUpdate_ = false;
+    if (!remapped) return;
+    if (!isMaximized() && !isFullScreen()) {
+        // Mutter may auto-maximize a newly mapped normal reading window.
+        // Bound only its initial configure; release on exposure so subsequent
+        // user resizing/maximization remains unconstrained.
+        remapMaximum_ = maximumSize();
+        setMaximumSize(size());
+    }
+    if (windowHandle()) windowHandle()->setWindowStates(windowState() & ~Qt::WindowActive);
+    show();
+    internalRemap_ = false;
 }
 void PreviewWindow::setNavigation(bool previous, bool next, const QString &status)
 {
@@ -371,10 +431,10 @@ void PreviewWindow::setInformationMode(bool information)
         }
         informationMode_ = true;
         imageMode_ = false;
-        setMinimumSize(0, 0);
+        setPreviewMinimum(QSize(0, 0));
         informationRestorePending_ = isMaximized() || isFullScreen();
         // Unmaximize temporarily; do not request activation when loading ends.
-        setWindowState(minimized);
+        setPreviewState(minimized);
         fitInformation();
     } else {
         informationMode_ = false;
@@ -389,10 +449,10 @@ void PreviewWindow::setInformationMode(bool information)
 }
 void PreviewWindow::restoreDocumentSize()
 {
-    setMinimumSize(0, 0);
+    setPreviewMinimum(QSize(0, 0));
     requestedWindowSize_ = previewWindowSize_;
     resizePreview(previewWindowSize_);
-    setWindowState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
+    setPreviewState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
     fitScreen(screen());
 }
 void PreviewWindow::enterImageMode()
@@ -403,7 +463,7 @@ void PreviewWindow::enterImageMode()
         // an intermediate asynchronous restore through the document size.
         informationMode_ = false;
         informationRestorePending_ = false;
-        setMinimumSize(0, 0);
+        setPreviewMinimum(QSize(0, 0));
         // Information and image previews both borrow the document geometry.
         // Keep the compact state instead of maximizing between these modes.
     } else {
@@ -416,7 +476,7 @@ void PreviewWindow::enterImageMode()
     // a natural size, just like information previews, then restore the saved
     // document state on return. Maximizing an image itself is still respected.
     imageRestorePending_ = isMaximized() && !isFullScreen();
-    if (imageRestorePending_) setWindowState(windowState() & ~Qt::WindowMaximized);
+    if (imageRestorePending_) setPreviewState(windowState() & ~Qt::WindowMaximized);
 }
 void PreviewWindow::prepareImage(const QSize &imageSize)
 {
@@ -434,7 +494,7 @@ void PreviewWindow::fitImage(const QSize &sourceSize)
     const QSize chrome = size() - contentHost_->size();
     const QSize decoration = frameGeometry().size() - size();
     const QSize limit = (screen()->availableGeometry().size() - decoration - QSize(32, 32)).expandedTo(QSize(1, 1));
-    setMinimumSize(QSize(400, 400).boundedTo(limit));
+    setPreviewMinimum(QSize(400, 400).boundedTo(limit));
     const auto available = (limit - chrome).expandedTo(QSize(1, 1));
     const qreal factor = std::min({1.0, qreal(available.width()) / natural.width(), qreal(available.height()) / natural.height()});
     const QSize fitted(qRound(natural.width() * factor), qRound(natural.height() * factor));
@@ -446,6 +506,7 @@ void PreviewWindow::resizePreview(const QSize &target, const QSize &imageSize, c
 {
     const bool wayland = QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
     ++resizeRevision_;
+    if (target != size()) hideForPreviewUpdate();
     if (isVisible() && wayland && placement_->available()) {
         if (!isMaximized() && !isFullScreen() && !isMinimized())
             placement_->request(windowTitle(), target, imageSize, chrome);
@@ -587,7 +648,8 @@ void PreviewWindow::fitScreen(QScreen *target)
     if (area.isEmpty()) return;
     const QSize decoration = frameGeometry().size() - size();
     const QSize limit = (area.size() - decoration).expandedTo(QSize(1, 1));
-    if (imageMode_) setMinimumSize(QSize(400, 400).boundedTo(limit));
+    if (imageMode_) setPreviewMinimum(QSize(400, 400).boundedTo(limit));
+    if (size().boundedTo(limit) != size()) hideForPreviewUpdate();
     resize(size().boundedTo(limit));
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) return;
     const QRect frame = frameGeometry();
@@ -598,6 +660,12 @@ void PreviewWindow::fitScreen(QScreen *target)
 }
 bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == windowHandle() && event->type() == QEvent::Expose
+        && !remapMaximum_.isEmpty() && windowHandle()->isExposed()) {
+        const auto maximum = remapMaximum_;
+        remapMaximum_ = {};
+        setMaximumSize(maximum);
+    }
     auto *target = qobject_cast<QWidget *>(watched);
     if (isVisible() && target && target->window() == this && event->type() == QEvent::Wheel) {
         auto *wheel = static_cast<QWheelEvent *>(event);
@@ -640,8 +708,13 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
         }
         if (direction) {
             key->accept();
-            if (keyPress && !key->isAutoRepeat() && (direction < 0 ? previous_->isEnabled() : next_->isEnabled()))
-                emit navigateRequested(direction);
+            if (keyPress && !key->isAutoRepeat() && (direction < 0 ? previous_->isEnabled() : next_->isEnabled())) {
+                if (externalNavigation_) {
+                    const uint gtkDirection = key->key() == Qt::Key_Up ? 2u : key->key() == Qt::Key_Down ? 3u
+                        : direction < 0 ? 4u : 5u;
+                    emit externalNavigationRequested(gtkDirection);
+                } else emit navigateRequested(direction);
+            }
             return true;
         }
         if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) {
@@ -674,9 +747,18 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 }
 void PreviewWindow::hideEvent(QHideEvent *event)
 {
+    if (!remapMaximum_.isEmpty()) {
+        const auto maximum = remapMaximum_;
+        remapMaximum_ = {};
+        setMaximumSize(maximum);
+    }
     mappingResizePending_ = false;
     ++resizeRevision_;
     placement_->cancel();
+    if (internalRemap_) {
+        QWidget::hideEvent(event);
+        return;
+    }
     if (settings_) settings_->hide();
     if (informationDialog_) informationDialog_->hide();
     QWidget::hideEvent(event);
@@ -691,5 +773,7 @@ void PreviewWindow::changeEvent(QEvent *event)
         placement_->cancel();
     if (diagnostics_ && event->type() == QEvent::ActivationChange)
         QTextStream(stderr) << "Dzurkel window active: " << isActiveWindow() << '\n';
+    if (event->type() == QEvent::ActivationChange && isActiveWindow())
+        emit presentationActivated();
 }
 } // namespace dzurkel

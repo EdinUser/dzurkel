@@ -3,6 +3,7 @@
 #include "controller/PreviewController.h"
 #include "desktop/DesktopIntegration.h"
 #include "ipc/PreviewService.h"
+#include "ipc/NautilusPreviewService.h"
 #include "resources/FileResource.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/FolderNavigation.h"
@@ -56,7 +57,7 @@ int main(int argc, char *argv[])
         if (result == dzurkel::InstanceCoordinator::ForwardResult::Failed) return fail(error);
         // Hiding or quitting an absent instance is a successful no-op.
         if (request.command == dzurkel::Command::Hide || request.command == dzurkel::Command::Quit) return 0;
-        if (request.command != dzurkel::Command::Settings) {
+        if (request.command != dzurkel::Command::Settings && request.command != dzurkel::Command::NautilusPreviewService) {
             dzurkel::FileResource resource;
             if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
         }
@@ -72,14 +73,22 @@ int main(int argc, char *argv[])
     application.setDesktopFileName(QStringLiteral("dzurkel"));
     application.setQuitOnLastWindowClosed(false);
     dzurkel::PreviewController controller(request.diagnostics);
-    dzurkel::PreviewService service(controller);
+    dzurkel::NautilusPreviewService nautilus(controller);
+    dzurkel::PreviewService service(controller, &nautilus);
     dzurkel::InstanceCoordinator instance(QStringLiteral("dzurkel-primary"));
     for (int attempt = 0; attempt < 3; ++attempt) {
         const auto claim = instance.claim(service, error);
         if (claim == dzurkel::InstanceCoordinator::ClaimResult::Failed) return fail(error);
         if (claim == dzurkel::InstanceCoordinator::ClaimResult::Primary) {
+            if (request.command == dzurkel::Command::NautilusPreviewService) {
+                if (!nautilus.start(error)) return fail(error);
+            } else if (nautilus.integration().enabled()) {
+                QString startupError;
+                if (!nautilus.start(startupError)) QTextStream(stderr) << "dzurkel: " << startupError << '\n';
+            }
             if (request.command == dzurkel::Command::Settings) controller.showSettings(request.activationToken);
-            else if (!controller.show(request.url, error, nullptr, request.activationToken)) return fail(error);
+            else if (request.command != dzurkel::Command::NautilusPreviewService
+                && !controller.show(request.url, error, nullptr, request.activationToken)) return fail(error);
             if (request.diagnostics) {
                 QTextStream(stderr) << "Dzurkel primary PID: " << application.applicationPid()
                     << " platform: " << application.platformName() << '\n';

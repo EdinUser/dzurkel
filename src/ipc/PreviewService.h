@@ -5,6 +5,7 @@
 
 namespace dzurkel {
 class PreviewController;
+class NautilusPreviewService;
 // Provisional project-owned identifiers; finalize the namespace before release.
 inline constexpr auto ServiceName = "io.github.EdinUser.Dzurkel.Previewer";
 inline constexpr auto ObjectPath = "/io/github/EdinUser/Dzurkel/Previewer";
@@ -18,7 +19,7 @@ class PreviewService : public QObject, protected QDBusContext {
     Q_PROPERTY(QString PreviewKind READ previewKind)
     Q_PROPERTY(bool Loading READ loading)
 public:
-    explicit PreviewService(PreviewController &controller);
+    explicit PreviewService(PreviewController &controller, NautilusPreviewService *nautilus = nullptr);
     bool isVisible() const;
     QString fileUrl() const;
     QString previewKind() const;
@@ -31,8 +32,10 @@ public slots:
     void ToggleWithOptions(const QString &url, const QVariantMap &options);
     void Quit();
     void ShowSettings(const QVariantMap &options);
+    void StartNautilusPreviewer();
 private:
     void open(const QString &url, bool toggle, const QVariantMap &options = {});
     PreviewController &controller_;
+    NautilusPreviewService *nautilus_;
 };
 } // namespace dzurkel

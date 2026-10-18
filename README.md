@@ -64,12 +64,21 @@ Shortcut integration targets **Dolphin 26.04 or newer**. See
 [Dolphin setup and troubleshooting](docs/dolphin-integration.md) if the menu or
 shortcut is unavailable. Window activation follows the desktop’s focus policy.
 
+On GNOME with Nautilus (Files) installed, Settings shows **Nautilus shortcut**.
+Choose **Enable Space shortcut**, then select a local file in Files and press
+Space. Dzurkel starts automatically and navigation follows the selection in
+Files. **Restore previous previews** restores the previous user preview provider.
+If another provider such as Sushi is running, close its preview and quit it
+before enabling Dzurkel. Setup does not change system packages or global keys.
+See [GNOME and Nautilus testing](docs/gnome-testing.md) for scope and validation.
+
 ## Compatibility
 
 | Environment or location | Status |
 | --- | --- |
 | Fedora 44, KDE Plasma 6, Wayland | Primary development and desktop validation environment |
 | Dolphin 26.04+ | Target for Space shortcut integration |
+| Ubuntu 26.04.1, GNOME 50, Nautilus 50.2.2, Wayland | VM validation; opt-in Space previews for local files |
 | Other distributions or desktops | Not yet validated; source builds may work |
 | Local files and mounted shares | Supported |
 | Direct SMB URLs | Optional KIO-FUSE/KIO workers required; authenticate in Dolphin |

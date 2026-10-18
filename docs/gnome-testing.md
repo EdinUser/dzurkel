@@ -1,10 +1,36 @@
 # GNOME and Nautilus development testing
 
-This is an opt-in, user-local test workflow. It adds **Scripts → Preview with
+Settings offers opt-in, user-local **Space** previews on GNOME with Nautilus
+(Files) installed. Open **Dzurkel Settings**, check the **Nautilus shortcut**
+heading and choose **Enable Space shortcut**. Select a local file in Files and
+press Space. Escape or Space dismisses the preview; Alt+arrows navigate using
+Files’ selection, including its current sort/filter order. Ordinary arrows also
+navigate images and file information; document readers retain their normal keys.
+The preview stays unparented and uses Mutter’s normal placement policy.
+
+This registers `org.gnome.NautilusPreviewer` in
+`$XDG_DATA_HOME/dbus-1/services/` (normally `~/.local/share/dbus-1/services/`).
+The registration starts the same Dzurkel instance on demand. A backup in
+`$XDG_STATE_HOME/dzurkel/` (normally `~/.local/state/dzurkel/`) records the
+previous user registration. **Restore previous previews** restores it or removes
+the override, allowing a system provider such as Sushi to activate again.
+Later edits to the managed registration are preserved and require review.
+No system service file, package, global shortcut or GNOME extension is changed.
+Use Restore before removing or moving the Dzurkel executable.
+An already-running provider is never replaced or queued behind: close its
+preview and quit it, then retry Enable. Sushi may take time to exit after closing
+its preview. Restore releases Dzurkel’s provider name without quitting Files.
+
+The adapter implements the Nautilus 50 `org.gnome.NautilusPreviewer2` contract.
+Initial support is for local files; GVfs/network URI integration is not included.
+KDE Settings retains the Dolphin workflow. Detection uses the current desktop
+and installed supported file managers; an ambiguous unsupported desktop shows
+unavailable controls.
+
+The separate Scripts menu test workflow adds **Scripts → Preview with
 Dzurkel** to GNOME Files (Nautilus) for one selected local file. It uses Python 3
 and the installed Dzurkel executable; it does not require a Nautilus extension
 package. It does not assign keys or change the default file-opening application.
-Space integration in Dzurkel Settings currently configures Dolphin, not Nautilus.
 
 ## Install the test integration
 
@@ -40,8 +66,10 @@ Use a test folder containing a text file, an image, a PDF, CSV/TSV and an XLSX
 workbook. Include a filename with spaces and Unicode; also test `#`, `%`, quotes,
 and a leading `-`. Keep personal files out of screenshots and logs.
 
-1. Open **Dzurkel Settings** from the GNOME application overview. Check its
-   layout/theme and close it. Leave the Dolphin shortcut controls unchanged.
+1. Open **Dzurkel Settings** from the GNOME application overview. Check the
+   Nautilus heading, enable Space previews and close Settings. Test Enable and
+   Restore with an existing provider and check that cancellation/conflicts leave
+   its files and ownership unchanged.
 2. In Files, select exactly one local text file. Choose **Scripts → Preview with
    Dzurkel** and verify the filename/content and File information path.
 3. Check that the preview receives keyboard focus; press Escape to dismiss it.
@@ -59,9 +87,12 @@ and a leading `-`. Keep personal files out of screenshots and logs.
 7. Check light/dark themes and available display scaling. Record focus failures
    by launch route (terminal, Settings launcher, or Nautilus script).
 
-GNOME/Nautilus Space invocation is a separate, unimplemented acceptance step.
-Do not claim it works because the Scripts menu works. Nautilus shortcut behavior
-and potential GNOME Sushi conflicts need investigation before assigning Space.
+Repeat the sequence with real Space invocation, including a fresh Dzurkel
+process and an already-resident instance. Check Files list/grid views, sorting
+and filters, navigation selection synchronization, same-file toggle versus a
+different selection, and reopening after Escape. Restore the provider in
+Settings and verify that a previous system provider can activate again if installed.
+The script path does not establish Space activation behavior.
 
 For sizing checks, compare text/CSV/XLSX reading windows before and after a small
 image preview. The document should recover its reading size. Manual document
@@ -75,11 +106,16 @@ and display scaling change the available space, so record those settings.
 
 Check both navigation while visible and Escape followed by opening another file
 through Nautilus. These exercise different window-mapping paths. Resizing passed
-user retesting on the Ubuntu GNOME VM; automatic placement after a visible
-image-to-document resize remains under investigation. Mutter's
-`center-new-windows` setting was already enabled in that VM and controls initial
-placement. See [GNOME window placement](gnome-window-placement.md) for the
-investigated settings, tools and remaining validation.
+user retesting on the Ubuntu GNOME VM. GNOME Wayland now internally remaps
+adaptive size/state changes after the final result is ready, allowing Mutter to
+apply its initial placement policy. Equal-size updates stay mapped. Switch to
+another application during a slow load: the current view should remain in place
+until you return to the preview, without taking focus. Repeat with Settings open;
+close Settings and return to the preview to apply the pending result.
+Mutter's `center-new-windows` setting was already enabled in that VM and controls
+initial placement. Check whether repeated mapping animations are acceptable;
+do not change global animation settings. See [GNOME window placement](gnome-window-placement.md)
+for the lifecycle, focus handling and remaining validation.
 
 ## Diagnostics
 
@@ -113,6 +149,12 @@ portal logging or disable the portal to make a test appear clean.
 argument/URI delivery (including special characters), selection rejection,
 preservation of unrelated scripts, and managed update/removal backups. It uses
 a fake executable and does not establish real GNOME activation or menu behavior.
+
+`dzurkel_nautilus_adapter` tests desktop detection, registration backup/restore,
+preservation of edits and symbolic links, competing ownership, the D-Bus
+contract, external selection navigation and cold activation/resident forwarding.
+It uses isolated buses and configuration directories. Native GNOME focus,
+placement and real Files input remain desktop acceptance checks.
 
 To remove only the test integration, from the checkout run:
 

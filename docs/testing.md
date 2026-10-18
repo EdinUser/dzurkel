@@ -794,3 +794,79 @@ All eleven offscreen suites passed on Ubuntu (26.66s) and Fedora (34.85s).
 The VM user-local binary was updated after quitting its resident instance.
 Manual acceptance of the exact CSV → Alt+Right sequence on this update is pending;
 positioning remains a separate issue.
+
+
+## GNOME Wayland internal placement follow-up (2026-10-18)
+
+The GNOME-specific presentation path retains the Qt window/native surface and
+prepares adaptive dimensions before internally remapping a top-level role. It
+keeps equal-size updates mapped and distinguishes internal hiding from dismissal.
+The existing KWin placement adapter and resize restoration fixes remain in use.
+See [GNOME placement](gnome-window-placement.md) for the focus gate and limits.
+
+Full offscreen suites passed on Fedora (11/11, 34.11 s) and Ubuntu (11/11,
+29.26 s). Native KDE checks using the actual KWin adapter passed remembered
+reading-size transitions, maximized CSV/image navigation, image sizing and
+information/maximized restoration (6.626 s including setup/cleanup). An earlier
+KDE run without the test bus override failed mapped resizing/navigation; it did
+not exercise the normal KWin adapter.
+
+The native GNOME regression covers delayed replacement, equal-size updates
+without remapping, retained QWidget/QWindow identity, released initial size
+limits, Settings holding a completed result, newest-request replacement and
+cancellation both during loading and after completion. It passed after the final
+held-result assertions (3.824 s including setup/cleanup). Grouped native GNOME
+image/reading and maximized CSV navigation checks also passed; information/state
+restoration waited for focus in that group and passed separately. This does not
+establish that every native GNOME test passes; the earlier rapid information
+fallback/reopen stress case remains outside the resolved placement claim.
+
+An isolated real-controller harness measured six previews on the GNOME VM using
+framebuffer captures. Real VM Alt+Right input selected all six expected files;
+each settled preview was active and centered with the existing Mutter centering
+preference. Real Escape dismissed it. A 250 ms preparation delay produced the
+same final placement after the initial loading fallback. A real Alt+Tab check
+confirmed a completed background result stayed pending without hiding the old
+window or taking focus, then committed when returning. Protocol lifecycle checks
+confirmed one main wl_surface throughout, with six top-level roles (seven when
+the slow first load mapped a loading view). Native Qt global coordinates were
+not used as proof of positioning.
+
+These checks cover GNOME 50.1/Qt 6.10.2 on one 1280×800 display at 100% scale.
+They do not establish flicker-free transitions, user acceptance of mapping
+animations, other GNOME versions, multiple monitors, tiling or fractional scaling.
+No global settings changed and no performance benchmark was run.
+
+## Nautilus Space adapter (2026-10-18)
+
+The opt-in Settings integration adds `dzurkel_nautilus_adapter`, bringing CTest
+to 12 suites. All 12 passed on Fedora and on the Ubuntu VM. The final bounded
+registration-backup check also passed in the targeted Fedora adapter suite;
+the VM helper then reran all 12 successfully (26.40 s) before user-local install.
+Three existing native KDE sizing/navigation regressions passed (5.536 s,
+including setup/cleanup) using the actual KWin test bus override.
+
+Production Settings was exercised on the GNOME VM using a private bus and
+temporary XDG directories. It detected Nautilus, enabled the preview service
+with Files already open, and restored it through the native buttons. Restore
+released the service name, removed the temporary registration/backup, and left
+Settings and the current preview open. Actual Space selected the correct local
+file, and Alt+Right followed Files selection through images, CSV and text,
+including Unicode, spaces, `#` and `%`. Maximized CSV to a small image retained
+the stable resize behavior. Actual Escape dismissed the preview. After stopping
+the resident and confirming no provider owner, Space activated the final
+installed binary and opened the selected text file; Space from Files on that
+same visible URI toggled it off.
+
+An initial check exposed selection updates incorrectly consuming activation
+tokens as explicit activation requests. The final adapter restricts mapped
+reactivation to Space requests. Actual Alt+Tab to Files followed by a new
+selection then left Files focused and the preview pending (`Loading=true`);
+returning to Dzurkel committed the result (`Loading=false`).
+
+Competing ownership, original-user-registration restoration and preservation of
+subsequent edits were tested on isolated buses/files. Sushi itself is absent in
+this VM, so real Sushi exit/fallback activation remains untested. These checks
+cover GNOME 50/Nautilus 50.2.2 local files; GVfs, other versions, multiple
+monitors and fractional scaling remain outside this validation. No new runtime
+dependency, extension, compositor script or global shortcut was introduced.

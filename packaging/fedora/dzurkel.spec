@@ -1,5 +1,5 @@
 Name:           dzurkel
-Version:        0.6.0
+Version:        0.6.1
 Release:        1%{?dist}
 Summary:        Quick file previews for KDE Dolphin
 
@@ -58,5 +58,8 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/kio/servicemenus/dzurkel.desktop
 
 %changelog
+* Sun Oct 18 2026 Dzurkel contributors - 0.6.1-1
+- Add opt-in Nautilus Space previews and GNOME Wayland placement fixes.
+
 * Sat Oct 17 2026 Dzurkel contributors - 0.6.0-1
 - Add initial Fedora package with automated tests and Dolphin integration.

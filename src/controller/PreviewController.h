@@ -10,14 +10,19 @@
 namespace dzurkel {
 class ResourcePreparation;
 class FolderNavigation;
+class NautilusPreviewService;
 class PreviewController : public QObject {
+    Q_OBJECT
 public:
     using Loader = std::function<PreviewData(const FileResource &, const QSize &, const Cancellation &)>;
     explicit PreviewController(bool diagnostics = false, Loader loader = {});
     ~PreviewController() override;
     // Folder navigation suppresses activation when updating a mapped preview.
     bool show(const QString &url, QString &error, ResourceError *failure = nullptr,
-              const QString &activationToken = {}, bool requestActivation = true);
+              const QString &activationToken = {}, bool requestActivation = true, bool externalNavigation = false);
+    bool externalNavigation() const { return externalNavigation_; }
+    void releaseExternalNavigation();
+    void setNautilusService(NautilusPreviewService *service) { window_.setNautilusService(service); }
     void hide();
     void showSettings(const QString &activationToken = {}) { window_.showSettings(activationToken); }
     bool toggle(const QString &url, QString &error);
@@ -26,10 +31,14 @@ public:
     QString previewKind() const;
     QString fileUrl() const;
     const PreviewWindow *window() const { return &window_; }
+signals:
+    void stateChanged();
+    void externalNavigationRequested(uint direction);
 private:
     struct Job { FileResource resource; QSize target; quint64 generation; QString activationToken; };
     void startPending();
     void cancelAndClear();
+    void commitReadyPreview();
     // Empty document keeps Qt's PDF runtime initialized after the first PDF.
     // Declare before the window so its runtime outlives any displayed document.
     std::unique_ptr<QPdfDocument> pdfRuntime_;
@@ -41,6 +50,8 @@ private:
     Loader loader_;
     Cancellation cancellation_;
     std::optional<Job> pending_;
+    struct ReadyPreview { Job job; PreviewData data; };
+    std::optional<ReadyPreview> ready_;
     quint64 generation_ = 0;
     QString fileUrl_;
     QString navigationParent_;
@@ -49,5 +60,6 @@ private:
     PreviewKind kind_ = PreviewKind::Cancelled;
     bool loading_ = false;
     bool presentationPending_ = false;
+    bool externalNavigation_ = false;
 };
 } // namespace dzurkel
