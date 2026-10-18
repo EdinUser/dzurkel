@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Dzurkel Nautilus script: preview exactly one selected local file."""
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+from urllib.parse import urlsplit
+
+EXECUTABLE = @DZURKEL_EXECUTABLE@
+
+
+def fail(message):
+    print(f"Dzurkel: {message}", file=sys.stderr)
+    if shutil.which("notify-send"):
+        try:
+            subprocess.run(["notify-send", "--app-name=Dzurkel", "Dzurkel", message],
+                           check=False, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return 1
+
+
+def main():
+    # Nautilus encodes newlines and special characters in the URI environment.
+    # Local arguments are the fallback and remain separate, shell-free values.
+    uris = os.environ.get("NAUTILUS_SCRIPT_SELECTED_URIS", "").splitlines()
+    if len(sys.argv) > 2 or len(uris) > 1:
+        return fail("Select exactly one local file to preview.")
+    if uris:
+        try:
+            uri = urlsplit(uris[0])
+        except ValueError:
+            return fail("The selected file URI is invalid.")
+        if uri.scheme != "file" or uri.netloc not in ("", "localhost"):
+            return fail("This Nautilus integration currently supports local files only.")
+        target = uris[0]
+    elif len(sys.argv) == 2:
+        target = str(Path(sys.argv[1]).absolute())
+    else:
+        return fail("Select exactly one local file to preview.")
+    try:
+        os.execv(EXECUTABLE, [EXECUTABLE, "--show", "--", target])
+    except OSError as error:
+        return fail(f"Could not launch Dzurkel: {error.strerror}.")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -686,3 +686,31 @@ context-menu previews are the intended entry points there. Existing Fedora user
 acceptance and the confirmed focus fix do not establish desktop acceptance for
 these distributions. [Issue #4](https://github.com/EdinUser/dzurkel/issues/4) remains
 open. The host's user-local development installation was not changed.
+
+
+## Initial Ubuntu GNOME and Nautilus workflow
+
+On Ubuntu 26.04.1 amd64, GNOME Shell 50.1, Nautilus 50.2.2 and Wayland, the user
+installed the Debian 13 DEB after enabling Ubuntu universe. Package status,
+version and `dpkg --verify` passed. The user confirmed the Settings launcher,
+text preview, focus, Escape dismissal and reopening worked as expected.
+The DEB was subsequently removed and its four system runtime paths were verified
+absent before switching to a user-local native development build.
+
+The native Ubuntu Debug build passed all eleven registered suites after adding
+`dzurkel_nautilus` (24.12s). The final script regression set also passed separately
+on Fedora and the VM. A separate private-bus check of the VM's installed Nautilus
+script exercised real text previews with Unicode/spaces/special-character URIs,
+resident-process forwarding, Hide and Quit. This establishes selected-file
+handling through the installed script and IPC, not actual GNOME menu delivery
+or compositor focus.
+
+The opt-in **Scripts → Preview with Dzurkel** action is installed in the VM.
+Real Nautilus menu visibility, selection delivery, focus and dismissal remain
+pending user acceptance. Space invocation and remote GNOME/GVfs integration are
+not implemented by this test script. Follow the
+[GNOME testing workflow](gnome-testing.md) and record results separately.
+
+The user observed a Qt portal app-ID registration warning from the development
+Settings launch and confirmed Settings still opened normally. Its cause remains
+unconfirmed; no portal suppression or behavior change was introduced.

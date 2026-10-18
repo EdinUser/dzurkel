@@ -115,6 +115,7 @@ a separate manual check.
 
 - [Installation, updates and removal](docs/installation.md)
 - [Dolphin integration and Space shortcut](docs/dolphin-integration.md)
+- [GNOME and Nautilus testing workflow](docs/gnome-testing.md)
 - [Usage and keyboard controls](docs/usage.md)
 - [Supported formats and preview limits](docs/previews.md)
 - [Network locations and experimental SFTP](docs/compatibility.md)

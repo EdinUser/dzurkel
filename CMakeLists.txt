@@ -163,6 +163,9 @@ if(BUILD_TESTING)
         -DEXPECTED_VERSION=${PROJECT_VERSION}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/CommandLine.cmake)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME dzurkel_nautilus COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/NautilusTest.py)
+    set_tests_properties(dzurkel_nautilus PROPERTIES TIMEOUT 30)
     add_test(NAME dzurkel_install COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/InstallTest.py
         --build-dir ${CMAKE_CURRENT_BINARY_DIR}
