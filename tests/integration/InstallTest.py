@@ -5,19 +5,27 @@ import os
 from pathlib import Path
 import subprocess
 import selectors
+import shlex
 import sys
 import tempfile
 import time
 
 
-def smoke(binary):
+def smoke(binary, launcher=None):
     """Run only inside the fresh bus created by the parent install check."""
     with tempfile.TemporaryDirectory(prefix="dzurkel smoke ") as temporary:
         sample = Path(temporary) / "пример space.txt"
         sample.write_text("Installed Dzurkel smoke test\n")
         environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
         environment.pop("XDG_ACTIVATION_TOKEN", None)
-        primary = subprocess.Popen([binary, "--diagnostics", str(sample)], env=environment,
+        command = [binary, "--diagnostics", str(sample)]
+        if launcher:
+            entry = Path(launcher).read_text()
+            executable = next(line[5:] for line in entry.splitlines() if line.startswith("Exec="))
+            command = [str(sample) if arg == "%u" else arg for arg in shlex.split(executable)]
+            assert command[0] == binary, command
+            command.insert(1, "--diagnostics")
+        primary = subprocess.Popen(command, env=environment,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         try:
             with selectors.DefaultSelector() as selector:
@@ -41,6 +49,11 @@ def smoke(binary):
 
 if len(sys.argv) == 3 and sys.argv[1] == "--smoke":
     smoke(sys.argv[2])
+    sys.exit(0)
+
+if len(sys.argv) == 3 and sys.argv[1] == "--smoke-launchers":
+    for name in ("dzurkel.desktop", "dzurkel-settings.desktop"):
+        smoke(sys.argv[2], f"/usr/share/applications/{name}")
     sys.exit(0)
 
 parser = argparse.ArgumentParser()

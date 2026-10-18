@@ -1,4 +1,4 @@
-name: Fedora CI
+name: Linux packages CI
 
 on:
   push:
@@ -127,18 +127,129 @@ jobs:
           path: build/Testing/Temporary/*.log
           retention-days: 7
 
+  deb:
+    name: Debian 13 amd64 package and tests
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 30
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper cmake pkgconf qt6-base-dev qt6-pdf-dev libkf6windowsystem-dev libzip-dev dbus-daemon python3 desktop-file-utils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build binary and source packages; run CTest
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- env DEB_BUILD_OPTIONS=parallel=2 bash packaging/debian/build-deb.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: debian-13-amd64
+          path: build-deb/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  deb-install:
+    name: Debian 13 clean install and removal
+    needs: deb
+    runs-on: ubuntu-24.04
+    container: debian:13
+    timeout-minutes: 15
+    steps:
+      - name: Install test tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates dbus-daemon python3 desktop-file-utils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: debian-13-amd64
+          path: packages
+      - name: Verify contents, install, launch and remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd packages && sha256sum --check SHA256SUMS-debian-13-amd64)
+          dpkg-deb --contents packages/dzurkel_*.deb
+          apt-get install -y --no-install-recommends ./packages/dzurkel_*.deb
+          test -z "$(dpkg --verify dzurkel)"
+          useradd --create-home preview-user
+          bash packaging/check-installed.sh installed
+          apt-get purge -y dzurkel
+          test "$(dpkg-query -W -f='${db:Status-Status}' dzurkel 2>/dev/null || true)" != installed
+          bash packaging/check-installed.sh removed
+
+  arch:
+    name: Arch x86_64 package and tests
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    timeout-minutes: 30
+    steps:
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm --needed git cmake qt6-base qt6-webengine qt6-wayland kwindowsystem libzip dbus python desktop-file-utils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build package; run CTest
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash packaging/arch/build-arch.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: arch-x86_64
+          path: build-arch/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  arch-install:
+    name: Arch clean install and removal
+    needs: arch
+    runs-on: ubuntu-24.04
+    container: archlinux:base
+    timeout-minutes: 15
+    steps:
+      - name: Install test tools
+        run: pacman -Syu --noconfirm --needed git dbus python desktop-file-utils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: arch-x86_64
+          path: packages
+      - name: Verify contents, install, launch and remove
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd packages && sha256sum --check SHA256SUMS-arch-x86_64)
+          pacman -Qlp packages/dzurkel-*.pkg.tar.zst
+          pacman -U --noconfirm packages/dzurkel-*.pkg.tar.zst
+          pacman -Qkk dzurkel
+          useradd --create-home preview-user
+          bash packaging/check-installed.sh installed
+          pacman -R --noconfirm dzurkel
+          ! pacman -Q dzurkel
+          bash packaging/check-installed.sh removed
+
   release:
     name: Prepare draft release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [rpm, install, clang]
+    needs: [rpm, install, clang, deb-install, arch-install]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: fedora-44-x86_64
+          pattern: '*'
           path: packages
+          merge-multiple: true
       - name: Create draft and attach packages
         env:
           GH_TOKEN: ${{ github.token }}

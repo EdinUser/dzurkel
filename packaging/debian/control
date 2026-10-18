@@ -1,0 +1,20 @@
+Source: dzurkel
+Section: kde
+Priority: optional
+Maintainer: Dzurkel contributors <noreply@github.com>
+Build-Depends: debhelper-compat (= 13), cmake (>= 3.22), pkgconf,
+ qt6-base-dev (>= 6.4), qt6-pdf-dev, libkf6windowsystem-dev,
+ libzip-dev (>= 1.7), dbus-daemon, python3, desktop-file-utils
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/EdinUser/dzurkel
+
+Package: dzurkel
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, qt6-wayland
+Recommends: qt6-image-formats-plugins
+Suggests: dolphin, kio-fuse, kio-extras
+Description: Quick file previews for KDE Dolphin
+ Preview images, PDFs, text and CSV/TSV/XLSX spreadsheets in a reusable
+ window. Open Dzurkel Settings to configure the optional Space shortcut
+ (requires Dolphin 26.04 or newer).

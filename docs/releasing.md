@@ -1,7 +1,8 @@
-# Fedora packages and GitHub releases
+# Linux packages and GitHub releases
 
-The initial binary target is Fedora 44 x86_64. Other RPM distributions, older
-Fedora releases, DEB, Arch and AppImage are not certified by this workflow.
+Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linux
+x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
+Other distro versions and AppImage are not tested by this workflow.
 
 ## Continuous integration
 
@@ -41,9 +42,35 @@ notes and build products cannot enter the source archive. Output is under
 `SHA256SUMS`. CMake and spec versions must match. Local build dependencies can
 affect the result; CI supplies the Fedora 44 environment.
 
+## Build Debian and Arch packages
+
+Use the matching container/toolchain from `.github/workflows/ci.yml`. Install
+build dependencies listed there, then run as an ordinary user in a clean,
+committed checkout:
+
+```bash
+DEB_BUILD_OPTIONS=parallel=2 bash packaging/debian/build-deb.sh
+# In Arch Linux:
+bash packaging/arch/build-arch.sh
+```
+
+Debian uses debhelper 13, CMake, Qt6 base/PDF, KF6 WindowSystem, libzip, and
+standard `dpkg-buildpackage` tooling. Arch uses `makepkg` and the PKGBUILD under
+`packaging/arch/`. Both run every CTest suite before packaging and archive HEAD,
+excluding ignored/private files. Output directories are `build-deb/artifacts/`
+and `build-arch/artifacts/`. The generated Arch PKGBUILD references the attached
+source archive with a real SHA-256; the repository recipe is an input template.
+Source packages are unsigned. Version/release fields must match the recipes.
+
+CI installs the binary in a fresh matching container without build dependencies,
+checks package ownership/integrity, validates desktop entries, starts both desktop
+commands on private D-Bus sessions as a non-root user, exercises Settings and
+preview IPC, then removes the package and checks all four installed paths are
+absent. These headless tests do not establish KDE desktop acceptance.
+
 ## Prepare a release
 
-1. Update the CMake version and RPM `Version` together. Increment RPM `Release`
+1. Update CMake, RPM `Version`, Debian changelog and Arch `pkgver` together. Increment RPM `Release`
    for packaging-only rebuilds of the same upstream version.
 2. Ensure CI passes for the intended commit. Check the package on a real Fedora
    KDE Wayland desktop: previews, Settings, Dolphin Space setup/restoration,
@@ -52,6 +79,8 @@ affect the result; CI supplies the Fedora 44 environment.
    maintainer action; the workflow does not create tags itself.
 4. The tag workflow repeats checks and creates a **draft** GitHub release with
    RPMs and checksums. It refuses to overwrite assets on a published release.
+   All package build and clean-install jobs must pass first. Debian and Arch use
+   distinct checksum manifest names to avoid overwriting the Fedora `SHA256SUMS`.
 5. Edit the draft notes with compatibility, installation instructions, desktop
    results and known limitations; publish after review.
 

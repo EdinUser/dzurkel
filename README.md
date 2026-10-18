@@ -5,7 +5,7 @@ Dzurkel is a Qt 6 file previewer for Linux, built for Fedora, KDE Plasma and
 Wayland. Use Dolphin’s context menu, or enable the **Space** shortcut to preview
 selected files in a reusable window.
 
-[![Fedora CI](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
+[![Linux packages CI](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 ![Dzurkel showing a CSV table of supported preview formats](docs/images/table-preview.png)
@@ -46,8 +46,9 @@ procedure; there is no Dzurkel DNF repository.
 
 To build and install the current checkout instead, follow the
 [Fedora source installation guide](docs/installation.md#user-local-installation).
-DEB, Arch and AppImage packages are planned; they are not currently supported
-release formats.
+Debian 13 amd64 and current Arch Linux x86_64 packages are also built by CI.
+See [Debian and Arch installation](docs/installation.md#debian-and-arch-packages)
+for commands and limitations. AppImage remains planned.
 
 ## Enable Space previews in Dolphin
 
@@ -107,7 +108,7 @@ ctest --test-dir build --output-on-failure
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for development and reporting guidance.
 GitHub Actions runs the automated tests with GCC and Clang, builds Fedora RPMs,
-and checks package installation/removal. KDE Wayland desktop acceptance remains
+Debian and Arch packages, and checks package installation/removal. KDE Wayland desktop acceptance remains
 a separate manual check.
 
 ## Documentation

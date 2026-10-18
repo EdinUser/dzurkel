@@ -1,0 +1,33 @@
+pkgname=dzurkel
+pkgver=0.6.0
+pkgrel=1
+pkgdesc='Quick file previews for KDE Dolphin'
+arch=('x86_64')
+url='https://github.com/EdinUser/dzurkel'
+license=('GPL-3.0-or-later')
+depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-webengine' 'qt6-wayland' 'kwindowsystem' 'libzip')
+makedepends=('cmake')
+checkdepends=('dbus' 'python' 'desktop-file-utils')
+optdepends=('dolphin: file manager integration (26.04+ for Space setup)'
+            'qt6-imageformats: additional image formats'
+            'kio-fuse: direct network URL previews'
+            'kio-extras: SMB and SFTP workers')
+# build-arch.sh supplies the committed source archive and its SHA-256.
+source=("dzurkel-$pkgver.tar.gz")
+sha256sums=('@SOURCE_SHA256@')
+
+build() {
+    cmake -S "$srcdir/dzurkel-$pkgver" -B build \
+        -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=ON
+    cmake --build build --parallel 2
+}
+
+check() {
+    QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 "$srcdir/dzurkel-$pkgver/README.md" "$pkgdir/usr/share/doc/dzurkel/README.md"
+    desktop-file-validate "$pkgdir"/usr/share/applications/*.desktop
+}
