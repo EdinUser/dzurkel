@@ -738,10 +738,31 @@ passes on native GNOME and KDE Wayland, alongside the existing image-sizing
 regression. The native KDE visible-preview focus regression also passes.
 The Ubuntu VM's eleven registered offscreen suites passed (28.27s).
 
-The native GNOME compact-information rapid close/reopen stress case
-`informationFallbackTemporarilyCompactsWindow` still fails intermittently when
-run with the broader native transition sequence; it has also passed in isolation.
-It is not claimed fixed or accepted by these results. The cold-information/PDF
-reopen case passed. Real Nautilus retesting of image-to-spreadsheet sizing after
-this update remains a user acceptance step. VM display changes, other GNOME
-versions and mixed-DPI configurations are not established by this check.
+### Resident-window reopening follow-up
+
+The user subsequently reproduced a separate failure after dismissal: opening a
+small image after a spreadsheet retained a nearly screen-sized background.
+Extending the regression to hide/reopen cycles reproduced 1207×735 instead of
+400×400 on native GNOME. Diagnostics showed QWidget in its normal state while
+its QWindow still held a maximized state. Qt reused the stale native state when
+creating the next Wayland surface.
+
+Before showing a hidden Wayland preview, Dzurkel now synchronizes QWindow's state
+with QWidget's state. This preserves an intentionally maximized preview; it does
+not force every image to unmaximize. Diagnostic mode reports resize, show and
+state changes without logging filenames or activation tokens in these messages.
+
+The extended regression and four related native GNOME cases passed (4.998s),
+including the compact-information rapid reopen case that had previously failed
+intermittently and intentional maximization across reopening. Native KDE checks
+for image/table transitions, image sizing, maximized information restoration and
+visible-preview activation passed (5.447s). All eleven registered suites passed
+on Ubuntu (28.33s) and Fedora (34.91s). Registered suites use offscreen rendering;
+the native checks above are separate desktop runs.
+
+The updated user-local build was installed only in the Ubuntu VM. The user
+confirmed small images now resize correctly after the requested spreadsheet/image
+reopening and navigation checks. The image-to-document positioning problem
+remains separate; see the [GNOME placement investigation](gnome-window-placement.md).
+VM display changes, other GNOME versions and mixed-DPI configurations are not
+established by this check.

@@ -70,6 +70,14 @@ GNOME can automatically maximize initially large windows; restore a maximized
 window before testing normal-window dimensions. A VM's resolution and display
 scaling change the available space, so record those settings with the result.
 
+Check both navigation while visible and Escape followed by opening another file
+through Nautilus. These exercise different window-mapping paths. Resizing passed
+user retesting on the Ubuntu GNOME VM; automatic placement after a visible
+image-to-document resize remains under investigation. Mutter's
+`center-new-windows` setting was already enabled in that VM and controls initial
+placement. See [GNOME window placement](gnome-window-placement.md) for the
+investigated settings, tools and remaining validation.
+
 ## Diagnostics
 
 To observe a fresh resident process, quit Dzurkel before starting diagnostics

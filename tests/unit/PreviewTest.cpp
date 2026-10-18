@@ -372,12 +372,30 @@ void PreviewTest::mappedImageAndTableTransitionsRestoreReadingSize()
         QVERIFY(controller.show(imagePath, error));
         QTRY_VERIFY(!controller.loading());
         QTRY_COMPARE(window->size(), QSize(400, 400));
+        if (QGuiApplication::platformName() == QLatin1String("xcb"))
+            QTRY_VERIFY(window->screen()->availableGeometry().contains(window->frameGeometry()));
         QVERIFY(controller.show(table, error));
         QTRY_VERIFY(!controller.loading());
         QCOMPARE(controller.previewKind(), QStringLiteral("table"));
         QTRY_COMPARE(window->size(), readingSize);
+        if (QGuiApplication::platformName() == QLatin1String("xcb"))
+            QTRY_VERIFY(window->screen()->availableGeometry().contains(window->frameGeometry()));
         QCOMPARE(window->winId(), nativeId);
         QCOMPARE(dismissed.count(), 0);
+    }
+    // Nautilus starts a new preview after Escape, using the resident window.
+    // This also exercises the compositor's configure for each new mapping.
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        controller.hide();
+        QVERIFY(controller.show(imagePath, error));
+        QTRY_VERIFY(!controller.loading());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(window->size(), QSize(400, 400));
+        controller.hide();
+        QVERIFY(controller.show(table, error));
+        QTRY_VERIFY(!controller.loading());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_COMPARE(window->size(), readingSize);
     }
 }
 
@@ -471,6 +489,11 @@ void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
     QVERIFY(controller.show(images.at(1), error));
     QTRY_VERIFY(!controller.loading());
     QVERIFY(window->isMaximized());
+    controller.hide();
+    QVERIFY(controller.show(images.first(), error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTRY_VERIFY(window->isMaximized()); // Keep an intentionally maximized preview.
 }
 
 void PreviewTest::informationFallbackRestoresMaximizedPreview()

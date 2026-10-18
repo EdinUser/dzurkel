@@ -174,7 +174,14 @@ void PreviewWindow::setResource(const FileResource &resource)
 void PreviewWindow::present(const QString &activationToken)
 {
     if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
-    if (!isVisible()) show();
+    if (!isVisible()) {
+        // A late Wayland configure can leave QWindow maximized after QWidget
+        // has returned to a normal preview size. Reconcile before mapping:
+        // Qt otherwise requests that stale native state for the new surface.
+        if (QGuiApplication::platformName().startsWith(QLatin1String("wayland")) && windowHandle())
+            windowHandle()->setWindowStates(windowState() & ~Qt::WindowActive);
+        show();
+    }
     if (!isActiveWindow() || !activationToken.isEmpty())
         activatePreview(windowHandle(), activationToken, diagnostics_);
 }
@@ -467,6 +474,9 @@ void PreviewWindow::fitInformation()
 void PreviewWindow::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
+    if (diagnostics_)
+        qInfo() << "Dzurkel window resize:" << event->oldSize() << "->" << event->size()
+                << "native" << event->spontaneous() << "state" << windowState();
     if (mappingResizePending_ && event->spontaneous()) {
         mappingResizePending_ = false;
         if (event->size() == mappedWindowSize_
@@ -497,6 +507,9 @@ void PreviewWindow::resizeEvent(QResizeEvent *event)
 }
 void PreviewWindow::showEvent(QShowEvent *event)
 {
+    if (diagnostics_)
+        qInfo() << "Dzurkel window show:" << size() << "state" << windowState()
+                << "native state" << (windowHandle() ? windowHandle()->windowStates() : Qt::WindowStates{});
     if (!event->spontaneous()) {
         if (!presentationPrepared_) preparePresentation();
         presentationPrepared_ = false;
@@ -649,6 +662,8 @@ void PreviewWindow::hideEvent(QHideEvent *event)
 void PreviewWindow::changeEvent(QEvent *event)
 {
     QWidget::changeEvent(event);
+    if (diagnostics_ && event->type() == QEvent::WindowStateChange)
+        qInfo() << "Dzurkel window state:" << windowState() << "size" << size();
     if (event->type() == QEvent::WindowStateChange && (isMaximized() || isFullScreen() || isMinimized()))
         placement_->cancel();
     if (diagnostics_ && event->type() == QEvent::ActivationChange)
