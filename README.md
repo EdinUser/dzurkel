@@ -5,7 +5,7 @@ Dzurkel is a Qt 6 file previewer for Linux, built for Fedora, KDE Plasma and
 Wayland. Use Dolphin’s context menu, or enable the **Space** shortcut to preview
 selected files in a reusable window.
 
-[![Linux packages CI](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
+[![Linux release packages](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 ![Dzurkel demonstrating text, image and CSV previews in Dolphin](docs/images/dzurkel-demo.gif)
@@ -48,7 +48,8 @@ procedure; there is no Dzurkel DNF repository.
 
 To build and install the current checkout instead, follow the
 [Fedora source installation guide](docs/installation.md#user-local-installation).
-Debian 13 amd64 and current Arch Linux x86_64 packages are also built by CI.
+Fedora, Debian 13 amd64 and current Arch Linux x86_64 packages are built when a
+GitHub release or prerelease is published. Ordinary pushes do not build packages.
 See [Debian and Arch installation](docs/installation.md#debian-and-arch-packages)
 for commands and limitations. AppImage remains planned.
 

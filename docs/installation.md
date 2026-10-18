@@ -11,9 +11,9 @@ installs a prebuilt package and resolves runtime dependencies through DNF.
 
 The first package target is Fedora 44 x86_64. Download the matching binary RPM
 from [GitHub Releases](https://github.com/EdinUser/dzurkel/releases).
-Development RPMs are also available as artifacts of successful
-[Fedora CI runs](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml);
-these are testing builds, not published releases.
+Packages are built only when a release or prerelease is published. Additional
+build artifacts are available from successful
+[release workflow runs](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml).
 
 ```bash
 sudo dnf install ./dzurkel-<version>-1.fc44.x86_64.rpm

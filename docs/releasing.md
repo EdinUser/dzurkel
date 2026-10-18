@@ -4,11 +4,13 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
-## Continuous integration
+## Release builds and validation
 
-`.github/workflows/ci.yml` runs on pull requests, pushes to `master`, version tags,
-and manual dispatch. It builds in Fedora 44 containers on standard GitHub-hosted
-Ubuntu runners. The GCC job builds a native RPM and SRPM with `rpmbuild`; the
+`.github/workflows/ci.yml` runs only when a GitHub release or prerelease is
+published (`release: published`). Pushes, pull requests, tags alone, and saved
+release drafts do not start builds; there is no manual dispatch trigger.
+It builds in distribution containers on standard GitHub-hosted Ubuntu runners.
+The Fedora GCC job builds a native RPM and SRPM with `rpmbuild`; the
 spec's `%check` runs every registered CTest suite. Clang builds and runs CTest
 separately. Compilation and tests run as an unprivileged build user so file
 permission checks behave like a normal desktop session. A fresh Fedora container installs the binary package, verifies its
@@ -78,20 +80,26 @@ absent. These headless tests do not establish KDE desktop acceptance.
 
 1. Update CMake, RPM `Version`, Debian changelog and Arch `pkgver` together. Increment RPM `Release`
    for packaging-only rebuilds of the same upstream version.
-2. Ensure CI passes for the intended commit. Check the package on a real Fedora
+2. Run local builds and tests for the intended commit. Check the package on a real Fedora
    KDE Wayland desktop: previews, Settings, Dolphin Space setup/restoration,
    scaling/focus, upgrade from the previous package and removal.
-3. Create and push a matching tag, for example `v0.6.1`. Tag creation is a
-   maintainer action; the workflow does not create tags itself.
-4. The tag workflow repeats checks and creates a **draft** GitHub release with
-   RPM, Debian and Arch packages and checksums. It refuses to overwrite assets
-   on a published release.
+3. Push the intended commit, including the release workflow, and create a matching
+   tag, for example `v0.6.3`. Tag creation is a maintainer action; the workflow
+   does not create tags itself. The tag must include the release-triggered workflow.
+4. Create a GitHub release for that tag. Review its notes with compatibility,
+   installation instructions, desktop results and known limitations, then choose
+   **Publish release**. Publishing a prerelease also starts the build; saving a
+   draft does not. The workflow builds the tagged commit and attaches RPM, Debian
+   and Arch packages and `SHA256SUMS` to that existing release after validation.
    All package build and clean-install jobs must pass first. Debian and Arch use
    distinct checksum manifest names to avoid overwriting the Fedora `SHA256SUMS`.
    The native GNOME gate must also pass: it checks real Nautilus Space delivery,
    focus, mapping and rendered placement on an isolated GNOME Shell desktop.
-5. Edit the draft notes with compatibility, installation instructions, desktop
-   results and known limitations; publish after review.
+5. Wait for the release workflow to succeed before announcing the downloads.
+   The release is visible while packages are building. If validation fails, no
+   packages are attached; inspect the failed run and rerun it after resolving the
+   cause. Reruns replace assets on that same release. Editing release notes does
+   not start another build.
 
 For example, after downloading release assets into one directory:
 
