@@ -66,9 +66,12 @@ and potential GNOME Sushi conflicts need investigation before assigning Space.
 For sizing checks, compare text/CSV/XLSX reading windows before and after a small
 image preview. The document should recover its reading size. Manual document
 resizing is remembered across dismissal/reopening while Dzurkel remains resident.
-GNOME can automatically maximize initially large windows; restore a maximized
-window before testing normal-window dimensions. A VM's resolution and display
-scaling change the available space, so record those settings with the result.
+GNOME can automatically maximize initially large document windows. Navigate
+from that maximized document to small images with Alt+Right: each image should
+temporarily use its natural window size. Returning to the document restores its
+maximized state. Maximizing an image directly keeps subsequent images maximized;
+restore that image window before checking natural dimensions. A VM's resolution
+and display scaling change the available space, so record those settings.
 
 Check both navigation while visible and Escape followed by opening another file
 through Nautilus. These exercise different window-mapping paths. Resizing passed

@@ -243,6 +243,7 @@ void PreviewWindow::setPreviewData(const PreviewData &data)
 {
     if (data.kind != PreviewKind::Image && imageMode_) {
         imageMode_ = false;
+        imageRestorePending_ = false;
         if (data.kind != PreviewKind::Information) restoreDocumentSize();
         else {
             // Keep the reading size saved before entering the image preview.
@@ -403,13 +404,19 @@ void PreviewWindow::enterImageMode()
         informationMode_ = false;
         informationRestorePending_ = false;
         setMinimumSize(0, 0);
-        setWindowState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
+        // Information and image previews both borrow the document geometry.
+        // Keep the compact state instead of maximizing between these modes.
     } else {
         previewWindowState_ = windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
         previewWindowSize_ = previewWindowState_ ? normalGeometry().size() : size();
         previewContentSize_ = contentHost_->size();
     }
     imageMode_ = true;
+    // A large document may have been auto-maximized by Mutter. Images borrow
+    // a natural size, just like information previews, then restore the saved
+    // document state on return. Maximizing an image itself is still respected.
+    imageRestorePending_ = isMaximized() && !isFullScreen();
+    if (imageRestorePending_) setWindowState(windowState() & ~Qt::WindowMaximized);
 }
 void PreviewWindow::prepareImage(const QSize &imageSize)
 {
@@ -477,6 +484,16 @@ void PreviewWindow::resizeEvent(QResizeEvent *event)
     if (diagnostics_)
         qInfo() << "Dzurkel window resize:" << event->oldSize() << "->" << event->size()
                 << "native" << event->spontaneous() << "state" << windowState();
+    if (imageRestorePending_ && event->spontaneous()) {
+        // The compositor's unmaximize configure can supersede the first fit.
+        // Wait until Qt has applied both its geometry and window-state events.
+        QTimer::singleShot(0, this, [this] {
+            if (!imageRestorePending_ || !imageMode_ || !isVisible()
+                || isMaximized() || isFullScreen() || isMinimized()) return;
+            imageRestorePending_ = false;
+            fitImage();
+        });
+    }
     if (mappingResizePending_ && event->spontaneous()) {
         mappingResizePending_ = false;
         if (event->size() == mappedWindowSize_
@@ -530,7 +547,13 @@ void PreviewWindow::showEvent(QShowEvent *event)
 void PreviewWindow::preparePresentation()
 {
     if (!presentationPrepared_) {
-        if (!isVisible() && shown_ && (informationMode_ || imageMode_)) restoreDocumentSize();
+        if (!isVisible() && shown_ && (informationMode_ || imageMode_)) {
+            const auto imageState = windowState();
+            restoreDocumentSize();
+            // Restore the reading dimensions for decoding, but keep an image's
+            // own normal/maximized state until the next provider is known.
+            if (imageMode_) setWindowState(imageState);
+        }
         QScreen *target = QGuiApplication::screenAt(QCursor::pos());
         if (!target) target = screen();
         if (!target) target = QGuiApplication::primaryScreen();

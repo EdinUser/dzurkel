@@ -766,3 +766,31 @@ reopening and navigation checks. The image-to-document positioning problem
 remains separate; see the [GNOME placement investigation](gnome-window-placement.md).
 VM display changes, other GNOME versions and mixed-DPI configurations are not
 established by this check.
+
+### Maximized-document navigation follow-up
+
+The user then reported that CSV → Alt+Right → small images still retained a
+maximized window. The installed VM binary matched the tested build: this was
+distinct from the stale native state on reopening. Image sizing deliberately
+returned early when the preceding document was maximized, including Mutter's
+automatic maximization. The earlier manual confirmation did not establish this
+navigation path.
+
+`maximizedTableNavigationCompactsImagesAndRestoresTable` reproduces the failure
+with a real CSV and 40×40/400×400 images, using Alt+Right/Left through the real
+folder navigator. It failed against the preceding implementation on native
+GNOME. Images now temporarily restore a maximized document to normal state,
+fit after its native unmaximize configure, and restore document maximization
+on return. Maximizing an image directly remains effective for subsequent images
+and reopening. The test also covers dismissal/reopening after these transitions
+and checks navigation does not dismiss or replace the Qt window.
+
+The new regression, mapped/reopened image-table sizing, image sizing and
+maximized-information restoration passed on native GNOME. Native KDE checks
+also passed (5.351s). The separate compact-information rapid reopen stress case
+passed in an earlier grouped run but failed on the final grouped GNOME run at
+its reopened-width assertion; its known intermittent failure remains unresolved.
+All eleven offscreen suites passed on Ubuntu (26.66s) and Fedora (34.85s).
+The VM user-local binary was updated after quitting its resident instance.
+Manual acceptance of the exact CSV → Alt+Right sequence on this update is pending;
+positioning remains a separate issue.

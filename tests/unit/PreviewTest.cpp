@@ -72,6 +72,7 @@ private slots:
     void informationFallbackTemporarilyCompactsWindow();
     void imageWindowsFitContentAndPreserveReadingSize();
     void mappedImageAndTableTransitionsRestoreReadingSize();
+    void maximizedTableNavigationCompactsImagesAndRestoresTable();
     void informationFallbackRestoresMaximizedPreview();
     void coldInformationThenReopenedPdfKeepsContentAndSize();
     void coldInformationMapsAtCompactSize_data();
@@ -484,9 +485,11 @@ void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
     QVERIFY(controller.show(text, error));
     QTRY_VERIFY(!controller.loading());
     QTRY_COMPARE(window->size(), readingSize);
+    QVERIFY(controller.show(images.at(1), error));
+    QTRY_VERIFY(!controller.loading());
     window->showMaximized();
     QTRY_VERIFY(window->isMaximized());
-    QVERIFY(controller.show(images.at(1), error));
+    QVERIFY(controller.show(images.first(), error));
     QTRY_VERIFY(!controller.loading());
     QVERIFY(window->isMaximized());
     controller.hide();
@@ -494,6 +497,70 @@ void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
     QTRY_VERIFY(!controller.loading());
     QVERIFY(QTest::qWaitForWindowExposed(window));
     QTRY_VERIFY(window->isMaximized()); // Keep an intentionally maximized preview.
+}
+
+void PreviewTest::maximizedTableNavigationCompactsImagesAndRestoresTable()
+{
+    QTemporaryDir files;
+    QVERIFY(files.isValid());
+    const auto table = files.filePath(QStringLiteral("a-table.csv"));
+    QFile csv(table);
+    QVERIFY(csv.open(QIODevice::WriteOnly));
+    csv.write("Name,Value\nFirst,42\n");
+    csv.close();
+    QStringList images;
+    for (const auto edge : {40, 400}) {
+        const auto path = files.filePath(QStringLiteral("b-image-%1.png").arg(edge, 3, 10, QChar('0')));
+        QImage image(edge, edge, QImage::Format_RGB32);
+        image.fill(Qt::blue);
+        QVERIFY(image.save(path));
+        images.append(path);
+    }
+    PreviewController controller;
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QSignalSpy dismissed(window, &PreviewWindow::dismissed);
+    QString error;
+    QVERIFY(controller.show(table, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    window->showMaximized();
+    QTRY_VERIFY(window->isMaximized());
+    QTRY_VERIFY(window->windowHandle()->windowStates().testFlag(Qt::WindowMaximized));
+    const auto nativeId = window->winId();
+    for (const auto &path : images) {
+        QTRY_VERIFY(window->findChild<QPushButton *>(QStringLiteral("nextFile"))->isEnabled());
+        QTest::keyClick(window, Qt::Key_Right, Qt::AltModifier);
+        QTRY_COMPARE(controller.fileUrl(), QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded));
+        QTRY_VERIFY(!controller.loading());
+        QCOMPARE(controller.previewKind(), QStringLiteral("image"));
+        QTRY_VERIFY(!window->isMaximized());
+        QTRY_VERIFY(window->width() >= 400 && window->width() <= 432);
+        QTRY_VERIFY(window->height() <= 550);
+    }
+    for (int step = 0; step < 2; ++step) {
+        QTRY_VERIFY(window->findChild<QPushButton *>(QStringLiteral("previousFile"))->isEnabled());
+        QTest::keyClick(window, Qt::Key_Left, Qt::AltModifier);
+        const auto expected = step == 0 ? images.first() : table;
+        QTRY_COMPARE(controller.fileUrl(), QUrl::fromLocalFile(expected).toString(QUrl::FullyEncoded));
+        QTRY_VERIFY(!controller.loading());
+    }
+    QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+    QTRY_VERIFY(window->isMaximized());
+    QCOMPARE(window->winId(), nativeId);
+    QCOMPARE(dismissed.count(), 0);
+    controller.hide();
+    QVERIFY(controller.show(images.first(), error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(!window->isMaximized());
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    controller.hide();
+    QVERIFY(controller.show(images.last(), error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(!window->isMaximized());
+    QTRY_VERIFY(window->width() <= 432 && window->height() <= 550);
+    QVERIFY(controller.show(table, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(window->isMaximized());
 }
 
 void PreviewTest::informationFallbackRestoresMaximizedPreview()

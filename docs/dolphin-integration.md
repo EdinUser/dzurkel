@@ -110,7 +110,10 @@ the window lets the compositor restore focus.
 Mapped-window size changes use KWin's geometry transaction when that service is
 available. Other Wayland compositors, including GNOME's Mutter, use ordinary Qt
 resize requests; they retain control over final placement. A temporary image or
-information size must not replace the saved document reading size. A manually
+information size must not replace the saved document reading size. Images
+temporarily leave a document's maximized state and restore it on returning to
+the document. Maximizing an image directly is retained for subsequent images.
+A manually
 resized document window is retained across dismissal/reopening in the same
 resident process.
 

@@ -71,6 +71,7 @@ private:
     bool imageMode_ = false;
     WindowPlacement *placement_;
     bool informationRestorePending_ = false;
+    bool imageRestorePending_ = false;
     bool mappingResizePending_ = false;
     QSize mappedWindowSize_;
     QSize requestedWindowSize_;
