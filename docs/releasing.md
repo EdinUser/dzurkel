@@ -62,6 +62,12 @@ and `build-arch/artifacts/`. The generated Arch PKGBUILD references the attached
 source archive with a real SHA-256; the repository recipe is an input template.
 Source packages are unsigned. Version/release fields must match the recipes.
 
+Dependency references: Debian's [Qt PDF development package](https://packages.debian.org/trixie/qt6-pdf-dev)
+and [KF6 WindowSystem](https://packages.debian.org/trixie/libkf6windowsystem-dev),
+and Arch's [Qt WebEngine/PDF package files](https://archlinux.org/packages/extra/x86_64/qt6-webengine/files/).
+Debian's [Dolphin package](https://packages.debian.org/trixie/dolphin) is older
+than the Space setup target; installing a DEB does not change that requirement.
+
 CI installs the binary in a fresh matching container without build dependencies,
 checks package ownership/integrity, validates desktop entries, starts both desktop
 commands on private D-Bus sessions as a non-root user, exercises Settings and
@@ -78,7 +84,8 @@ absent. These headless tests do not establish KDE desktop acceptance.
 3. Create and push a matching tag, for example `v0.6.0`. Tag creation is a
    maintainer action; the workflow does not create tags itself.
 4. The tag workflow repeats checks and creates a **draft** GitHub release with
-   RPMs and checksums. It refuses to overwrite assets on a published release.
+   RPM, Debian and Arch packages and checksums. It refuses to overwrite assets
+   on a published release.
    All package build and clean-install jobs must pass first. Debian and Arch use
    distinct checksum manifest names to avoid overwriting the Fedora `SHA256SUMS`.
 5. Edit the draft notes with compatibility, installation instructions, desktop

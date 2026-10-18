@@ -650,3 +650,39 @@ does not establish mixed-DPI or every desktop theme's behavior.
 
 The optimized Fedora install passed all ten suites (29.72s). The installed
 executable was verified byte-for-byte against the stripped optimized build.
+
+
+## Debian and Arch package checks (2026-10-18)
+
+Native packages built from `5bc64ac` passed all ten CTest suites as an
+unprivileged user in separate rootless Podman build environments: Debian 13
+amd64 (27.72s) and current Arch Linux x86_64 (25.84s). A fresh runtime container
+for each distribution, separate from its compiler/development environment,
+verified:
+
+- SHA-256 manifests and native package contents.
+- Installation through APT or pacman, resolving declared runtime dependencies.
+- Installed package integrity (`dpkg --verify` / `pacman -Qkk`).
+- Exactly the four application/menu files plus package documentation/licenses.
+- Desktop entry validation and absolute `/usr/bin/dzurkel` commands.
+- Both application and Settings launcher commands starting on isolated buses,
+  with offscreen Qt, Unicode paths, Settings/Show/Hide/Quit forwarding and shutdown.
+- Removal/purge, package absence and removal of all four runtime paths.
+
+The [first packaging CI run](https://github.com/EdinUser/dzurkel/actions/runs/39096842452)
+passed both new package builds and all suites, Debian installation/removal, and
+all existing Fedora jobs. Its Arch integrity check exposed the minimal image's
+`NoExtract` documentation policy: `/usr/share/doc` was missing. The clean-install
+job now enables documentation extraction to verify the full payload; the corrected
+sequence passed locally. Only the main Arch package is installed for runtime
+checks; debug symbols are optional artifacts. Subsequent CI runs are available
+from the [workflow](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml).
+
+These are automated, headless package checks. **Real KDE Wayland desktop
+acceptance remains pending on Debian and Arch**, including launcher/menu discovery,
+Dolphin interaction, focus, shortcuts, scaling/themes, upgrades and long sessions.
+Debian 13's stock Dolphin 25.04 is below the 26.04+ Space setup target; CLI and
+context-menu previews are the intended entry points there. Existing Fedora user
+acceptance and the confirmed focus fix do not establish desktop acceptance for
+these distributions. [Issue #4](https://github.com/EdinUser/dzurkel/issues/4) remains
+open. The host's user-local development installation was not changed.

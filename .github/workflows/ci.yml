@@ -215,7 +215,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Install test tools
-        run: pacman -Syu --noconfirm --needed git dbus python desktop-file-utils
+        run: |
+          # The minimal image excludes docs; test the complete package payload.
+          sed -i 's@usr/share/doc/\*@@' /etc/pacman.conf
+          pacman -Syu --noconfirm --needed git dbus python desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -228,8 +231,8 @@ jobs:
         run: |
           set -euo pipefail
           (cd packages && sha256sum --check SHA256SUMS-arch-x86_64)
-          pacman -Qlp packages/dzurkel-*.pkg.tar.zst
-          pacman -U --noconfirm packages/dzurkel-*.pkg.tar.zst
+          pacman -Qlp packages/dzurkel-[0-9]*.pkg.tar.zst
+          pacman -U --noconfirm packages/dzurkel-[0-9]*.pkg.tar.zst
           pacman -Qkk dzurkel
           useradd --create-home preview-user
           bash packaging/check-installed.sh installed
@@ -247,9 +250,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: '*'
+          name: fedora-44-x86_64
           path: packages
-          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: debian-13-amd64
+          path: packages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: arch-x86_64
+          path: packages
       - name: Create draft and attach packages
         env:
           GH_TOKEN: ${{ github.token }}
