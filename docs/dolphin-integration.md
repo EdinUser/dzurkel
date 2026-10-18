@@ -107,6 +107,13 @@ The app does not force focus, stay on top, inject global keys, inspect Dolphin,
 or change its settings unless shortcut setup is explicitly selected. Closing
 the window lets the compositor restore focus.
 
+Mapped-window size changes use KWin's geometry transaction when that service is
+available. Other Wayland compositors, including GNOME's Mutter, use ordinary Qt
+resize requests; they retain control over final placement. A temporary image or
+information size must not replace the saved document reading size. A manually
+resized document window is retained across dismissal/reopening in the same
+resident process.
+
 KDE builds forward the launcher's `XDG_ACTIVATION_TOKEN` to the resident window
 through KDE WindowSystem's public activation API. A hidden application desktop
 entry supplies the Wayland identity `dzurkel`; it does not add a file association

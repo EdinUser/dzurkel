@@ -13,6 +13,7 @@ class WindowPlacement : public QObject {
 public:
     explicit WindowPlacement(QObject *parent);
     ~WindowPlacement() override;
+    bool available() const { return available_; }
     void request(const QString &title, const QSize &clientSize,
                  const QSize &imageSize = {}, const QSize &chrome = {});
     void cancel();
@@ -27,5 +28,6 @@ private:
     std::shared_ptr<std::atomic<quint64>> revision_ = std::make_shared<std::atomic<quint64>>(0);
     bool running_ = false;
     bool warned_ = false;
+    bool available_ = false;
 };
 }

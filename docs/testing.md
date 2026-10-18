@@ -714,3 +714,34 @@ not implemented by this test script. Follow the
 The user observed a Qt portal app-ID registration warning from the development
 Settings launch and confirmed Settings still opened normally. Its cause remains
 unconfirmed; no portal suppression or behavior change was introduced.
+
+
+## Non-KWin Wayland preview resizing
+
+The user confirmed Nautilus script previews displayed the correct content,
+neighboring-file navigation worked, and manual resizing was retained on reopen.
+During diagnosis the Ubuntu GNOME VM reported 1280×800 at 100% scale with
+Mutter's automatic maximization enabled. That setting can maximize an initially
+large reading window; it is distinct from remembered manual sizing.
+
+The application previously sent every mapped Wayland auto-resize through KWin
+scripting, leaving no effective resize path on Mutter. The existing native image
+sizing regression failed on the VM before the change. Window placement now probes
+for KWin's service once per preview window. KWin retains its existing geometry
+transaction; other Wayland compositors use coalesced Qt resize requests after the
+current layout event, cancelled by newer resources or dismissal.
+
+The new `mappedImageAndTableTransitionsRestoreReadingSize` regression checks two
+small-image/table cycles, preservation of an explicitly chosen reading size,
+stable native window identity, and no dismissal during automatic sizing. It
+passes on native GNOME and KDE Wayland, alongside the existing image-sizing
+regression. The native KDE visible-preview focus regression also passes.
+The Ubuntu VM's eleven registered offscreen suites passed (28.27s).
+
+The native GNOME compact-information rapid close/reopen stress case
+`informationFallbackTemporarilyCompactsWindow` still fails intermittently when
+run with the broader native transition sequence; it has also passed in isolation.
+It is not claimed fixed or accepted by these results. The cold-information/PDF
+reopen case passed. Real Nautilus retesting of image-to-spreadsheet sizing after
+this update remains a user acceptance step. VM display changes, other GNOME
+versions and mixed-DPI configurations are not established by this check.

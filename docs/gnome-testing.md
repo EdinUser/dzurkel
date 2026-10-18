@@ -63,6 +63,13 @@ GNOME/Nautilus Space invocation is a separate, unimplemented acceptance step.
 Do not claim it works because the Scripts menu works. Nautilus shortcut behavior
 and potential GNOME Sushi conflicts need investigation before assigning Space.
 
+For sizing checks, compare text/CSV/XLSX reading windows before and after a small
+image preview. The document should recover its reading size. Manual document
+resizing is remembered across dismissal/reopening while Dzurkel remains resident.
+GNOME can automatically maximize initially large windows; restore a maximized
+window before testing normal-window dimensions. A VM's resolution and display
+scaling change the available space, so record those settings with the result.
+
 ## Diagnostics
 
 To observe a fresh resident process, quit Dzurkel before starting diagnostics

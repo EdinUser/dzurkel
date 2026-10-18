@@ -1,10 +1,12 @@
 #include "WindowPlacement.h"
 #include <QCoreApplication>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
 #include <QDebug>
 #include <QFutureWatcher>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryFile>
@@ -12,7 +14,24 @@
 #include <QtConcurrentRun>
 
 namespace dzurkel {
-WindowPlacement::WindowPlacement(QObject *parent) : QObject(parent) {}
+WindowPlacement::WindowPlacement(QObject *parent) : QObject(parent)
+{
+    if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) return;
+    // KWin's geometry transaction keeps mapped previews on-screen without
+    // remapping them. Other Wayland compositors still need ordinary Qt resizes.
+    const auto testAddress = qEnvironmentVariable("DZURKEL_TEST_KWIN_BUS_ADDRESS");
+    const auto connection = QStringLiteral("dzurkel-placement-capability-")
+        + QUuid::createUuid().toString(QUuid::Id128);
+    {
+        const auto bus = testAddress.isEmpty() ? QDBusConnection::sessionBus()
+            : QDBusConnection::connectToBus(testAddress, connection);
+        if (const auto interface = bus.interface()) {
+            const QDBusReply<bool> registered = interface->isServiceRegistered(QStringLiteral("org.kde.KWin"));
+            available_ = registered.isValid() && registered.value();
+        }
+    }
+    if (!testAddress.isEmpty()) QDBusConnection::disconnectFromBus(connection);
+}
 WindowPlacement::~WindowPlacement() { cancel(); }
 void WindowPlacement::cancel()
 {

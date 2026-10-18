@@ -156,6 +156,7 @@ PreviewWindow::PreviewWindow(const FileResource &resource, bool diagnostics) : P
 void PreviewWindow::setResource(const FileResource &resource)
 {
     placement_->cancel();
+    ++resizeRevision_;
     const QString name = QFileInfo(resource.path).fileName();
     // The desktop backend appends applicationDisplayName to the native title.
     setWindowTitle(name);
@@ -430,9 +431,22 @@ void PreviewWindow::fitImage(const QSize &sourceSize)
 void PreviewWindow::resizePreview(const QSize &target, const QSize &imageSize, const QSize &chrome)
 {
     const bool wayland = QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
-    if (isVisible() && wayland) {
+    ++resizeRevision_;
+    if (isVisible() && wayland && placement_->available()) {
         if (!isMaximized() && !isFullScreen() && !isMinimized())
             placement_->request(windowTitle(), target, imageSize, chrome);
+        return;
+    }
+    if (isVisible() && wayland) {
+        // Let Qt finish the current content/layout/configure event before
+        // resizing on compositors without KWin's geometry transaction.
+        const auto revision = resizeRevision_;
+        QTimer::singleShot(0, this, [this, target, revision] {
+            if (revision != resizeRevision_ || !isVisible()
+                || isMaximized() || isFullScreen() || isMinimized()) return;
+            resize(target);
+            fitScreen(screen());
+        });
         return;
     }
     if (target == size()) return;
@@ -625,6 +639,7 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
 void PreviewWindow::hideEvent(QHideEvent *event)
 {
     mappingResizePending_ = false;
+    ++resizeRevision_;
     placement_->cancel();
     if (settings_) settings_->hide();
     if (informationDialog_) informationDialog_->hide();

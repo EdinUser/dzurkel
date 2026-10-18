@@ -74,6 +74,7 @@ private:
     bool mappingResizePending_ = false;
     QSize mappedWindowSize_;
     QSize requestedWindowSize_;
+    quint64 resizeRevision_ = 0;
     QSize previewWindowSize_;
     QSize previewContentSize_;
     Qt::WindowStates previewWindowState_;

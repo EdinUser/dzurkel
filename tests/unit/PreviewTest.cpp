@@ -71,6 +71,7 @@ private slots:
     void retainedPdfRuntimeStillReleasesEachDocument();
     void informationFallbackTemporarilyCompactsWindow();
     void imageWindowsFitContentAndPreserveReadingSize();
+    void mappedImageAndTableTransitionsRestoreReadingSize();
     void informationFallbackRestoresMaximizedPreview();
     void coldInformationThenReopenedPdfKeepsContentAndSize();
     void coldInformationMapsAtCompactSize_data();
@@ -306,6 +307,10 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     QVERIFY(QTest::qWaitForWindowExposed(window));
     // Resize only after initial placement, as a user would; a pending initial
     // compositor configure can otherwise overwrite this synthetic resize.
+    // Mutter may auto-maximize an initially large window. A manual border drag
+    // restores it first; QWidget::resize alone does not change that state.
+    window->showNormal();
+    QTRY_VERIFY(!window->isMaximized());
     QTest::qWait(100);
     window->resize(740, 700);
     QCoreApplication::processEvents();
@@ -319,7 +324,8 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     controller.hide();
     QVERIFY(controller.show(unsupported, error));
     QTRY_VERIFY(!controller.loading());
-    QVERIFY(window->width() <= 560);
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTRY_VERIFY(window->width() <= 560);
     // Compact window resizing must not replace the remembered preview size.
     window->resize(500, 400);
     QVERIFY(controller.show(imagePath, error));
@@ -336,6 +342,43 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
     window->showMinimized();
     QTRY_VERIFY(!controller.loading());
     QVERIFY(window->isMinimized());
+}
+
+void PreviewTest::mappedImageAndTableTransitionsRestoreReadingSize()
+{
+    const auto text = write(QStringLiteral("mapped-reading.txt"), "A document starts at its reading size.\n");
+    const auto table = write(QStringLiteral("mapped-reading.csv"), "Name,Value\nFirst,42\n");
+    const auto imagePath = directory_.filePath(QStringLiteral("mapped-small.png"));
+    QImage image(40, 30, QImage::Format_RGB32);
+    image.fill(Qt::blue);
+    QVERIFY(image.save(imagePath));
+    PreviewController controller;
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QSignalSpy dismissed(window, &PreviewWindow::dismissed);
+    QString error;
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    window->showNormal();
+    QTRY_VERIFY(!window->isMaximized());
+    QTest::qWait(100);
+    const QSize target = QSize(740, 600).boundedTo(window->screen()->availableGeometry().size() - QSize(32, 32));
+    window->resize(target);
+    QTRY_COMPARE(window->size(), target);
+    const auto readingSize = window->size();
+    QVERIFY(readingSize.width() > 400);
+    const auto nativeId = window->winId();
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        QVERIFY(controller.show(imagePath, error));
+        QTRY_VERIFY(!controller.loading());
+        QTRY_COMPARE(window->size(), QSize(400, 400));
+        QVERIFY(controller.show(table, error));
+        QTRY_VERIFY(!controller.loading());
+        QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+        QTRY_COMPARE(window->size(), readingSize);
+        QCOMPARE(window->winId(), nativeId);
+        QCOMPARE(dismissed.count(), 0);
+    }
 }
 
 void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
