@@ -8,9 +8,9 @@ selected files in a reusable window.
 [![Linux packages CI](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-![Dzurkel showing a CSV table of supported preview formats](docs/images/table-preview.png)
+![Dzurkel demonstrating text, image and CSV previews in Dolphin](docs/images/dzurkel-demo.gif)
 
-*CSV preview using synthetic sample data; appearance follows your Qt theme.*
+*Preview demo using synthetic sample files; appearance follows your Qt theme.*
 
 ## What can I preview?
 
