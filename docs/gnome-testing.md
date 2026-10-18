@@ -149,9 +149,11 @@ portal logging or disable the portal to make a test appear clean.
 
 The `GNOME Wayland, focus and Nautilus Space` CI job launches a **separate
 headless GNOME Shell/Mutter compositor**, with a 1280×800 virtual monitor and
-software rendering. It uses a private session bus, temporary home/runtime/XDG
+software rendering. It uses private session and system buses, temporary home/runtime/XDG
 directories and isolated settings. It never controls the logged-in desktop or
 changes the installed app. No extension, Shell.Eval or compositor script is used.
+The private system bus allows Shell's service proxies to initialize in a plain
+container without using a host's login, account, power or display services.
 The job is required before future release drafts can be created.
 The local-file suite disables GVfs' optional FUSE file view inside the test
 environment and detaches any remaining FUSE mounts under its private runtime

@@ -875,7 +875,7 @@ dependency, extension, compositor script or global shortcut was introduced.
 
 The dedicated `GNOME Wayland, focus and Nautilus Space` job now runs the
 `dzurkel_gnome_native` CTest on a separate headless GNOME Shell/Mutter session.
-It is a prerequisite of draft-release creation. The private bus, home, runtime,
+It is a prerequisite of draft-release creation. Private session/system buses, home, runtime,
 settings and software-rendered virtual monitor isolate the user's desktop and
 installation. The test-only observer is not installed or linked into the app.
 Run instructions and exact coverage are in the [native gate guide](gnome-testing.md#native-gnome-gate).

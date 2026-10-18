@@ -203,12 +203,19 @@ class Session:
         # Worker only: refuses to operate on an inherited user display or bus.
         if (Path(os.environ['HOME']) != self.root / 'home'
                 or Path(os.environ['XDG_RUNTIME_DIR']) != self.root / 'runtime'
+                or os.environ.get('DBUS_SYSTEM_BUS_ADDRESS') != 'unix:path=' + str(self.root / 'runtime/system-bus')
                 or os.environ.get('WAYLAND_DISPLAY') != 'dzurkel-test'
                 or not (self.root / 'isolated-session').is_file()):
             raise RuntimeError('Refusing native input/capture outside the isolated test session')
         if os.getuid() == 0:
             raise RuntimeError('Run native tests as an ordinary user')
         self.isolated = True
+        # Shell creates system-bus proxies even in headless mode. An ordinary
+        # CI container has no system bus; provide an empty private one rather
+        # than connecting to host logind, power, account or display services.
+        self.spawn('system-bus', ['dbus-daemon', '--session', '--nofork',
+                                  '--address=' + os.environ['DBUS_SYSTEM_BUS_ADDRESS']])
+        self.wait('private system bus', lambda: (self.root / 'runtime/system-bus').is_socket(), seconds=5)
         self.versions['gnome-shell'] = subprocess.check_output(['gnome-shell', '--version'], text=True, timeout=10).strip()
         settings = [('org.gnome.mutter', 'center-new-windows', True),
                     ('org.gnome.desktop.screensaver', 'lock-enabled', False)]
@@ -399,6 +406,7 @@ def main():
                     'QT_QPA_PLATFORMTHEME', 'QT_SCREEN_SCALE_FACTORS', 'QT_AUTO_SCREEN_SCALE_FACTOR', 'GTK_THEME'):
             env.pop(key, None)
         env.update(HOME=str(root / 'home'), XDG_RUNTIME_DIR=str(root / 'runtime'), XDG_CONFIG_HOME=str(root / 'config'),
+                   DBUS_SYSTEM_BUS_ADDRESS='unix:path=' + str(root / 'runtime/system-bus'),
                    XDG_DATA_HOME=str(root / 'data'), XDG_STATE_HOME=str(root / 'state'), XDG_CACHE_HOME=str(root / 'cache'),
                    XDG_DATA_DIRS='/usr/local/share:/usr/share', XDG_CURRENT_DESKTOP='GNOME', XDG_SESSION_TYPE='wayland',
                    WAYLAND_DISPLAY='dzurkel-test', QT_QPA_PLATFORM='wayland', GSETTINGS_BACKEND='keyfile',
