@@ -217,6 +217,8 @@ class Session:
                                   '--address=' + os.environ['DBUS_SYSTEM_BUS_ADDRESS']])
         self.wait('private system bus', lambda: (self.root / 'runtime/system-bus').is_socket(), seconds=5)
         self.versions['gnome-shell'] = subprocess.check_output(['gnome-shell', '--version'], text=True, timeout=10).strip()
+        self.Gio.Settings.new('org.gnome.shell').set_string(
+            'welcome-dialog-last-shown-version', self.versions['gnome-shell'].split()[-1])
         settings = [('org.gnome.mutter', 'center-new-windows', True),
                     ('org.gnome.desktop.screensaver', 'lock-enabled', False)]
         for schema, key, value in settings:

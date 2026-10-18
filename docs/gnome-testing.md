@@ -181,7 +181,7 @@ palette pixels, not Qt's artificial Wayland coordinates. Changed-size previews
 must retain their rendered center within three pixels and remain on-screen;
 equal-size updates must stay mapped. Maximized CSV to small image and return
 must preserve the existing sizing/state behavior. Animations remain enabled.
-Only the isolated compositor's `center-new-windows` and idle/lock settings are
+Only the isolated compositor's `center-new-windows`, tour-seen and idle/lock settings are
 configured for a deterministic test session; the user's settings are untouched.
 
 `build-gnome/gnome-native-artifacts/` contains JSON assertions, process logs and
