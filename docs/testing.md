@@ -870,3 +870,44 @@ this VM, so real Sushi exit/fallback activation remains untested. These checks
 cover GNOME 50/Nautilus 50.2.2 local files; GVfs, other versions, multiple
 monitors and fractional scaling remain outside this validation. No new runtime
 dependency, extension, compositor script or global shortcut was introduced.
+
+## Required native GNOME regression gate
+
+The dedicated `GNOME Wayland, focus and Nautilus Space` job now runs the
+`dzurkel_gnome_native` CTest on a separate headless GNOME Shell/Mutter session.
+It is a prerequisite of draft-release creation. The private bus, home, runtime,
+settings and software-rendered virtual monitor isolate the user's desktop and
+installation. The test-only observer is not installed or linked into the app.
+Run instructions and exact coverage are in the [native gate guide](gnome-testing.md#native-gnome-gate).
+
+The ordinary suite now has 14 tests: two additional guards verify that a required
+native regression fails instead of skipping offscreen, and that frame assertions
+reject displaced, offscreen and invalid bounds. All 14 passed locally (39.09 s).
+The native gate also runs the existing delayed-result/Settings/cancellation Qt
+regression with zero skips, then sends real Mutter-delivered keys to Files and
+the production application. It checks provider kind, cold startup/restart,
+selection synchronization, dismissal/toggle, background focus/result holding,
+equal-size mapping, changed-size remapping, retained Qt-window identity,
+maximized CSV/image restoration and registration cleanup.
+
+With normal animations forced on, three consecutive native VM runs passed in
+20.84, 20.93 and 20.95 seconds. The measured small/same-size client rectangle
+was `(440,235)-(840,635)` and the wide rectangle `(232,182)-(1048,688)`;
+both centers are `(640,435)`. Returning from maximized CSV restored the same
+small rectangle. Measurements are framebuffer pixels, not Qt positions.
+Reports record GNOME Shell 50.1, Nautilus 50.2.2 and Qt 6.10.2.
+
+Two temporary mutant test probes verified failure detection without changing
+production sources or installations. Reintroducing token-based reactivation on
+background selection failed with an active preview/new content where Files
+should retain focus. Disabling internal remapping failed the rendered-center
+assertion: `(848,488)` versus `(640,435)`. Neither failure was counted as a pass;
+the negative-control driver required the specific assertion and nonzero exit.
+
+The gate produces synthetic-only JSON, process logs and framebuffer captures,
+uploaded as `gnome-native-results`. Missing native backend/input/capture, skipped
+native assertions or absent tests fail the job. This closes the previous
+offscreen-only CI gap for this desktop configuration; hardware GPUs, physical
+multi-monitor/fractional-scale layouts, real Sushi fallback, other GNOME versions
+and subjective animation continuity remain separate acceptance work. The older
+rapid information/reopen stress caveat is not claimed resolved by this test work.

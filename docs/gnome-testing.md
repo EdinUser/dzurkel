@@ -145,6 +145,56 @@ portal logging or disable the portal to make a test appear clean.
 
 ## Automated checks and removal
 
+### Native GNOME gate
+
+The `GNOME Wayland, focus and Nautilus Space` CI job launches a **separate
+headless GNOME Shell/Mutter compositor**, with a 1280×800 virtual monitor and
+software rendering. It uses a private session bus, temporary home/runtime/XDG
+directories and isolated settings. It never controls the logged-in desktop or
+changes the installed app. No extension, Shell.Eval or compositor script is used.
+The job is required before future release drafts can be created.
+The local-file suite disables GVfs' optional FUSE file view inside the test
+environment and detaches any remaining FUSE mounts under its private runtime
+directory during cleanup. GVfs and portal services otherwise remain available.
+
+To run the same gate as a regular user on a machine with GNOME Shell, Nautilus,
+Qt Wayland, Python GI and Pillow installed:
+
+```bash
+cmake -S . -B build-gnome -DCMAKE_BUILD_TYPE=Debug -DDZURKEL_BUILD_GNOME_TESTS=ON
+cmake --build build-gnome --target dzurkel_gnome_probe --parallel 2
+ctest --test-dir build-gnome -L gnome-native --output-on-failure --no-tests=error
+```
+
+This executes the previously optional native GNOME Qt regression and **fails if
+it skips**. It also sends evdev keyboard events through Mutter to real Files and
+Dzurkel windows: Space cold activation/restart, Escape/Space dismissal, selection
+navigation including special filenames, same-file toggling, background selection
+holding focus in Files, and result application after Alt+Tab back. A test-only
+observer links the production controller/adapter and reports mapping/state; it
+is never installed or compiled into the production executable.
+
+Rendered client bounds come from GNOME framebuffer captures using synthetic
+palette pixels, not Qt's artificial Wayland coordinates. Changed-size previews
+must retain their rendered center within three pixels and remain on-screen;
+equal-size updates must stay mapped. Maximized CSV to small image and return
+must preserve the existing sizing/state behavior. Animations remain enabled.
+Only the isolated compositor's `center-new-windows` and idle/lock settings are
+configured for a deterministic test session; the user's settings are untouched.
+
+`build-gnome/gnome-native-artifacts/` contains JSON assertions, process logs and
+captures of the synthetic desktop. CI retains these as `gnome-native-results`.
+An unavailable compositor, input service, capture or native Qt backend is a
+failure, not a skipped/passing test. The ordinary offscreen suites remain useful;
+they now also verify that the required-native guard rejects an offscreen backend
+and that the placement assertions reject displaced/offscreen frames.
+
+Input uses Mutter's version-sensitive RemoteDesktop D-Bus test interfaces;
+capture uses GNOME Shell Screenshot with an isolated sender-allowlist fixture.
+These are test dependencies only, currently targeting GNOME 50. Hardware GPU,
+physical monitors, fractional scaling, other GNOME versions, real Sushi fallback
+and subjective mapping-animation acceptance still need their desktop matrix.
+
 `dzurkel_nautilus` is registered with CTest. It verifies the generated script's
 argument/URI delivery (including special characters), selection rejection,
 preservation of unrelated scripts, and managed update/removal backups. It uses

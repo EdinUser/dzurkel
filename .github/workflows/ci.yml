@@ -127,6 +127,41 @@ jobs:
           path: build/Testing/Temporary/*.log
           retention-days: 7
 
+  gnome:
+    name: GNOME Wayland, focus and Nautilus Space
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build and isolated desktop test dependencies
+        run: >-
+          dnf install -y git gcc-c++ cmake make pkgconf-pkg-config shadow-utils
+          libzip-devel qt6-qtbase-devel qt6-qtpdf-devel kf6-kwindowsystem-devel
+          qt6-qtwayland dbus-daemon python3 python3-gobject python3-pillow
+          gnome-shell nautilus mesa-dri-drivers mesa-libEGL dejavu-sans-fonts
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build production app and native test observers
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- cmake -S . -B build-gnome -DCMAKE_BUILD_TYPE=Debug -DDZURKEL_BUILD_GNOME_TESTS=ON
+          runuser -u builder -- cmake --build build-gnome --target dzurkel_gnome_probe --parallel 2
+      - name: Require native GNOME presentation, real input and rendered placement
+        run: runuser -u builder -- ctest --test-dir build-gnome -L gnome-native --output-on-failure --no-tests=error
+      - name: Upload synthetic desktop report and captures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gnome-native-results
+          path: build-gnome/gnome-native-artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
   deb:
     name: Debian 13 amd64 package and tests
     runs-on: ubuntu-24.04
@@ -243,7 +278,7 @@ jobs:
   release:
     name: Prepare draft release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [rpm, install, clang, deb-install, arch-install]
+    needs: [rpm, install, clang, gnome, deb-install, arch-install]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

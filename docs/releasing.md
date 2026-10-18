@@ -88,6 +88,8 @@ absent. These headless tests do not establish KDE desktop acceptance.
    on a published release.
    All package build and clean-install jobs must pass first. Debian and Arch use
    distinct checksum manifest names to avoid overwriting the Fedora `SHA256SUMS`.
+   The native GNOME gate must also pass: it checks real Nautilus Space delivery,
+   focus, mapping and rendered placement on an isolated GNOME Shell desktop.
 5. Edit the draft notes with compatibility, installation instructions, desktop
    results and known limitations; publish after review.
 

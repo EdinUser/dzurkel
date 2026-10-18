@@ -96,7 +96,11 @@ private:
 void PreviewTest::gnomePresentationKeepsPendingContentAndDismissal()
 {
     PreviewWindow policy;
-    if (!policy.usesGnomePresentation()) QSKIP("Requires native GNOME Wayland");
+    if (!policy.usesGnomePresentation()) {
+        if (qEnvironmentVariableIsSet("DZURKEL_REQUIRE_GNOME_NATIVE"))
+            QFAIL("Native GNOME was required; refusing to silently skip the regression");
+        QSKIP("Requires native GNOME Wayland");
+    }
     const auto first = write(QStringLiteral("remap-first.png"), "placeholder");
     const auto second = write(QStringLiteral("remap-second.png"), "placeholder");
     const auto large = write(QStringLiteral("remap-wide.png"), "placeholder");

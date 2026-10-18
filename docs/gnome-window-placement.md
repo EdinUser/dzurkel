@@ -47,6 +47,13 @@ Native GNOME checks cover delayed results, cancellation, equal-size mapping,
 retained Qt identity, remembered reading geometry, maximized-document navigation
 and explicit image maximization.
 
+The dedicated native CI gate now runs the GNOME regression without allowing a
+skip, then exercises real Nautilus input and checks compositor framebuffer
+placement on an isolated headless GNOME desktop. See the [native gate command
+and coverage](gnome-testing.md#native-gnome-gate). This supplements offscreen
+tests with actual Mutter focus/mapping behavior; it does not establish every
+hardware/display configuration below.
+
 The development VM is Ubuntu 26.04.1, GNOME Shell 50.1, Qt 6.10.2, one 1280×800
 display at 100% scale. Its existing `center-new-windows` and `auto-maximize`
 settings are true. Framebuffer measurements are required: native Wayland Qt

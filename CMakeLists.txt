@@ -135,6 +135,9 @@ if(BUILD_TESTING)
     target_compile_definitions(dzurkel_preview_tests PRIVATE DZURKEL_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     add_test(NAME dzurkel_previews COMMAND dzurkel_preview_tests)
     set_tests_properties(dzurkel_previews PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_test(NAME dzurkel_gnome_backend_guard COMMAND ${CMAKE_COMMAND}
+        -DPREVIEW_TESTS=$<TARGET_FILE:dzurkel_preview_tests>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/GnomeGuard.cmake)
     add_executable(dzurkel_dbus_tests tests/integration/DBusTest.cpp)
     target_link_libraries(dzurkel_dbus_tests PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
     target_compile_definitions(dzurkel_dbus_tests PRIVATE DZURKEL_EXECUTABLE="$<TARGET_FILE:dzurkel>")
@@ -171,6 +174,20 @@ if(BUILD_TESTING)
         -DEXPECTED_VERSION=${PROJECT_VERSION}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/CommandLine.cmake)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME dzurkel_gnome_frame_assertions COMMAND ${Python3_EXECUTABLE} -B
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/unit/GnomeFrameTest.py)
+    option(DZURKEL_BUILD_GNOME_TESTS "Build the isolated native GNOME desktop regression gate" OFF)
+    if(DZURKEL_BUILD_GNOME_TESTS)
+        add_executable(dzurkel_gnome_probe tests/integration/GnomeTestProbe.cpp)
+        target_link_libraries(dzurkel_gnome_probe PRIVATE dzurkel_core)
+        add_dependencies(dzurkel_gnome_probe dzurkel dzurkel_preview_tests)
+        add_test(NAME dzurkel_gnome_native COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/GnomeNativeTest.py
+            --binary $<TARGET_FILE:dzurkel> --probe $<TARGET_FILE:dzurkel_gnome_probe>
+            --preview-tests $<TARGET_FILE:dzurkel_preview_tests>
+            --report-dir ${CMAKE_CURRENT_BINARY_DIR}/gnome-native-artifacts)
+        set_tests_properties(dzurkel_gnome_native PROPERTIES TIMEOUT 180 LABELS "gnome-native")
+    endif()
     add_test(NAME dzurkel_nautilus COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/NautilusTest.py)
     set_tests_properties(dzurkel_nautilus PROPERTIES TIMEOUT 30)
