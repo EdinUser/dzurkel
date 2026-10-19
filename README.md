@@ -25,6 +25,8 @@ XLSX → video → source code, in one reusable preview window. Recorded alongsi
 Dolphin with synthetic files; the GIF plays at 1.25× speed. Appearance follows
 your Qt theme. [Recording details](docs/video/README.md).*
 
+[Watch Dzurkel 0.8.0 video demonstration on YouTube](https://youtu.be/jmBDK_8AFfQ)
+
 ## Features
 
 - Browse neighboring files with the arrow keys in one preview window.
