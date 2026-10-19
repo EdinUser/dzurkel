@@ -55,13 +55,15 @@ keeps a read-only descriptor. No media snapshot or persistent cache is created.
 
 The private Unix socket carries fixed-size, big-endian headers. The helper
 reports the initial file size, then accepts `(offset, count)` requests. Each read
-is limited to 64 KiB; only one request is outstanding. The helper holds one
-64 KiB payload buffer and socket buffers provide backpressure. Seeking changes
+is limited to 64 KiB; only one request is outstanding. The helper now holds one
+512 KiB read-ahead window and socket buffers provide backpressure. Seeking changes
 the offset of subsequent requests, without transferring intervening bytes.
 
 Opening and URL resolution are asynchronous with a 30-second deadline. Media
 reads block the decoder's calling thread on socket I/O, with a two-second
-deadline per read transaction. They never read the source filesystem inside the
+deadline per read transaction in the standalone probe. Integrated audio/video
+uses the [session deadlines](video-preview.md#slow-sources-and-lifetime), including
+a 15-second source-read deadline. Reads never access the source filesystem inside the
 application process. The experiment counts application-thread reads and treats
 them as a failed backend compatibility check.
 
@@ -95,6 +97,8 @@ reads stay off the application thread, and that helpers are reaped after each
 cycle. Playback is muted. The format matrix records startup, bytes transferred,
 seek progress, stop latency and event-loop heartbeat gaps.
 
+The initial measurements below predate integrated video and the 512 KiB read-ahead
+window; current video/CIFS evidence is recorded in [testing](testing.md#video-integration--fedora-44-qt-6112).
 The initial host is Fedora 44 with Qt 6.11.2 and its FFmpeg backend. All agreed
 formats passed playback and forward seeking. Source reads stayed off the
 application thread. The final twelve-case matrix (including a real MP3 and
@@ -122,24 +126,25 @@ memory, metadata, cover-art decoding or operating-system filesystem caches.
   codecs should produce an informative error, not require additional decoders
   to be shipped by Dzurkel. This experiment needs no
   Ubuntu or Arch VM; later package and backend checks remain necessary before
-  promising support across distributions. The normal build now requires Qt
-  Multimedia for integrated audio, independently of the probe option.
+  promising support across distributions. Integrated playback uses the optional
+  Qt Multimedia/Multimedia Widgets adapter, independently of the probe option;
+  the baseline application does not require those runtimes.
 - Measure resident decoder memory and metadata/artwork limits. Current tests
   establish source bounds, descriptor/helper cleanup and repeated playback, not
   a strict whole-process memory ceiling.
 - Source ownership and cancellation are integrated into the controller's request
   generations. Old audio stops when replacement is requested, even while old
   visual content is retained during loading.
-- Separate initial probing, stalled reads and normal long playback in the UI;
-  tune deadlines using real-share measurements rather than keeping experiment
-  constants without evidence.
-- Distinguish embedded cover-art streams from moving video. MP3 files can contain
-  an attached image represented as a video stream; a generic video-stream flag
-  alone is insufficient to classify a file as a video preview.
+- Integrated playback now distinguishes loading, seeking and buffering feedback
+  and uses longer source/session deadlines. Broader real-share measurements
+  remain necessary before claiming universal slow-source behavior.
+- Integrated track classification distinguishes cover art from moving video
+  with the tested Qt FFmpeg backend. Other backends still need validation; a
+  generic video-stream flag alone is insufficient.
 - The audio UI, candidate selection, runtime capability reporting, metadata,
-  package dependencies and user-facing errors are integrated. Video can reuse
-  the source model, but frame delivery, buffering, synchronization and rendering
-  still require their own validation.
+  package dependencies and user-facing errors are integrated. Video now shares
+  the source and playback session; [video validation](video-preview.md#validation)
+  records frame delivery, seeking and cancellation coverage and remaining limits.
 
 If another backend reads this device on the application thread or has teardown
 behavior incompatible with cancellation, evaluate the loopback HTTP byte-range

@@ -56,8 +56,8 @@ A record of affected shortcut attributes is stored under
 **Restore previous shortcuts** restores those attributes and keeps unrelated
 toolbar or shortcut edits. If a managed shortcut was changed after setup,
 restoration refuses to overwrite the newer choice. The integration must be
-installed before the setup button is enabled; viewer-package installation
-remains a deferred feature.
+installed before the setup button is enabled; normal packages include the
+Dolphin service menu. Dzurkel does not install packages from Settings.
 
 The helper edits the user-local `kxmlgui5/dolphin/dolphinui.rc` beneath
 `XDG_DATA_HOME` (normally `~/.local/share/`), using the service action ID

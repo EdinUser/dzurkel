@@ -2,102 +2,116 @@
   <img src="src/resources/icons/hicolor/scalable/apps/dzurkel.svg" width="128" height="128" alt="Dzurkel — a peeking amber eye behind a blue shutter">
 </p>
 
-# Dzurkel — quick file previews for Linux
+# Dzurkel — Quick Look for Linux
 
-**Peek-a-Dzurkel!** Preview a file without opening a full application.
-Dzurkel is a Qt 6 file previewer for Linux, built for Fedora, KDE Plasma and
-Wayland. Use Dolphin’s context menu, or enable the **Space** shortcut to preview
-selected files in a reusable window.
+**Peek-a-Dzurkel!**
+
+Select a file, press **Space**, and preview it without opening a full application.
+
+Images, PDFs, documents, spreadsheets, e-books, source code, audio and video—all
+in one reusable, read-only window. Integrates with **Dolphin, Nautilus and Thunar**.
+Enable Space previews in Dzurkel Settings after installation.
+
+**[Download Dzurkel](https://github.com/EdinUser/dzurkel/releases) ·
+[Installation](docs/installation.md) · [Supported formats](docs/previews.md)**
 
 [![Linux release packages](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
 ![Dzurkel demonstrating text, image and CSV previews in Dolphin](docs/images/dzurkel-demo.gif)
 
-*Preview demo using synthetic sample files; appearance follows your Qt theme.*
+*Space → Preview → Navigate → Escape. This demo shows text, images and CSV in
+Dolphin using synthetic files. Appearance follows your Qt theme.*
 
-## What can I preview?
+## Features
 
-- **Images**, including animated GIFs, with zoom and natural-size display.
-- **PDF documents**, with page navigation and zoom.
-- **Music/audio**, with playback, seeking, volume/mute and available track metadata.
-  Formats depend on the installed Qt media backend and codecs.
-- **Video**, streamed into an aspect-preserving view with autoplay,
-  play/pause (**P**), seeking, volume and mute. MP4, MKV, WebM, MOV, AVI, MPEG,
-  OGV and WMV depend on the installed media backend and codecs. Audio-only
-  containers use the music view. **Space/Escape** dismiss the preview.
-  Music and video share mute/volume choices for the running session; both
-  start with sound unless muted.
-- **Text and source code**, with automatic syntax highlighting when the optional
-  backend is available, and **CSV/TSV tables**. Text wraps to the preview width by
-  default; the **Wrap lines** toggle in the top control row remembers your choice.
-- **XLSX spreadsheets**, with sheet selection and saved formula results.
-- **DOCX, RTF, EPUB, FB2, SFB, MOBI 6 and Markdown**, with readable content and basic formatting; legacy
-  **DOC** has a text-only preview when the optional `antiword` extractor is available.
-- **File information** for unsupported formats, directories and symbolic links.
+- Browse neighboring files with the arrow keys in one preview window.
+- Zoom images and PDFs, navigate PDF pages and switch spreadsheet sheets.
+- Play audio and video, seek where supported, and share mute/volume choices.
+- Read source code with optional syntax highlighting and remembered text wrapping.
+- Preview local files and mounted shares, with incremental media reads for slow sources.
+- Follow your desktop's Qt theme, with Wayland and X11 integration.
 
-Use arrow keys to browse supported neighboring files. Press **Escape** or close
-the window to dismiss a preview. Dzurkel stays resident for faster reopening;
-`dzurkel --quit` exits it fully. Previewing never executes file contents or
-modifies the source file. XLSX formulas are not recalculated.
+**Space/Escape** dismiss the preview; **P** toggles media playback. Audio and video
+autoplay with sound unless muted. Dzurkel stays resident for reopening;
+`dzurkel --quit` exits it fully. See [keyboard controls](docs/usage.md).
 
-See [supported formats and limits](docs/previews.md) and
-[keyboard controls](docs/usage.md). See the [0.8.0 release notes](docs/releases/v0.8.0.md)
-for streaming video, shared media controls, remembered text wrapping and OS-compatibility details.
-Protected/encrypted content shows an error; unsupported formatting falls back to
-readable text where possible.
+## Supported formats
 
-## Install on Fedora KDE
+| Content | Preview |
+| --- | --- |
+| Images | Common image formats and animated GIFs; zoom and natural size |
+| PDF | Pages, navigation and zoom |
+| Documents | DOCX, RTF and Markdown; legacy DOC as text with optional `antiword` |
+| Spreadsheets | CSV/TSV and XLSX; sheet selection and saved formula results |
+| E-books | EPUB, FB2, SFB and MOBI 6; readable content and basic formatting |
+| Text and source code | Plain text, wrapping and optional syntax highlighting |
+| Audio | Playback, seeking, volume/mute and available track metadata |
+| Video | MP4/M4V, MKV, WebM, MOV, AVI, MPG/MPEG, OGV and WMV; aspect-preserving playback |
+| Other files | File information for unsupported formats, folders and symbolic links |
 
-The initial packaging target is **Fedora 44, x86_64**. RPM automation is being
-introduced; a successful CI build is not a certification of desktop behavior.
+Media support depends on installed Qt backends and codecs. Audio-only containers
+use the music view. See [supported formats and preview limits](docs/previews.md)
+and [what's new in 0.8.0](docs/releases/v0.8.0.md).
 
-When a release RPM is available, download the `dzurkel` binary package matching
-Fedora 44 from [Releases](https://github.com/EdinUser/dzurkel/releases), then:
+## Installation
 
-```bash
-sudo dnf install ./dzurkel-<version>-1.fc44.x86_64.rpm
-```
+Download the installer matching your system from
+[Releases](https://github.com/EdinUser/dzurkel/releases). Packages are attached
+after release validation succeeds. **0.8.0 is the latest stable release**;
+validation passed, installers are attached and promotion is complete. See
+the [release page](https://github.com/EdinUser/dzurkel/releases/tag/v0.8.0) for current status.
 
-Replace the filename with the downloaded package. Do not install the source RPM
-or debug packages to run Dzurkel. For now, updates use the same download/install
-procedure; there is no Dzurkel DNF repository.
+| System | Package | Install the downloaded file |
+| --- | --- | --- |
+| Fedora 44, x86_64 | RPM | `sudo dnf install ./dzurkel-<version>-1.fc44.x86_64.rpm` |
+| Debian 13, amd64 | DEB | `sudo apt install ./dzurkel_<version>-1_amd64.deb` |
+| Current Arch Linux, x86_64 | Arch package | Update with `sudo pacman -Syu`, then `sudo pacman -U ./dzurkel-<version>-1-x86_64.pkg.tar.zst` |
 
-To build and install the current checkout instead, follow the
-[Fedora source installation guide](docs/installation.md#user-local-installation).
-Fedora, Debian 13 amd64 and current Arch Linux x86_64 packages are built when a
-GitHub release or prerelease is published. Ordinary pushes do not build packages.
-See [Debian and Arch installation](docs/installation.md#debian-and-arch-packages)
-for commands and limitations. AppImage remains planned.
+Replace `<version>` with the downloaded version. Choose the runtime installer,
+not a source or debug package. Packages are unsigned; verify the accompanying
+checksums. Updates use the same download/install procedure; there is no Dzurkel
+package repository. Quit the resident process before upgrading and restart afterward.
 
-## Enable Space previews in Dolphin
+See the [installation, updates and removal guide](docs/installation.md) for
+checksum commands, optional components and source builds. AppImage remains planned.
 
-1. Open **Dzurkel Settings** from your application menu, or run `dzurkel --settings`.
-2. Choose **Enable Space shortcut…** and review the shortcut changes.
-3. Allow Dolphin to restart when prompted, then select a file and press Space.
+## File manager integration
 
-Settings backs up affected bindings and offers **Restore previous shortcuts**.
-Installation alone does not reassign keys. You can also right-click a file in
-Dolphin and choose **Dzurkel**, then open **Settings** from the preview.
+Open **Dzurkel Settings** from the application menu or with `dzurkel --settings`.
+Choose your file manager's **Enable Space shortcut** action. Installation alone
+leaves shortcuts unchanged; Settings provides reversible setup.
 
-Shortcut integration targets **Dolphin 26.04 or newer**. See
-[Dolphin setup and troubleshooting](docs/dolphin-integration.md) if the menu or
-shortcut is unavailable. Window activation follows the desktop’s focus policy.
+| File manager | Setup and scope |
+| --- | --- |
+| **Dolphin** | Space setup needs **26.04+**; local and authenticated remote locations. A context-menu action is also available. [Setup and troubleshooting](docs/dolphin-integration.md) |
+| **Nautilus (GNOME Files)** | Opt-in Space previews for local files; navigation follows the Files selection. [Setup, provider conflicts and validation](docs/gnome-testing.md) |
+| **Thunar** | Space and **Preview with Dzurkel** for one local file; mounted paths work as local paths. [Setup and restoration](docs/thunar-integration.md) |
 
-On GNOME with Nautilus (Files) installed, Settings shows **Nautilus shortcut**.
-Choose **Enable Space shortcut**, then select a local file in Files and press
-Space. Dzurkel starts automatically and navigation follows the selection in
-Files. **Restore previous previews** restores the previous user preview provider.
-If another provider such as Sushi is running, close its preview and quit it
-before enabling Dzurkel. Setup does not change system packages or global keys.
-See [GNOME and Nautilus testing](docs/gnome-testing.md) for scope and validation.
+Finish file operations before accepting a file-manager restart. Desktop focus
+policies and validation differ; see compatibility below.
 
-On XFCE with Thunar installed, Settings shows **Thunar shortcut**. Enable setup
-there to add Space previews and **Preview with Dzurkel** to Thunar's context menu.
-Finish file operations before allowing Thunar to restart. Setup is reversible
-and preserves unrelated actions and shortcuts. See [Thunar integration](docs/thunar-integration.md).
+## Lightweight by design
 
-## Compatibility
+Dzurkel focuses on inspecting files in a reusable window. File contents are never
+edited or executed, and XLSX formulas are not recalculated. Complex document
+formatting is simplified for readable previews; protected/encrypted content shows
+an error.
+
+The baseline application previews images, PDFs, text, tables, documents and
+supported e-books. Media playback, syntax highlighting and desktop-specific
+enhancements use optional, runtime-loaded adapters. Missing media support gives
+an explanation; missing highlighting leaves plain text usable. Other baseline
+previews remain available.
+
+See [baseline and optional components](docs/runtime-baseline.md) for requirements
+and recovery, and [preview limits and filesystem policy](docs/previews.md) for
+bounded copies, incremental media reads and decoder limitations.
+
+## Compatibility and limitations
+
+Dzurkel is built with C++20 and Qt 6. Fedora KDE Wayland is the primary development
+environment; file managers and desktops have different levels of validation.
 
 The **source baseline** requires Qt 6.4+, Qt PDF/PDF Widgets 6.4+ and libzip 1.7+.
 Debian 12 meets that baseline and has passed the headless build and staged-install
@@ -127,55 +141,30 @@ See the [location compatibility guide](docs/compatibility.md) and
 [testing report](docs/testing.md) for evidence and limitations. Qt 6.4 is the
 configured minimum, not a promise of compatibility with every Qt/KDE release.
 
-## Command line
+## Technical documentation
 
-```bash
-dzurkel --show '/path/to/document.pdf'
-dzurkel --toggle '/path/to/image.png'
-dzurkel --settings
-dzurkel --hide
-dzurkel --quit
-```
+Start with the [documentation index](docs/README.md) for setup, preview behavior,
+network access, architecture, testing and release guides.
 
-Relative paths resolve from your shell’s current directory. Paths containing
-spaces should be quoted; use `dzurkel -- './-filename.txt'` for names beginning
-with a dash. See `dzurkel --help` and the [D-Bus API](docs/dbus-api.md) for more.
-
-## Build and contribute
-
-Build dependencies: C++20, CMake 3.22+, Qt 6 Core/Gui/Widgets/DBus/Concurrent/
-Pdf/PdfWidgets/Test, libzip 1.7+, Python 3 and readelf. Qt Multimedia and KDE
-Frameworks 6 WindowSystem build optional runtime adapters; the baseline preset
-omits them and highlighting. The normal package includes adapters where build
-headers are available, with their runtime dependencies optional.
-See [the runtime baseline and release compatibility report](docs/runtime-baseline.md).
-
-```bash
-sudo dnf install gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel \
-  kf6-kwindowsystem-devel kf6-syntax-highlighting-devel dbus-daemon python3 desktop-file-utils
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-```
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for development and reporting guidance.
-GitHub Actions runs the automated tests with GCC and Clang, builds Fedora RPMs,
-Debian and Arch packages, and checks package installation/removal. KDE Wayland desktop acceptance remains
-a separate manual check.
-
-## Documentation
-
-- [Installation, updates and removal](docs/installation.md)
-- [Runtime baseline and compatibility report](docs/runtime-baseline.md)
-- [Arch VM library testing](docs/arch-vm-testing.md)
-- [Dolphin integration and Space shortcut](docs/dolphin-integration.md)
-- [GNOME and Nautilus testing workflow](docs/gnome-testing.md)
 - [Usage and keyboard controls](docs/usage.md)
-- [Supported formats and preview limits](docs/previews.md)
-- [Network locations and experimental SFTP](docs/compatibility.md)
-- [Packaging and release process](docs/releasing.md)
-- [Architecture](docs/architecture.md), [D-Bus API](docs/dbus-api.md),
-  [performance](docs/performance.md) and [testing](docs/testing.md)
+- [Supported formats and limits](docs/previews.md)
+- [Location compatibility and experimental SFTP](docs/compatibility.md)
+- [Runtime requirements and OS compatibility](docs/runtime-baseline.md)
+- [Testing evidence and remaining checks](docs/testing.md)
+
+## Contributing
+
+Dzurkel uses C++20 and Qt 6. See [CONTRIBUTING.md](CONTRIBUTING.md) for development
+and reporting guidance, the [source installation guide](docs/installation.md#dependencies)
+for dependencies, and [architecture](docs/architecture.md) for module boundaries.
+Automated checks and native desktop acceptance are documented separately.
+
+## Development
+
+Dzurkel's implementation code is AI-generated. Project direction, requirements,
+testing and release decisions are guided by the project maintainer. See
+[contributing guidance](CONTRIBUTING.md) and the [testing record](docs/testing.md)
+for how changes are checked.
 
 ## License
 

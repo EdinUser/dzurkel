@@ -23,7 +23,7 @@ is in `main.cpp`, and `PreviewService` is explicitly exported on the bus.
 
 ## Required runtime and optional adapters
 
-The core links Qt base, Qt PDF/PDF Widgets and libzip. Audio, syntax highlighting
+The core links Qt base, Qt PDF/PDF Widgets and libzip. Audio/video, syntax highlighting
 and specialised desktop activation are application-relative Qt plugins. The core
 uses small interfaces rather than linking their Qt Multimedia or KF6 backends.
 Successful modules remain loaded until exit; explicit status refresh retries
@@ -31,7 +31,7 @@ failed discovery/load. System packages are never installed by the application.
 
 `PreviewLibrary` describes supported readers independently of installed optional
 components. `LibraryAvailability` reports the actual installation and reviewed
-package guidance. Missing audio, antiword or an additional image reader produces
+package guidance. Missing media, antiword or an additional image reader produces
 file information with a component ID and an Open Settings action. Missing
 highlighting leaves text usable. Settings has Integration, Previews and Libraries
 tabs; only highlighting has a usage checkbox. See [runtime baseline](runtime-baseline.md).
@@ -51,7 +51,7 @@ adapter after opt-in rather than a separate broker or new preview provider.
 URL syntax validation happens before accepting a Show request; filesystem
 validation does not. A QProcess helper (an internal mode of the same installed
 executable) resolves SMB via KIO-FUSE, inspects files and copies document/image
-content into an owned, bounded temporary resource. Audio is identified here but
+content into an owned, bounded temporary resource. Audio/video are identified here but
 not copied. Preparation has a 30-second deadline.
 Cancellation kills the helper without a synchronous GUI wait and retains its
 directory until exit. No new file is added to the installation manifest.
@@ -62,7 +62,8 @@ job. Each request gets a generation identifier and cancellation flag. A result
 can update the UI only if it still belongs to the current requested preview.
 Widgets are created and replaced on the GUI thread under Qt parent ownership.
 
-The optional audio adapter uses `AudioPreviewWidget` and Qt Multimedia with a seekable
+The optional media adapter uses `MediaPreviewWidget`, `MediaSession` and Qt
+Multimedia/Multimedia Widgets with a seekable
 `StreamingMediaSource`. The same installed executable's internal media mode
 holds the source descriptor and serves bounded byte ranges over a private Unix
 socket. Qt's decoder threads read the device; application-thread reads fail
@@ -180,6 +181,7 @@ content only. Markdown uses bounded worker-decoded source and Qt's HTML-disabled
 Markdown parser on the GUI thread, followed by shared typography normalization.
 
 The opt-in [media streaming probe](media-streaming-experiment.md) exercises the
-same seekable source implementation used by audio. The probe is uninstalled;
-the normal executable contains its own media helper mode. Future video previews
-can reuse this source access and the shared playback policy.
+same seekable source implementation used by audio and video. The probe is
+uninstalled; the normal executable contains its own media helper mode. See
+[video previews](video-preview.md) for frame readiness, source deadlines and
+buffering policies.

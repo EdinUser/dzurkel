@@ -154,7 +154,8 @@ directories and isolated settings. It never controls the logged-in desktop or
 changes the installed app. No extension, Shell.Eval or compositor script is used.
 The private system bus allows Shell's service proxies to initialize in a plain
 container without using a host's login, account, power or display services.
-The job is required before future release drafts can be created.
+The job must pass before installers are attached to a published prerelease;
+stable promotion follows all release gates and asset upload.
 The local-file suite disables GVfs' optional FUSE file view inside the test
 environment and detaches any remaining FUSE mounts under its private runtime
 directory during cleanup. GVfs and portal services otherwise remain available.
@@ -215,5 +216,5 @@ python3 integrations/nautilus/install.py --remove
 ```
 
 This removes the managed script and retains backups. The app, preferences and
-other Nautilus scripts remain installed. Native packages currently contain the
-existing four runtime files; this integration is installed separately for testing.
+other Nautilus scripts remain installed. The Scripts menu integration is installed
+separately for testing; normal Space setup is provided by Dzurkel Settings.

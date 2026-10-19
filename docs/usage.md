@@ -115,5 +115,5 @@ See [video previews](video-preview.md) for source policies and remaining limits.
 CSV and TSV now use a read-only spreadsheet grid with literal text values,
 quoted/multiline fields, delimiter detection and explicit partial-preview limits.
 XLSX uses the same grid with worksheet tabs and stored values only. Formulas are
-never calculated; missing saved results stay blank. Formatting and charts are
+never calculated; missing saved results show `[Result unavailable]`. Formatting and charts are
 omitted. See [reader architecture and table behavior](preview-library.md).

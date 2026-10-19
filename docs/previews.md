@@ -64,6 +64,7 @@ existing sizing and restore the appropriate geometry on return.
 | CSV / TSV | Read-only table grid; literal values, quoted fields and bounded complete records. |
 | XLSX | Same table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
 | DOCX / RTF / EPUB | Bounded content previews with basic formatting and plain-text fallback for unsupported formatting. |
+| FB2 / SFB / MOBI 6 | Bounded e-book previews with simplified formatting; only the variants described below are supported. |
 | Markdown | Formatted MD/Markdown headings, lists, emphasis, quotes, code and tables; embedded HTML and external resources disabled. |
 | Legacy DOC | Text only, using optional `antiword`; file information if the extractor is unavailable. |
 | Text | Plain text, logs, JSON, XML, and source files identified as text by Qt; automatic syntax highlighting when the optional backend recognises the format. |
@@ -304,11 +305,12 @@ Limits are configured in the provider source files:
 - DOCX/RTF/EPUB/DOC/FB2/SFB/MOBI: complete source snapshots up to 16 MiB; up to 200,000
   retained text characters and 5,000 block boundaries. See
   [document reader bounds](preview-library.md#formatted-documents-and-e-books).
-- Audio: no whole-file size/copy limit; one outstanding read of at most 64 KiB,
-  with a two-second source-read deadline. Opening/loading has a 30-second deadline
-  per phase. At most two source helpers may exist while cancellation is reaped.
-  Application-thread reads are rejected. Qt controls decoder buffering and
-  metadata/artwork decoding; the source budget is not a whole-process memory cap.
+- Audio/video: no whole-file size/copy limit; one outstanding IPC read of at most
+  64 KiB and a fixed 512 KiB source read-ahead window. At most two source helpers
+  may exist while cancellation is reaped. Application-thread
+  reads are rejected. Qt controls decoder buffering and metadata/artwork decoding;
+  the source budget is not a whole-process memory cap. See [media lifecycle and
+  deadline details](video-preview.md#slow-sources-and-lifetime).
 - Loading: one active worker and one pending request. New requests replace the
   pending one, and generation checks discard superseded results. Dismissal
   cancels display of unfinished work and releases the visible content.
@@ -330,11 +332,13 @@ the parent of a selected regular file separately. FIFOs, sockets and
 devices are never opened for content. Regular files are opened with
 nonblocking/no-follow flags and checked by descriptor.
 
-Supported content is copied into a private temporary directory before decoding.
-Text copies contain at most 2 MiB plus one byte for truncation detection; image
-and PDF copies are limited to 64 MiB. Unsupported types and oversized image/PDF
-files receive information views without a content copy. Original metadata and
-URLs remain visible. Temporary backing files are released when their resources
+Non-media readers use bounded copies in a private temporary directory before
+decoding. Text/Markdown/CSV prefixes contain at most 2 MiB plus one byte for
+truncation detection; image/PDF copies are limited to 64 MiB, and XLSX/formatted
+document/e-book copies to 16 MiB. Audio/video use isolated helper-backed range
+reads with no whole-file temporary copy. Unsupported types and oversized complete
+snapshots receive information views without a content copy. Original metadata
+and URLs remain visible. Temporary backing files are released when their resources
 are no longer needed; the parent retains a cancelled helper's directory until
 that helper exits. This is a bounded copy, not an atomic filesystem snapshot.
 

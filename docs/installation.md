@@ -1,8 +1,10 @@
 # Install Dzurkel on Linux
 
-Dzurkel targets Fedora KDE Plasma with Qt 6 and Dolphin 26.04 or newer. The
-current validation environment is Fedora 44; see [testing](testing.md) for exact
-versions and remaining desktop checks. The source installer builds the checked-out
+Dzurkel integrates with Dolphin, Nautilus and Thunar. Native package targets are
+Fedora 44, Debian 13 and current Arch Linux; Fedora KDE Wayland is the primary
+development environment. Dolphin Space setup requires 26.04 or newer. See
+[testing](testing.md) for exact environments and remaining desktop checks.
+The Fedora source installer builds the checked-out
 source using installed Fedora packages. It does not download source, install
 packages, assign shortcuts, or change file associations. The RPM route below
 installs a prebuilt package and resolves runtime dependencies through DNF.
@@ -91,8 +93,8 @@ omit them, leaving baseline previews available. Arch lists those runtimes as
 optional dependencies; Fedora recommends highlighting and suggests media support.
 Missing runtimes are explained in Settings; installed codecs still determine
 which media files can play.
-Extract those ZIPs first and use their distribution-specific checksum manifests;
-those manifests cover all files in each artifact.
+For Actions artifacts, extract the ZIPs first and use their distribution-specific
+checksum manifests; those manifests cover all files in each artifact.
 
 Both packages install `/usr/bin/dzurkel`, the hidden application identity
 `/usr/share/applications/dzurkel.desktop`, the visible **Dzurkel Settings**

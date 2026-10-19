@@ -4,11 +4,12 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
-The current release is **0.8.0**. See the [release notes](releases/v0.8.0.md)
-for changes since 0.7.1. Publishing its GitHub prerelease starts the package and
-validation pipeline; promote it to stable only after all checks pass and the
-runtime installers and checksums are attached. Pushes and tags alone do not
-start package builds.
+The latest stable release is **0.8.0**. Its [validation workflow](https://github.com/EdinUser/dzurkel/actions/runs/39302524634)
+passed and runtime installers/checksums were attached before promotion from
+prerelease. See the [release notes](releases/v0.8.0.md) for changes since 0.7.1.
+For future releases, publishing a prerelease starts the package and validation
+pipeline; promote it only after all gates pass and assets are attached. Pushes
+and tags alone do not start package builds.
 
 ## Release builds and validation
 
@@ -113,8 +114,9 @@ report and adapters are absent. These headless tests do not establish KDE deskto
    **Publish release**. Publishing a prerelease also starts the build; saving a
    draft does not. The workflow builds the tagged commit and attaches RPM, Debian
    and Arch packages and `SHA256SUMS` to that existing release after validation.
-   All package build and clean-install jobs must pass first. Debian and Arch use
-   distinct checksum manifest names to avoid overwriting the Fedora `SHA256SUMS`.
+   All package build and clean-install jobs must pass first. Actions artifacts use
+   distinct checksum manifest names; the public release contains the three
+   runtime installers and a single combined `SHA256SUMS`.
    The native GNOME gate must also pass: it checks real Nautilus Space delivery,
    focus, mapping and rendered placement on an isolated GNOME Shell desktop.
 5. Wait for the release workflow to succeed before announcing the downloads.

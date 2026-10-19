@@ -6,7 +6,8 @@ Dzurkel owns one service on the user session bus:
 - Object: `/io/github/EdinUser/Dzurkel/Previewer`
 - Interface: `io.github.EdinUser.Dzurkel.Previewer1`
 
-These project identifiers remain provisional until the first public release.
+These are the project-owned service identifiers; the separate Nautilus contract
+is described below.
 
 ## Methods
 
@@ -79,8 +80,9 @@ Errors use the prefix `io.github.EdinUser.Dzurkel.Error.`:
 builds; filesystem failures now appear asynchronously in the information view.
 
 Only URL syntax checks and loading-state setup happen before acknowledgement.
-An isolated helper resolves and copies supported content into a bounded local
-snapshot, with a 30-second preparation deadline. Image/text/PDF decoding then
+An isolated helper resolves resources with a 30-second preparation deadline.
+Non-media readers use bounded local snapshots or prefixes; audio/video use
+helper-backed streaming reads without a whole-file copy. Image/text/PDF decoding then
 runs on a bounded worker queue. New requests and dismissal cancel preparation
 and invalidate obsolete results. The first window maps after fast provider
 selection or a 150 ms loading grace period, whichever comes first.

@@ -222,7 +222,9 @@ not be removed just to reduce this checkout's apparent footprint.
 ## Resource preparation change
 
 The development SMB/resource-loading implementation adds a short-lived helper
-process and a bounded temporary copy before decoding, including local files.
+process and a bounded temporary copy before non-media decoding, including local
+files. Audio/video instead use helper-backed range reads without a whole-file
+copy; see [video source policies](video-preview.md).
 Earlier latency and memory measurements above predate this change and must not
 be treated as current preparation costs. CLI acknowledgement now covers syntax
 validation/submission rather than filesystem validation. Re-measure cold/warm
