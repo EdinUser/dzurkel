@@ -2,7 +2,7 @@
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/FileInfoProvider.h"
 #include "preview/providers/ImagePreviewProvider.h"
-#include "preview/media/AudioPreviewWidget.h"
+#include "preview/media/AudioBackend.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/FolderNavigation.h"
 #include <QImageReader>
@@ -187,9 +187,18 @@ void PreviewController::commitReadyPreview()
 {
     if (!ready_ || ready_->job.generation != generation_ || !isVisible()
         || !window_.canCommitPreview()) return;
-    const auto ready = std::move(*ready_);
+    auto ready = std::move(*ready_);
     ready_.reset();
-    const auto &data = ready.data;
+    auto &data = ready.data;
+    if (data.kind == PreviewKind::Audio) {
+        const auto availability = audioAvailability();
+        if (!availability.available) {
+            data.kind = PreviewKind::Information;
+            data.missingLibrary = QStringLiteral("multimedia");
+            data.message = QStringLiteral("Audio preview needs an optional library. Check Settings for details!");
+            data.detail = availability.explanation;
+        }
+    }
     kind_ = data.kind;
     loading_ = false;
     // Retain only PDFium's runtime; provider widgets own actual documents.
@@ -198,18 +207,10 @@ void PreviewController::commitReadyPreview()
     window_.beginPreviewUpdate();
     if (window_.usesGnomePresentation()) window_.setResource(ready.job.resource);
     window_.setContent(PreviewRegistry::createWidget(data, nullptr));
-    if (auto *audio = window_.findChild<AudioPreviewWidget *>()) {
+    if (auto *audio = qobject_cast<AudioControls *>(window_.findChild<QWidget *>(QStringLiteral("audioPreview")))) {
         const auto generation = generation_;
-        connect(audio, &AudioPreviewWidget::detailsChanged, this,
-            [this, generation, media = data](const QString &summary, const QString &details) mutable {
-                if (generation != generation_ || !isVisible()) return;
-                media.mediaSummary = summary;
-                media.detail = details;
-                window_.setPreviewData(media, false);
-            });
-        connect(audio, &AudioPreviewWidget::failed, this,
+        audio->setCallbacks(this,
             [this, generation, job = ready.job, data](const QString &message, const QString &details) {
-                // Defer deletion until the widget/source signal stack unwinds.
                 QTimer::singleShot(0, this, [this, generation, job, data, message, details] {
                     if (generation != generation_ || !isVisible()) return;
                     auto fallback = data;
@@ -219,6 +220,12 @@ void PreviewController::commitReadyPreview()
                     ready_ = ReadyPreview{job, fallback};
                     commitReadyPreview();
                 });
+            },
+            [this, generation, media = data](const QString &summary, const QString &details) mutable {
+                if (generation != generation_ || !isVisible()) return;
+                media.mediaSummary = summary;
+                media.detail = details;
+                window_.setPreviewData(media, false);
             });
     }
     window_.setPreviewData(data);

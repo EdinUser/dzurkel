@@ -1089,3 +1089,126 @@ ctest --test-dir build -R '^dzurkel_audio$' --output-on-failure
 QT_QPA_PLATFORM=wayland dbus-run-session -- \
   ./build/dzurkel_audio_tests playbackControlsAndDismissalReleaseSource
 ```
+
+## Cold information previews and offscreen diagnostics
+
+The 150 ms loading grace period allows two correct first-map paths: a ready
+information result maps compactly, while slower preparation maps a normal loading
+window and compacts when the result arrives. The preview tests verify both first
+map and final dimensions according to the observed content, rather than requiring
+helper startup/classification to beat a wall-clock deadline. A precomputed-result
+widget check verifies compact first mapping deterministically; fake SMB/SFTP
+checks hold the backend reply until loading is visible, then verify compaction.
+The production grace period is unchanged.
+
+Preview/resource test harnesses filter only the exact Qt warning `This plugin
+does not support propagateSizeHints()` when running on the offscreen backend.
+Other warnings, higher severities and native-platform messages remain visible.
+A passthrough check ensures unrelated warnings and critical diagnostics still
+reach Qt Test. The damaged-PNG rejection test can emit `libpng error: Read Error`
+from the decoder; this is expected for its deliberately truncated fixture and is
+not evidence of a valid-image decoding failure.
+
+Validation on 2026-10-19: the optimized Fedora build passed all 20 CTest suites
+(46.93 s). Preview results were 40 passed / two native-only skips; resource
+results were 20 passed / one live-server skip. Both logs contained zero
+propagateSizeHints warnings and zero other Qt warnings. Three first-map runs
+under single-core CPU contention passed; native KDE Wayland first-map and
+warning-passthrough checks passed seven results without skips (1.161 s).
+No live installation was replaced by this validation.
+
+## Useful minimum and build-time compatibility
+
+Validation on 2026-10-19: the normal build passed all 23 CTest suites (52.10 s),
+and the `baseline` preset passed all 20 suites (44.38 s). Both were built locally
+against Qt 6.11.2; this is not a Qt 6.4 or Debian 12 validation result. The new
+Debian 12 CI job supplies that separate release gate and must complete remotely.
+
+Coverage includes optional audio adapter absence, invalid/unloadable modules,
+adding an adapter and refreshing without restarting, baseline previews, missing
+antiword recovery, command copying, compatibility calculation and staged install.
+The executable's ELF requirements contain neither Qt Multimedia nor the optional
+KF6 backends. Python syntax, CI YAML, shell syntax, RPM spec parsing and diff
+whitespace checks passed. Full native distribution package builds remain CI work.
+
+Native KDE Wayland checks passed four results for Libraries status/guidance and
+four for the minimum build's missing-audio Settings action and basic previews.
+The Libraries screenshot was inspected. The isolated native session emitted
+portal/accessibility service diagnostics, including a test application ID
+registration warning; these were not suppressed. Native clipboard contents were
+preserved. No installed application or system packages were changed.
+
+See [runtime baseline and compatibility](runtime-baseline.md) for candidate OS
+floors, validation requirements and the distinction between a baseline build and
+a binary produced against newer libraries.
+
+## Arch package testing without optional libraries
+
+On 2026-10-19, a snapshot of the active source was packaged in a disposable Arch
+Podman builder with all three adapters enabled. All 23 CTest suites passed;
+audio-device, external fixture and native-desktop cases retain their documented
+skips. Package contents include audio, highlighting and desktop adapters, while
+metadata requires only the baseline runtime packages. A Qt 6.12 metadata enum
+deprecation warning was observed; it did not fail compilation.
+
+A fresh Arch runtime container installed the package through pacman. Qt
+Multimedia, KSyntaxHighlighting, KF6 WindowSystem and antiword remained absent.
+The installed audio adapter's dependency inspection confirmed missing
+`libQt6Multimedia.so.6`. Baseline previews, catalog stability, missing-audio
+Settings recovery and missing-antiword recovery passed six Qt Test results with
+no skips. One offscreen `raise()` warning was retained. These container checks
+do not establish native desktop/focus acceptance or audible playback support.
+
+The private Arch helper now builds on the Fedora host and stages the native
+package in the runtime VM, where a user-run installer requests only required
+dependencies. The old user-local binary/launchers are backed up during migration.
+The tested package was staged in `~/Dzurkel-packages/package.A491v27z` on the
+Arch VM; its system installation and interactive library workflow are pending
+the user's sudo transaction and desktop checks. No optional libraries were
+installed in that VM by this validation.
+
+## Image maximization between preview sessions
+
+The user clarified that normal resizing works, but maximizing an image carried
+that state into a later dismissed/reopened preview. The old implementation and
+tests explicitly preserved image maximization. The new requirement resets an
+image's maximized/fullscreen state on reopening, while preserving maximization
+within the active browsing session and the saved document geometry.
+
+`gnomeReopenedImagesFitAfterNativeMaximize` failed against the old behavior on
+native Ubuntu GNOME Wayland. After the focused `preparePresentation` change,
+three maximize/dismiss/reopen cycles passed, including a Settings transition,
+400x400 small-image fitting, matching QWidget/QWindow states and manual resizing.
+The targeted GNOME/table checks passed four results without skips (3.545 s).
+An earlier combined native run had an intermittent failure restoring a table
+from 1213x730 to 740x600; the same check then passed in isolation. No general
+resize or compositor-state rewrite was made to address that separate observation.
+Native portal/text-input diagnostics remain visible.
+
+After the change, Fedora's full build passed 23/23 suites (61.81 s), its baseline
+build passed 20/20 (42.26 s), and the Ubuntu build passed 20/20 offscreen suites
+(42.54 s). The tested Ubuntu executable
+was installed into the existing `~/.local` development prefix after backing up
+the previous executable under
+`~/.local/share/dzurkel-dev-backups/image-reopen-20261019T121140Z`. Installed and
+built executable hashes match. System packages were unchanged. The staged Arch
+library-workflow package above predates this subsequent window-behavior change;
+rerunning the Arch helper builds a fresh snapshot with it included.
+
+## Pre-commit baseline verification
+
+An isolated Debian 12 Debug build with Qt 6.4.2 and libzip 1.7.3 passed all 20
+CTest suites (34.43 s), including staged installation, with optional SDKs absent.
+The check found a missing explicit QGuiApplication include in the Settings
+clipboard handler, which was added. The allocation-budget fixture now uses a BMP
+header with 8192x8192 dimensions, within the reader's header limits but above the
+64 MiB decode budget. This avoids relying on PNG native-scaling support, which
+differs across Qt versions; damaged-PNG rejection remains covered separately.
+
+The reusable Arch VM scripts are tracked under `packaging/arch/`; private helper
+wrappers retain local destination defaults. Script syntax/argument handling,
+Python/YAML syntax, RPM optional dependency filtering and documentation links
+were checked. Release publication remains the workflow's only trigger; no tag,
+release package build or release publication is part of this commit preparation.
+The final Fedora Qt 6.11.2 build passed all 23 CTest suites (51.99 s), including
+the revised image-budget fixture and Settings clipboard checks.

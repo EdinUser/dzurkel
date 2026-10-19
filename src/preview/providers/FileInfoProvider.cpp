@@ -7,6 +7,7 @@
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QVBoxLayout>
+#include <QPushButton>
 
 namespace dzurkel {
 PreviewData FileInfoProvider::describe(const FileResource &resource)
@@ -69,6 +70,12 @@ QWidget *FileInfoProvider::createWidget(const PreviewData &data, QWidget *parent
     add(QStringLiteral("Modified: %1").arg(data.modified.isValid() ? QLocale().toString(data.modified, QLocale::ShortFormat) : QStringLiteral("Unavailable")));
     if (!data.linkTarget.isEmpty()) add(QStringLiteral("Target: %1").arg(data.linkTarget));
     add(data.message);
+    if (!data.missingLibrary.isEmpty()) {
+        auto *settings = new QPushButton(QStringLiteral("Open Settings"), widget);
+        settings->setObjectName(QStringLiteral("openLibrarySettings"));
+        settings->setProperty("libraryId", data.missingLibrary);
+        layout->addWidget(settings, 0, Qt::AlignLeft);
+    }
     layout->addStretch();
     return widget;
 }

@@ -1,7 +1,7 @@
 #include "controller/PreviewController.h"
 #include "preview/PreviewLibrary.h"
 #include "preview/PreviewRegistry.h"
-#include "preview/media/AudioPreviewWidget.h"
+#include "preview/media/AudioBackend.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/media/StreamingMediaSource.h"
 #include <QAudioOutput>
@@ -53,7 +53,7 @@ void AudioTest::mute(PreviewController &controller)
     // Commit signals run before the widget's queued startup, so test playback
     // cannot become audible, including when checking the user's real files.
     connect(&controller, &PreviewController::stateChanged, &controller, [&controller] {
-        if (auto *audio = controller.window()->findChild<AudioPreviewWidget *>()) audio->setMuted(true);
+        if (auto *audio = controller.window()->findChild<QWidget *>(QStringLiteral("audioPreview"))) qobject_cast<AudioControls *>(audio)->setMuted(true);
     });
 }
 void AudioTest::initTestCase()
@@ -77,7 +77,7 @@ void AudioTest::initTestCase()
 }
 void AudioTest::cleanup()
 {
-    QTRY_COMPARE_WITH_TIMEOUT(StreamingMediaSource::activeHelpers(), 0, 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(activeAudioHelpers(), 0, 3000);
 }
 void AudioTest::selectsAgreedFormatsWithoutRequiringTheirDecoders()
 {
@@ -129,8 +129,8 @@ void AudioTest::playbackControlsAndDismissalReleaseSource()
     mute(controller);
     QString error;
     QVERIFY(controller.show(wave_, error, nullptr, {}, false, true));
-    QTRY_VERIFY_WITH_TIMEOUT(controller.window()->findChild<AudioPreviewWidget *>(), 5000);
-    auto *audio = controller.window()->findChild<AudioPreviewWidget *>();
+    QTRY_VERIFY_WITH_TIMEOUT(controller.window()->findChild<QWidget *>(QStringLiteral("audioPreview")), 5000);
+    auto *audio = controller.window()->findChild<QWidget *>(QStringLiteral("audioPreview"));
     QTRY_VERIFY_WITH_TIMEOUT(audio->findChild<QMediaPlayer *>(), 5000);
     QPointer<QMediaPlayer> player = audio->findChild<QMediaPlayer *>();
     QTRY_VERIFY_WITH_TIMEOUT(player && player->position() > 0, 5000);
@@ -273,14 +273,14 @@ void AudioTest::realMusicFiles()
         QCOMPARE(player->error(), QMediaPlayer::NoError);
         qInfo() << "Read-only playback/seek passed:" << path;
         const auto screenshot = qEnvironmentVariable("DZURKEL_AUDIO_SCREENSHOT");
-        auto *audio = controller.window()->findChild<AudioPreviewWidget *>();
+        auto *audio = controller.window()->findChild<QWidget *>(QStringLiteral("audioPreview"));
         if (!screenshot.isEmpty() && !QFileInfo::exists(screenshot))
             QVERIFY(audio->window()->grab().save(screenshot));
         controller.hide();
         QTRY_VERIFY(!controller.window()->findChild<QMediaPlayer *>());
         QCOMPARE(QFileInfo(path).size(), size);
         QCOMPARE(QFileInfo(path).lastModified(), modified);
-        QTRY_COMPARE_WITH_TIMEOUT(StreamingMediaSource::activeHelpers(), 0, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(activeAudioHelpers(), 0, 3000);
     }
 }
 void AudioTest::generatedAudioFormats()
@@ -306,7 +306,7 @@ void AudioTest::generatedAudioFormats()
         QCOMPARE(player->error(), QMediaPlayer::NoError);
         qInfo() << "Integrated format playback/seek passed:" << name;
         controller.hide();
-        QTRY_COMPARE_WITH_TIMEOUT(StreamingMediaSource::activeHelpers(), 0, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(activeAudioHelpers(), 0, 3000);
     }
 }
 void AudioTest::movingVideoDoesNotPlayAsAudio()

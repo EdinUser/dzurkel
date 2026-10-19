@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Dzurkel contributors <noreply@github.com>
 Build-Depends: debhelper-compat (= 13), cmake (>= 3.22), pkgconf,
  qt6-base-dev (>= 6.4), qt6-pdf-dev, qt6-multimedia-dev, libkf6windowsystem-dev,
- libzip-dev (>= 1.7), dbus-daemon, python3, desktop-file-utils
+ libzip-dev (>= 1.7), libkf6syntaxhighlighting-dev (>= 6.0), dbus-daemon, python3, desktop-file-utils
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
 Homepage: https://github.com/EdinUser/dzurkel
@@ -12,8 +12,8 @@ Homepage: https://github.com/EdinUser/dzurkel
 Package: dzurkel
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, qt6-wayland
-Recommends: qt6-image-formats-plugins
-Suggests: dolphin, nautilus, thunar, kio-fuse, kio-extras
+Recommends: qt6-image-formats-plugins, libkf6syntaxhighlighting6 (>= 6.0)
+Suggests: libqt6multimedia6, libkf6windowsystem6, antiword, dolphin, nautilus, thunar, kio-fuse, kio-extras
 Description: Quick file previews for Dolphin, Nautilus and Thunar
  Preview images, PDFs, audio, formatted documents, e-books, text and
  CSV/TSV/XLSX spreadsheets in a reusable window. Open Dzurkel Settings

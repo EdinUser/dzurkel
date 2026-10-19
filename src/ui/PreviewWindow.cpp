@@ -4,7 +4,7 @@
 #include "preview/PreviewProvider.h"
 #include "preview/table/TabularDocument.h"
 #include "preview/document/FormattedDocument.h"
-#include "preview/media/AudioPreviewWidget.h"
+#include "preview/media/AudioBackend.h"
 #include <QWheelEvent>
 #include "desktop/DesktopIntegration.h"
 #include "desktop/WindowPlacement.h"
@@ -213,6 +213,10 @@ void PreviewWindow::setContent(QWidget *content)
     }
     updateZoomControls();
     if (content_) {
+        if (auto *settings = content_->findChild<QPushButton *>(QStringLiteral("openLibrarySettings"))) {
+            const auto id = settings->property("libraryId").toString();
+            connect(settings, &QPushButton::clicked, this, [this, id] { showSettings(); settings_->showLibrary(id); });
+        }
         content_->setParent(contentHost_);
         contentLayout_->addWidget(content_);
         content_->show();
@@ -224,7 +228,7 @@ void PreviewWindow::setContent(QWidget *content)
 }
 void PreviewWindow::stopMedia()
 {
-    if (auto *audio = qobject_cast<AudioPreviewWidget *>(content_)) audio->stop();
+    if (auto *audio = qobject_cast<AudioControls *>(content_)) audio->stop();
 }
 bool PreviewWindow::usesGnomePresentation() const
 {
@@ -681,11 +685,12 @@ void PreviewWindow::preparePresentation()
 {
     if (!presentationPrepared_) {
         if (!isVisible() && shown_ && (informationMode_ || imageMode_)) {
-            const auto imageState = windowState();
             restoreDocumentSize();
-            // Restore the reading dimensions for decoding, but keep an image's
-            // own normal/maximized state until the next provider is known.
-            if (imageMode_) setWindowState(imageState);
+            // Restore the decode budget without carrying an image session's
+            // maximization into a newly opened preview. The saved document
+            // state remains available when returning to a reading provider.
+            if (imageMode_)
+                setWindowState(windowState() & ~(Qt::WindowMaximized | Qt::WindowFullScreen));
         }
         QScreen *target = QGuiApplication::screenAt(QCursor::pos());
         if (!target) target = screen();
@@ -764,7 +769,7 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
         int direction = 0;
         auto *zoom = qobject_cast<ZoomPreview *>(content_);
         const bool verticalBrowsing = arrowNavigation_ && (!zoom || zoom->isFit());
-        const bool mediaSlider = qobject_cast<AudioPreviewWidget *>(content_) && qobject_cast<QSlider *>(target);
+        const bool mediaSlider = qobject_cast<AudioControls *>(content_) && qobject_cast<QSlider *>(target);
         if (modifiers == Qt::AltModifier || (arrowNavigation_ && modifiers == Qt::NoModifier && !mediaSlider)) {
             if (key->key() == Qt::Key_Left) direction = -1;
             if (key->key() == Qt::Key_Right) direction = 1;

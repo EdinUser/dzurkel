@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-10-19",
+  "scope": "Native distro packages; listed releases and repositories only. Package availability is not runtime validation.",
+  "distributions": [
+    {
+      "id": "debian",
+      "repositories": [
+        "main"
+      ],
+      "coverage": "Reviewed Debian 12 and 13; older/backports configurations are not assessed.",
+      "releases": [
+        {
+          "version": "12",
+          "architecture": "x86_64",
+          "libraries": {
+            "qt_base": "6.4.2",
+            "qt_pdf": "6.4.2",
+            "libzip": "1.7.3"
+          },
+          "sonames": [
+            "libzip.so.4"
+          ],
+          "sources": [
+            "https://packages.debian.org/bookworm/libqt6core6",
+            "https://packages.debian.org/bookworm/libqt6pdf6",
+            "https://packages.debian.org/bookworm/libzip4"
+          ],
+          "validation": [],
+          "coinstallable": true
+        },
+        {
+          "version": "13",
+          "architecture": "x86_64",
+          "libraries": {
+            "qt_base": "6.8.2",
+            "qt_pdf": "6.8.2",
+            "libzip": "1.11.3"
+          },
+          "sonames": [
+            "libzip.so.5"
+          ],
+          "sources": [
+            "https://packages.debian.org/trixie/libqt6core6t64",
+            "https://packages.debian.org/trixie/libqt6pdf6",
+            "https://packages.debian.org/trixie/libzip5"
+          ],
+          "validation": [],
+          "coinstallable": true
+        }
+      ]
+    },
+    {
+      "id": "fedora",
+      "repositories": [
+        "fedora",
+        "updates"
+      ],
+      "coverage": "Reviewed Fedora 43 and 44; this does not establish the earliest historical Fedora release.",
+      "releases": [
+        {
+          "version": "43",
+          "architecture": "x86_64",
+          "libraries": {
+            "qt_base": "6.10.3",
+            "qt_pdf": "6.10.3",
+            "libzip": "1.11.4"
+          },
+          "sonames": [
+            "libzip.so.5"
+          ],
+          "sources": [
+            "https://packages.fedoraproject.org/pkgs/qt6-qtbase/qt6-qtbase/",
+            "https://packages.fedoraproject.org/pkgs/qt6-qtwebengine/qt6-qtpdf/",
+            "https://packages.fedoraproject.org/pkgs/libzip/libzip/"
+          ],
+          "validation": [],
+          "coinstallable": true
+        },
+        {
+          "version": "44",
+          "architecture": "x86_64",
+          "libraries": {
+            "qt_base": "6.11.2",
+            "qt_pdf": "6.11.2",
+            "libzip": "1.11.4"
+          },
+          "sonames": [
+            "libzip.so.5"
+          ],
+          "sources": [
+            "https://packages.fedoraproject.org/pkgs/qt6-qtbase/qt6-qtbase/",
+            "https://packages.fedoraproject.org/pkgs/qt6-qtwebengine/qt6-qtpdf/",
+            "https://packages.fedoraproject.org/pkgs/libzip/libzip/"
+          ],
+          "validation": [],
+          "coinstallable": true
+        }
+      ]
+    },
+    {
+      "id": "arch",
+      "repositories": [
+        "core",
+        "extra"
+      ],
+      "coverage": "Rolling repository snapshot reviewed 2026-10-19; no numbered OS minimum. Full system upgrades are required.",
+      "releases": [
+        {
+          "version": "rolling@2026-10-19",
+          "architecture": "x86_64",
+          "libraries": {
+            "qt_base": "6.12.0",
+            "qt_pdf": "6.11.2",
+            "libzip": "1.11.4"
+          },
+          "sonames": [
+            "libzip.so.5"
+          ],
+          "sources": [
+            "https://archlinux.org/packages/extra/x86_64/qt6-base/",
+            "https://archlinux.org/packages/extra/x86_64/qt6-webengine/",
+            "https://archlinux.org/packages/extra/x86_64/libzip/"
+          ],
+          "validation": [],
+          "coinstallable": null,
+          "note": "Current package pages report different Qt minor releases; a coherent repository snapshot/package solver check is required."
+        }
+      ]
+    },
+    {
+      "id": "rhel",
+      "repositories": [],
+      "coverage": "No complete baseline package set reviewed. Qt PDF is present in EPEL 9, which is an additional repository; stock RHEL and compatible distributions need separate evidence. No repository is enabled automatically.",
+      "releases": []
+    }
+  ]
+}

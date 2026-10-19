@@ -193,6 +193,15 @@ PreviewData ImagePreviewProvider::loadWithMetadata(std::unique_ptr<QFile> file, 
     if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
     QElapsedTimer work;
     work.start();
+    const auto formats = QImageReader::supportedImageFormats();
+    const bool missingReader = (data.mimeType == QLatin1String("image/webp") && !formats.contains("webp"))
+        || (data.mimeType == QLatin1String("image/tiff") && !formats.contains("tiff") && !formats.contains("tif"))
+        || (data.mimeType == QLatin1String("image/gif") && !formats.contains("gif"));
+    if (missingReader) {
+        data.missingLibrary = QStringLiteral("imageformats");
+        data.message = QStringLiteral("This image needs an optional Qt image reader. Check Settings for details!");
+        return data;
+    }
     QImageReader reader(file.get());
     reader.setAutoTransform(true);
     if (!reader.canRead()) {

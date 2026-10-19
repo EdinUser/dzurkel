@@ -5,10 +5,14 @@ pkgdesc='Quick file previews for Dolphin, Nautilus and Thunar'
 arch=('x86_64')
 url='https://github.com/EdinUser/dzurkel'
 license=('GPL-3.0-or-later')
-depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-webengine' 'qt6-multimedia' 'qt6-wayland' 'kwindowsystem' 'libzip')
-makedepends=('cmake')
+depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-webengine' 'qt6-wayland' 'libzip')
+makedepends=('cmake' 'syntax-highlighting>=6.0' 'qt6-multimedia' 'kwindowsystem')
 checkdepends=('dbus' 'python' 'desktop-file-utils')
-optdepends=('dolphin: file manager integration (26.04+ for Space setup)'
+optdepends=('qt6-multimedia: optional audio previews'
+            'kwindowsystem: optional KDE activation and Thunar focus support'
+            'antiword: legacy Word DOC text extraction'
+            'dolphin: file manager integration (26.04+ for Space setup)'
+            'syntax-highlighting>=6.0: syntax highlighting for source and configuration files'
             'nautilus: GNOME Space preview integration'
             'thunar: XFCE Space and context-menu integration'
             'qt6-imageformats: additional image formats'
@@ -20,7 +24,8 @@ sha256sums=('@SOURCE_SHA256@')
 
 build() {
     cmake -S "$srcdir/dzurkel-$pkgver" -B build \
-        -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=ON
+        -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=ON \
+        -DDZURKEL_HIGHLIGHTING=ON -DDZURKEL_AUDIO=ON
     cmake --build build --parallel 2
 }
 

@@ -145,6 +145,11 @@ AudioPreviewWidget::AudioPreviewWidget(const PreviewData &data, QWidget *parent)
     QTimer::singleShot(0, this, &AudioPreviewWidget::start);
 }
 AudioPreviewWidget::~AudioPreviewWidget() { stop(); }
+void AudioPreviewWidget::setCallbacks(QObject *context, AudioCallback failure, AudioCallback details)
+{
+    connect(this, &AudioPreviewWidget::failed, context, std::move(failure));
+    connect(this, &AudioPreviewWidget::detailsChanged, context, std::move(details));
+}
 void AudioPreviewWidget::setMuted(bool muted)
 {
     muted_ = muted;

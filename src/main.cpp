@@ -24,6 +24,7 @@ int main(int argc, char *argv[])
 {
     dzurkel::Request request;
     QString error;
+    bool kdeActivation = false;
     {
         // Secondary invocations need neither a display nor a GUI service of
         // their own. This named bus connection is closed before GUI startup.
@@ -66,11 +67,13 @@ int main(int argc, char *argv[])
             dzurkel::FileResource resource;
             if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
         }
+        // Resolve the optional adapter while QCoreApplication still exists.
+        kdeActivation = dzurkel::supportsActivationTokens();
     }
 
     // KDE consumes the saved token on the actual show request. Avoid also
     // consuming it through Qt's implicit startup activation.
-    if (dzurkel::supportsActivationTokens()) qunsetenv("XDG_ACTIVATION_TOKEN");
+    if (kdeActivation) qunsetenv("XDG_ACTIVATION_TOKEN");
     QApplication application(argc, argv);
     application.setApplicationName(QStringLiteral("dzurkel"));
     application.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));

@@ -26,7 +26,9 @@ Larger images fit proportionally within the desktop work area, including
 window decorations. The compositor may further constrain their size to keep
 controls clear of desktop panels. Manual
 resize and zoom do not trigger another automatic fit for that file; explicitly
-maximized/fullscreen windows retain their state. New images choose their own
+maximized/fullscreen image windows retain their state while browsing in that
+preview session. After dismissal, reopening an image starts fitted again.
+New images in a normal window choose their own
 natural size. GIF playback controls are included in the size calculation.
 
 Information-only views shrink to fit their icon and text. Information, audio and
@@ -63,7 +65,7 @@ existing sizing and restore the appropriate geometry on return.
 | DOCX / RTF / EPUB | Bounded content previews with basic formatting and plain-text fallback for unsupported formatting. |
 | Markdown | Formatted MD/Markdown headings, lists, emphasis, quotes, code and tables; embedded HTML and external resources disabled. |
 | Legacy DOC | Text only, using optional `antiword`; file information if the extractor is unavailable. |
-| Text | Plain text, logs, JSON, XML, and source files identified as text by Qt. |
+| Text | Plain text, logs, JSON, XML, and source files identified as text by Qt; automatic syntax highlighting when the optional backend recognises the format. |
 | Other files | Filename, type/MIME, size, modification time, icon, and explanation. |
 | Directories, links, special objects | Information only; contents/targets are not opened. |
 
@@ -109,6 +111,34 @@ scrollbars. Markup is displayed literally. UTF-8 is preferred; a byte-order mark
 can identify UTF-16/UTF-32. Invalid UTF-8 may use a labeled Latin-1 fallback;
 unknown legacy encodings are not reliably detected. Binary data receives an
 information view rather than a text dump.
+
+Syntax highlighting uses an optional KSyntaxHighlighting 6 adapter. Supported
+source/configuration formats are detected from the original filename and MIME
+type, including remote filenames. Colours follow the editor's light/dark palette;
+the source text, indentation and line breaks are unchanged. No source code is
+executed and no automatic pretty-printing is applied. Missing/unloadable adapters,
+missing/incompatible libraries and unrecognised formats silently retain plain text.
+For responsiveness, previews over 256 Ki UTF-16 code units (including the final
+document separator), or with a paragraph over 4096 code units including its
+separator, also remain plain text. Existing text loading limits still apply.
+
+Source builds use `-DDZURKEL_HIGHLIGHTING=AUTO` by default: the adapter is built
+when KSyntaxHighlighting >= 6.0 development files are available. `ON` requires
+those files; `OFF` omits the adapter from the build. The core retains its loader:
+a compatible adapter can be installed afterward without rebuilding the executable. With the adapter installed, a compatible
+runtime library is detected on the first eligible preview or when opening Settings.
+**Settings → Libraries** reports availability and provides a default-on syntax
+highlighting toggle. Turning it off keeps subsequent previews plain; existing
+previews retain their current appearance. The preference is saved per user.
+After installing a missing adapter or runtime library, use **Refresh status** to
+retry loading without restarting. A successfully loaded adapter stays loaded
+until Dzurkel exits; replacing that backend requires a restart.
+Typical runtime packages are `kf6-syntax-highlighting` (Fedora),
+`libkf6syntaxhighlighting6` (Debian 13), and `syntax-highlighting` (Arch).
+Development packages are respectively `kf6-syntax-highlighting-devel`,
+`libkf6syntaxhighlighting-dev`, and `syntax-highlighting`. Availability and Qt
+requirements depend on the distribution release; older RHEL releases need their
+own compatibility check.
 
 ## Zoom and file navigation
 

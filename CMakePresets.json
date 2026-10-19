@@ -1,6 +1,10 @@
 {
   "version": 3,
-  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "release",
@@ -26,14 +30,58 @@
         "DZURKEL_ENABLE_IPO": "ON",
         "DZURKEL_GC_SECTIONS": "ON"
       }
+    },
+    {
+      "name": "baseline",
+      "displayName": "Useful minimum: Qt base + PDF + libzip",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build-baseline",
+      "cacheVariables": {
+        "DZURKEL_AUDIO": "OFF",
+        "DZURKEL_HIGHLIGHTING": "OFF",
+        "DZURKEL_WITH_KDE_ACTIVATION": "OFF",
+        "DZURKEL_BUILD_BENCHMARKS": "OFF"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "release", "configurePreset": "release", "jobs": 2 },
-    { "name": "compact", "configurePreset": "compact", "jobs": 2 }
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "jobs": 2
+    },
+    {
+      "name": "compact",
+      "configurePreset": "compact",
+      "jobs": 2
+    },
+    {
+      "name": "baseline",
+      "configurePreset": "baseline",
+      "jobs": 2
+    }
   ],
   "testPresets": [
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
-    { "name": "compact", "configurePreset": "compact", "output": { "outputOnFailure": true } }
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "compact",
+      "configurePreset": "compact",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "baseline",
+      "configurePreset": "baseline",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
   ]
 }

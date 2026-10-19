@@ -22,7 +22,9 @@ cancel the controller's navigation and loading generation.
 
 Cold previews retain the existing 150 ms loading fallback. If that fallback maps
 before the result arrives, the final adaptive size uses the same internal remap.
-Remembered reading size/state and explicit image maximization remain in use.
+Remembered reading size/state and explicit image maximization while browsing
+remain in use. Dismissing an image ends that image session's maximization;
+reopening an image starts fitted without changing the saved reading state.
 For a normal remap, the initial maximum size temporarily bounds Mutter's first
 configure so it cannot automatically maximize a remembered normal reading view.
 The bound is released on exposure, allowing ordinary resizing and maximization.

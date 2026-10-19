@@ -1,5 +1,7 @@
 /build*/
 /CMakeUserPresets.json
+__pycache__/
+*.py[cod]
 
 # Private specifications and implementation notes.
 /helpers/

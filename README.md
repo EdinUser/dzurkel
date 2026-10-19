@@ -18,7 +18,8 @@ selected files in a reusable window.
 - **PDF documents**, with page navigation and zoom.
 - **Music/audio**, with playback, seeking, volume/mute and available track metadata.
   Formats depend on the installed Qt media backend and codecs.
-- **Plain text** and **CSV/TSV tables**.
+- **Text and source code**, with automatic syntax highlighting when the optional
+  backend is available, and **CSV/TSV tables**.
 - **XLSX spreadsheets**, with sheet selection and saved formula results.
 - **DOCX, RTF, EPUB, FB2, SFB, MOBI 6 and Markdown**, with readable content and basic formatting; legacy
   **DOC** has a text-only preview when the optional `antiword` extractor is available.
@@ -118,11 +119,15 @@ with a dash. See `dzurkel --help` and the [D-Bus API](docs/dbus-api.md) for more
 ## Build and contribute
 
 Build dependencies: C++20, CMake 3.22+, Qt 6 Core/Gui/Widgets/DBus/Concurrent/
-Pdf/PdfWidgets/Multimedia/Test, libzip 1.7+, and KDE Frameworks 6 WindowSystem.
+Pdf/PdfWidgets/Test, libzip 1.7+, Python 3 and readelf. Qt Multimedia and KDE
+Frameworks 6 WindowSystem build optional runtime adapters; the baseline preset
+omits them and highlighting. The normal package includes adapters where build
+headers are available, with their runtime dependencies optional.
+See [the runtime baseline and release compatibility report](docs/runtime-baseline.md).
 
 ```bash
 sudo dnf install gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel \
-  kf6-kwindowsystem-devel dbus-daemon python3 desktop-file-utils
+  kf6-kwindowsystem-devel kf6-syntax-highlighting-devel dbus-daemon python3 desktop-file-utils
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
@@ -136,6 +141,8 @@ a separate manual check.
 ## Documentation
 
 - [Installation, updates and removal](docs/installation.md)
+- [Runtime baseline and compatibility report](docs/runtime-baseline.md)
+- [Arch VM library testing](docs/arch-vm-testing.md)
 - [Dolphin integration and Space shortcut](docs/dolphin-integration.md)
 - [GNOME and Nautilus testing workflow](docs/gnome-testing.md)
 - [Usage and keyboard controls](docs/usage.md)

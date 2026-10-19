@@ -1,8 +1,8 @@
 # Architecture
 
 Dzurkel is one resident Qt 6 Widgets process with a reusable preview window.
-CLI and session D-Bus are its entry points. Dolphin is the only implemented
-file-manager integration; rendering does not depend on Dolphin internals.
+CLI and session D-Bus are its entry points. Dolphin, Nautilus and Thunar have
+separate integration paths; rendering does not depend on file-manager internals.
 
 ## Modules
 
@@ -16,10 +16,29 @@ file-manager integration; rendering does not depend on Dolphin internals.
 | `src/preview/` | MIME/reader selection, bounded decoding, metadata and GUI-widget construction. |
 | `src/ui/` | Preview geometry, dismissal, file information and Settings dialogs. |
 | `src/desktop/` | Activation support, Dolphin shortcut backup/restore and explicit restart lifecycle. |
-| `integrations/` | Dolphin service-menu and hidden application-identity desktop templates. |
+| `integrations/` | Desktop templates and file-manager integration scripts. |
 
 There is no separate application facade class or D-Bus adaptor layer: startup
 is in `main.cpp`, and `PreviewService` is explicitly exported on the bus.
+
+## Required runtime and optional adapters
+
+The core links Qt base, Qt PDF/PDF Widgets and libzip. Audio, syntax highlighting
+and specialised desktop activation are application-relative Qt plugins. The core
+uses small interfaces rather than linking their Qt Multimedia or KF6 backends.
+Successful modules remain loaded until exit; explicit status refresh retries
+failed discovery/load. System packages are never installed by the application.
+
+`PreviewLibrary` describes supported readers independently of installed optional
+components. `LibraryAvailability` reports the actual installation and reviewed
+package guidance. Missing audio, antiword or an additional image reader produces
+file information with a component ID and an Open Settings action. Missing
+highlighting leaves text usable. Settings has Integration, Previews and Libraries
+tabs; only highlighting has a usage checkbox. See [runtime baseline](runtime-baseline.md).
+
+The build generates an offline compatibility report from reviewed distro package
+data and ELF requirements. That calculation is independent of runtime capability
+checks and is never performed on each end-user machine.
 
 ## Request and presentation lifecycle
 
@@ -43,7 +62,7 @@ job. Each request gets a generation identifier and cancellation flag. A result
 can update the UI only if it still belongs to the current requested preview.
 Widgets are created and replaced on the GUI thread under Qt parent ownership.
 
-Audio uses `AudioPreviewWidget` and Qt Multimedia with a seekable
+The optional audio adapter uses `AudioPreviewWidget` and Qt Multimedia with a seekable
 `StreamingMediaSource`. The same installed executable's internal media mode
 holds the source descriptor and serves bounded byte ranges over a private Unix
 socket. Qt's decoder threads read the device; application-thread reads fail
@@ -62,12 +81,14 @@ no GUI-thread source-file access or MIME sniffing.
 native window exists. Generation checks prevent obsolete results from mapping
 the window afterward. See [the D-Bus contract](dbus-api.md).
 
-PDF/text/table previews initially use 85% of the pointer screen's work area and
-remember user dimensions within the process. Images expose a natural content
+PDF/table previews initially use 85% of the pointer screen's work area; text and
+formatted documents use a separate portrait default. Both remember user
+dimensions within the process. Images expose a natural content
 size through `ZoomPreview`; the window adds its chrome, applies a 400 × 400
 minimum and fits oversized content proportionally within the work area.
 Information and image sizes temporarily replace the reading size; they do not
 overwrite it. User resizing/zooming remains independent of initial fitting.
+Dismissal ends an image session's maximization; a reopened image starts fitted.
 The image worker publishes validated, orientation-correct dimensions before
 decoding pixels. The controller checks the request generation before using them
 to prepare the window size. During navigation, previous content remains visible
@@ -128,9 +149,8 @@ Frameworks 6.19+, or Qt's best-effort request otherwise. Closing/minimizing
 Settings, destruction or another change cancels the handoff. No always-on-top
 flag, retry loop for activation, or resident file-manager monitor is added.
 
-Future managers need their own verified detection, shortcut, restart and
-readiness semantics. They may reuse CLI/D-Bus and the desktop activation layer;
-their implementation and generic file-manager discovery remain deferred.
+Additional managers need their own verified detection, shortcut, restart and
+readiness semantics. They may reuse CLI/D-Bus and the desktop activation layer.
 
 ## Preview library foundation
 

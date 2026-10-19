@@ -12,6 +12,7 @@ class QLabel;
 class QPushButton;
 class QDialogButtonBox;
 class QCheckBox;
+class QToolButton;
 namespace dzurkel {
 class NautilusPreviewService;
 class SettingsDialog : public QDialog {
@@ -23,6 +24,7 @@ public:
                    FileManagerIntegration integration = FileManagerIntegration::Dolphin,
                    NautilusPreviewService *nautilus = nullptr, ThunarIntegration thunar = ThunarIntegration());
     ~SettingsDialog() override;
+    void showLibrary(const QString &id);
 signals:
     void restartFocusRequested();
 protected:
@@ -31,6 +33,7 @@ protected:
     void reject() override;
 private:
     void refresh();
+    void refreshLibraries(bool recheck = false);
     void changeShortcuts(bool restore);
     void changeThunar(bool restore);
     void applyChange(bool restore, bool reopen);
@@ -53,5 +56,14 @@ private:
     QPushButton *apply_;
     QPushButton *restore_;
     QCheckBox *experimentalSftp_;
+    QCheckBox *highlighting_;
+    struct LibraryRow {
+        QString id;
+        QToolButton *status;
+        QToolButton *information;
+    };
+    QList<LibraryRow> libraryRows_;
+    QString librarySignature_;
+    QLabel *libraryCheckResult_;
 };
 } // namespace dzurkel

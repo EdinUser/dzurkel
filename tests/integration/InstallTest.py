@@ -105,7 +105,18 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
     application = root / args.datadir.lstrip("/") / "applications/dzurkel.desktop"
     settings = root / args.datadir.lstrip("/") / "applications/dzurkel-settings.desktop"
     actual = {item for item in root.rglob("*") if item.is_file()}
-    assert actual == {binary, menu, application, settings}, f"Unexpected installation contents: {actual}"
+    compatibility = root / args.datadir.lstrip("/") / "dzurkel/build-compatibility.json"
+    import json
+    report = json.loads(compatibility.read_text())
+    assert report["dzurkel_version"] == args.version
+    assert not any("Multimedia" in name or "KF6" in name for name in report["artifact"]["needed_sonames"])
+    expected = {binary, menu, application, settings, compatibility}
+    if plugin := os.environ.get("DZURKEL_TEST_HIGHLIGHTING_PLUGIN"):
+        expected.add(root / plugin.lstrip("/"))
+    for adapter in ("dzurkel_audio", "dzurkel_desktop"):
+        if plugin := os.environ.get("DZURKEL_TEST_" + adapter):
+            expected.add(root / plugin.lstrip("/"))
+    assert actual == expected, f"Unexpected installation contents: {actual}"
     assert ' --settings' in settings.read_text()
     assert 'NoDisplay=true' not in settings.read_text()
     assert '@DZURKEL_EXEC@' not in settings.read_text()

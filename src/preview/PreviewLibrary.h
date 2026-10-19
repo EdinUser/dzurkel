@@ -14,7 +14,8 @@ struct ReaderCapability {
     qint64 sourceLimit;
 };
 // Compiled-in reader catalog. Format selection, source budgets and Settings
-// descriptions share this catalog. No dynamic code loading or package installs.
+// descriptions share this catalog. Optional reader adapters use controlled
+// application-relative loading; this catalog never installs packages.
 class PreviewLibrary {
 public:
     static QList<ReaderCapability> readers();

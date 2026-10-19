@@ -28,6 +28,7 @@ struct PreviewData {
     QString message;
     QString detail;
     QString mediaSummary;
+    QString missingLibrary; // Known reader dependency; keeps unsupported/damaged input distinct.
     QImage image;
     QSize imageSize; // Oriented source dimensions; decoded pixels remain bounded.
     QList<QImage> animationFrames;

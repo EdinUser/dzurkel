@@ -1,17 +1,19 @@
 #include "TextPreviewProvider.h"
 #include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QVBoxLayout>
 #include "ui/ZoomPreview.h"
 #include "preview/readers/TextDecoder.h"
+#include "preview/text/TextHighlighting.h"
 
 namespace dzurkel {
 namespace {
 class TextView : public ZoomPreview {
 public:
-    TextView(const QString &text, QWidget *parent) : ZoomPreview(parent), editor_(new QPlainTextEdit(this))
+    TextView(const PreviewData &data, QWidget *parent) : ZoomPreview(parent), editor_(new QPlainTextEdit(this))
     {
         auto *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
@@ -21,7 +23,10 @@ public:
         baseFont_ = QFontDatabase::systemFont(QFontDatabase::FixedFont);
         if (baseFont_.pointSizeF() <= 0) baseFont_.setPointSizeF(11);
         editor_->setFont(baseFont_);
-        editor_->setPlainText(text);
+        editor_->setPlainText(data.text);
+        QString fileName = data.resource.url.fileName();
+        if (fileName.isEmpty()) fileName = QFileInfo(data.resource.path).fileName();
+        highlightText(editor_, fileName, data.mimeType);
         layout->addWidget(editor_);
         setFocusProxy(editor_);
     }
@@ -100,6 +105,6 @@ PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData d
 }
 QWidget *TextPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const
 {
-    return new TextView(data.text, parent);
+    return new TextView(data, parent);
 }
 } // namespace dzurkel

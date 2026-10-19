@@ -4,6 +4,12 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
+The next planned release is **0.7.1**. The current changes are unreleased;
+one further change is pending before release preparation. See the
+[draft notes](release-notes-0.7.1.md). Committing or pushing these changes must not
+publish a release or start a package build. Version fields remain unchanged until
+that release preparation step.
+
 ## Release builds and validation
 
 `.github/workflows/ci.yml` runs only when a GitHub release or prerelease is
@@ -19,6 +25,17 @@ files, exercises preview IPC on a private bus, and checks removal.
 This is a container-based build, not a Mock buildroot. A future Copr/Mock pipeline
 can consume the same spec and SRPM. The clean installation check catches missing
 runtime requirements independently of the development packages used to compile.
+The Debian 12 baseline job also builds without optional SDKs and runs CTest;
+the asset-upload job waits for it. This is a source/runtime-baseline check,
+separate from the Debian 13 release package target.
+
+Normal packages ship audio, highlighting and desktop activation adapters, while
+their backend libraries remain optional runtime dependencies. Build dependencies
+are needed in the builder only. Recommendations may be installed by DNF/APT;
+Arch optional dependencies are not automatically installed. Validate missing
+readers in a runtime environment separate from the builder; see
+[Arch VM library testing](arch-vm-testing.md) and
+[runtime compatibility](runtime-baseline.md).
 
 Fedora normalizes packaged `.desktop` files to mode 0644. This is valid for the
 system service menu in `/usr/share/kio/servicemenus`: KDE trusts that location.
@@ -56,7 +73,8 @@ DEB_BUILD_OPTIONS=parallel=2 bash packaging/debian/build-deb.sh
 bash packaging/arch/build-arch.sh
 ```
 
-Debian uses debhelper 13, CMake, Qt6 base/PDF, KF6 WindowSystem, libzip, and
+Debian uses debhelper 13, CMake, Qt6 base/PDF/Multimedia, KF6 WindowSystem,
+KSyntaxHighlighting, libzip, and
 standard `dpkg-buildpackage` tooling. Arch uses `makepkg` and the PKGBUILD under
 `packaging/arch/`. Both run every CTest suite before packaging and archive HEAD,
 excluding ignored/private files. Output directories are `build-deb/artifacts/`
@@ -73,13 +91,17 @@ than the Space setup target; installing a DEB does not change that requirement.
 CI installs the binary in a fresh matching container without build dependencies,
 checks package ownership/integrity, validates desktop entries, starts both desktop
 commands on private D-Bus sessions as a non-root user, exercises Settings and
-preview IPC, then removes the package and checks all four installed paths are
-absent. These headless tests do not establish KDE desktop acceptance.
+preview IPC, then removes the package and checks the core files, compatibility
+report and adapters are absent. These headless tests do not establish KDE desktop acceptance.
 
 ## Prepare a release
 
 1. Update CMake, RPM `Version`, Debian changelog and Arch `pkgver` together. Increment RPM `Release`
    for packaging-only rebuilds of the same upstream version.
+   Review adapter interface compatibility; the audio/desktop headers currently
+   use release-specific IDs, while highlighting uses an interface ABI version.
+   Regenerate and inspect the
+   build compatibility report; dependency candidates alone are not supported OS claims.
 2. Run local builds and tests for the intended commit. Check the package on a real Fedora
    KDE Wayland desktop: previews, Settings, Dolphin Space setup/restoration,
    scaling/focus, upgrade from the previous package and removal.

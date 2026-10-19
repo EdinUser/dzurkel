@@ -1,5 +1,5 @@
 #pragma once
-#include "preview/PreviewProvider.h"
+#include "AudioBackend.h"
 #include <QWidget>
 #include <QTimer>
 #include <memory>
@@ -11,14 +11,16 @@ class QPushButton;
 class QSlider;
 namespace dzurkel {
 class StreamingMediaSource;
-class AudioPreviewWidget : public QWidget {
+class AudioPreviewWidget : public QWidget, public AudioControls {
     Q_OBJECT
+    Q_INTERFACES(dzurkel::AudioControls)
 public:
     explicit AudioPreviewWidget(const PreviewData &data, QWidget *parent = nullptr);
     ~AudioPreviewWidget() override;
     QSize sizeHint() const override { return QSize(460, 390); }
-    void stop();
-    void setMuted(bool muted);
+    void stop() override;
+    void setCallbacks(QObject *context, AudioCallback failure, AudioCallback details) override;
+    void setMuted(bool muted) override;
     void togglePlayback();
 signals:
     void failed(const QString &message, const QString &details);

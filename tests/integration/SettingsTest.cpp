@@ -1,6 +1,7 @@
 #include "desktop/DolphinSession.h"
 #include "ui/SettingsDialog.h"
 #include <QApplication>
+#include <QClipboard>
 #include <QDBusConnectionInterface>
 #include <QFile>
 #include <QFutureWatcher>
@@ -15,6 +16,10 @@
 #include <QTest>
 #include <QTimer>
 #include <QToolButton>
+#include <QTabWidget>
+#include <QTextBrowser>
+#include "preview/LibraryAvailability.h"
+#include "preview/text/TextHighlighting.h"
 #include <QtConcurrentRun>
 #include <atomic>
 
@@ -43,6 +48,9 @@ private slots:
     void cleanup();
     void informationIsAccessibleAndClickable();
     void experimentalSftpIsExplicitAndPersistent();
+    void libraryPreferencePersistsAndRechecks();
+    void missingLibraryHasGuidanceAndRefreshes();
+    void installationCommandsAreReleaseSpecific();
     void appliesAndRestoresWhenDolphinIsClosed();
     void explainsConflictsBeforeApplying();
     void cancellationLeavesConfigurationUntouched();
@@ -141,25 +149,132 @@ void SettingsTest::informationIsAccessibleAndClickable()
 {
     SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
     dialog.show();
-    for (const auto &name : {"shortcutInfo", "imageInfo", "pdfInfo", "textInfo", "csvInfo", "xlsxInfo", "audioInfo", "sftpInfo"}) {
+    for (const auto &name : {"shortcutInfo", "imageInfo", "documentInfo", "textInfo", "tableInfo", "bookInfo", "audioInfo", "sftpInfo"}) {
         auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY(button);
         QVERIFY(!button->toolTip().isEmpty());
         QVERIFY(!button->accessibleName().isEmpty());
         QCOMPARE(button->focusPolicy(), Qt::StrongFocus);
     }
-    bool detailsSeen = false;
+    auto *tabs = dialog.findChild<QTabWidget *>(QStringLiteral("settingsTabs"));
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 3);
+    tabs->setCurrentIndex(1);
+    for (const auto &name : {"imageInfo", "documentInfo", "textInfo", "tableInfo", "bookInfo", "audioInfo"}) {
+        auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
+        QVERIFY(button->isVisible());
+        QVERIFY(button->accessibleDescription().contains(QStringLiteral("Supported")));
+    }
+    QVERIFY(dialog.height() < 800);
+    for (const auto &name : {"imageInfo", "documentInfo", "bookInfo", "tableInfo", "textInfo", "audioInfo"}) {
+        bool detailsSeen = false;
+        QTimer timer;
+        connect(&timer, &QTimer::timeout, this, [&] {
+            if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+                detailsSeen = message->text().contains(QStringLiteral("Supported"));
+                message->grab().save(QStringLiteral("settings-%1.png").arg(QString::fromLatin1(name)));
+                message->accept();
+            }
+        });
+        timer.start(10);
+        dialog.findChild<QToolButton *>(QString::fromLatin1(name))->click();
+        QVERIFY(detailsSeen);
+    }
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-redesign.png")));
+}
+void SettingsTest::libraryPreferencePersistsAndRechecks()
+{
+    QString error;
+    QVERIFY(setHighlightingEnabled(true, error));
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
+    auto *tabs = dialog.findChild<QTabWidget *>(QStringLiteral("settingsTabs"));
+    tabs->setCurrentIndex(2);
+    dialog.show();
+    auto *toggle = dialog.findChild<QCheckBox *>(QStringLiteral("syntaxHighlighting"));
+    QVERIFY(toggle);
+    QCOMPARE(toggle->isEnabled(), highlightingAvailability().available);
+    auto *highlightingStatus = dialog.findChild<QToolButton *>(QStringLiteral("highlightingLibraryStatus"));
+    QVERIFY(highlightingStatus);
+    const auto backendHealth = highlightingStatus->property("health").toInt();
+    for (const auto &id : {"highlighting", "antiword", "pdf", "zip", "multimedia"}) {
+        auto *status = dialog.findChild<QToolButton *>(QString::fromLatin1(id) + QStringLiteral("LibraryStatus"));
+        QVERIFY(status);
+        QVERIFY(!status->text().isEmpty());
+        QVERIFY(!status->icon().isNull());
+        QVERIFY(!status->accessibleDescription().isEmpty());
+    }
+    QCOMPARE(dialog.findChild<QToolButton *>(QStringLiteral("pdfLibraryStatus"))->property("health").toInt(),
+        static_cast<int>(LibraryHealth::Available));
+    if (toggle->isEnabled()) {
+        toggle->click();
+        QVERIFY(!highlightingEnabled());
+        QCOMPARE(highlightingStatus->property("health").toInt(), backendHealth);
+        SettingsDialog reopened(nullptr, shortcuts(), session(), [] { return true; });
+        QVERIFY(!reopened.findChild<QCheckBox *>(QStringLiteral("syntaxHighlighting"))->isChecked());
+    }
+    auto *result = dialog.findChild<QLabel *>(QStringLiteral("libraryCheckResult"));
+    QVERIFY(result);
+    const auto initialResult = result->text();
+    dialog.findChild<QPushButton *>(QStringLiteral("checkLibraries"))->click();
+    QVERIFY(result->text() != initialResult);
+    QVERIFY(result->text().contains(QStringLiteral("Checked at")));
+    QVERIFY(result->text().contains(QStringLiteral("No changes found.")));
+    QCOMPARE(toggle->isEnabled(), highlightingAvailability().available);
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-libraries.png")));
+    QVERIFY(setHighlightingEnabled(true, error));
+}
+void SettingsTest::installationCommandsAreReleaseSpecific()
+{
+    QCOMPARE(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("fedora"), QStringLiteral("44")),
+        QStringLiteral("sudo dnf install antiword"));
+    QCOMPARE(libraryInstallationCommand(QStringLiteral("multimedia"), QStringLiteral("debian"), QStringLiteral("12")),
+        QStringLiteral("sudo apt install libqt6multimedia6"));
+    QVERIFY(libraryInstallationCommand(QStringLiteral("highlighting"), QStringLiteral("debian"), QStringLiteral("12")).isEmpty());
+    QVERIFY(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("fedora"), QStringLiteral("14")).isEmpty());
+    QVERIFY(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("rhel"), QStringLiteral("9")).isEmpty());
+    QVERIFY(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("unknown"), QStringLiteral("44")).isEmpty());
+    QCOMPARE(libraryInstallationCommand(QStringLiteral("multimedia"), QStringLiteral("arch"), QStringLiteral("rolling")),
+        QStringLiteral("sudo pacman -Syu qt6-multimedia"));
+}
+void SettingsTest::missingLibraryHasGuidanceAndRefreshes()
+{
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
+    dialog.findChild<QTabWidget *>(QStringLiteral("settingsTabs"))->setCurrentIndex(2);
+    dialog.show();
+    auto *status = dialog.findChild<QToolButton *>(QStringLiteral("antiwordLibraryStatus"));
+    QVERIFY(status);
+    const auto originalHealth = status->property("health");
+    const auto originalPath = qgetenv("PATH");
+    qputenv("PATH", directory_.path().toUtf8());
+    dialog.findChild<QPushButton *>(QStringLiteral("checkLibraries"))->click();
+    const auto missingHealth = status->property("health").toInt();
+    qputenv("PATH", originalPath);
+    QCOMPARE(missingHealth, static_cast<int>(LibraryHealth::Missing));
+    QVERIFY(status->accessibleDescription().contains(QStringLiteral("Install the antiword")));
+    QVERIFY(status->accessibleDescription().contains(QStringLiteral("distribution release")));
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-library-missing.png")));
+    bool guidanceSeen = false;
     QTimer timer;
     connect(&timer, &QTimer::timeout, this, [&] {
-        if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
-            detailsSeen = message->text().contains(QStringLiteral("image readers"));
-            message->accept();
+        auto *details = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!details || details->objectName() != QStringLiteral("libraryDetails")) return;
+        const auto text = details->findChild<QTextBrowser *>(QStringLiteral("libraryDetailsText"))->toPlainText();
+        guidanceSeen = text.contains(QStringLiteral("Install the antiword")) && text.contains(QStringLiteral("cannot supply"));
+        if (auto *copy = details->findChild<QPushButton *>(QStringLiteral("copyLibraryCommand"))) {
+            // Offscreen clipboard is isolated; never overwrite the user's native clipboard.
+            if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+                copy->click();
+                guidanceSeen = guidanceSeen && QApplication::clipboard()->text() == status->property("installationCommand").toString();
+            }
         }
+        details->grab().save(QStringLiteral("settings-library-guidance.png"));
+        details->accept();
     });
     timer.start(10);
-    dialog.findChild<QToolButton *>(QStringLiteral("imageInfo"))->click();
-    QVERIFY(detailsSeen);
-    QVERIFY(dialog.grab().save(QStringLiteral("settings-redesign.png")));
+    status->click();
+    QVERIFY(guidanceSeen);
+    dialog.findChild<QPushButton *>(QStringLiteral("checkLibraries"))->click();
+    QCOMPARE(status->property("health"), originalHealth);
 }
 void SettingsTest::explainsConflictsBeforeApplying()
 {

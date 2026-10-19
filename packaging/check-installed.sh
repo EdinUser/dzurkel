@@ -20,19 +20,29 @@ command = ["dpkg-query", "-L", "dzurkel"] if shutil.which("dpkg-query") else ["p
 paths = subprocess.check_output(command, text=True).splitlines()
 runtime = {"/usr/bin/dzurkel", "/usr/share/applications/dzurkel.desktop",
            "/usr/share/applications/dzurkel-settings.desktop",
-           "/usr/share/kio/servicemenus/dzurkel.desktop"}
+           "/usr/share/kio/servicemenus/dzurkel.desktop", "/usr/share/dzurkel/build-compatibility.json"}
 files = {path for path in paths if pathlib.Path(path).is_file()}
 assert runtime <= files, runtime - files
+adapters = {path for path in files
+            if path.startswith(("/usr/lib/", "/usr/lib64/"))
+            and path.endswith(tuple("/dzurkel/plugins/lib" + name + ".so" for name in ("dzurkel_highlighting", "dzurkel_audio", "dzurkel_desktop")))}
+assert len(adapters) == 3, adapters
 unexpected = {path for path in files - runtime
-              if not path.startswith(("/usr/share/doc/dzurkel/", "/usr/share/licenses/dzurkel/"))}
+              if path not in adapters
+              and not path.startswith(("/usr/share/doc/dzurkel/", "/usr/share/licenses/dzurkel/"))}
 assert not unexpected, unexpected
-print("Installed package contains only the four runtime files and documentation/licenses.")
+print("Installed package contains the runtime files, optional adapters and documentation/licenses.")
 PY
         runuser -u preview-user -- dbus-run-session -- python3 tests/integration/InstallTest.py --smoke-launchers /usr/bin/dzurkel
         ;;
     removed)
-        for path in /usr/bin/dzurkel /usr/share/applications/dzurkel{,-settings}.desktop /usr/share/kio/servicemenus/dzurkel.desktop; do
+        for path in /usr/bin/dzurkel /usr/share/applications/dzurkel{,-settings}.desktop /usr/share/kio/servicemenus/dzurkel.desktop /usr/share/dzurkel/build-compatibility.json; do
             test ! -e "$path"
+        done
+        for directory in /usr/lib/dzurkel/plugins /usr/lib64/dzurkel/plugins /usr/lib/*/dzurkel/plugins; do
+            for adapter in audio highlighting desktop; do
+                test ! -e "$directory/libdzurkel_$adapter.so"
+            done
         done
         ;;
     *) exit 2 ;;

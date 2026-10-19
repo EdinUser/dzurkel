@@ -16,32 +16,14 @@
 #include <QXmlStreamWriter>
 #include <stdexcept>
 #include <unistd.h>
-#ifdef DZURKEL_KDE_ACTIVATION
-#include <KWindowInfo>
-#include <KWindowSystem>
-#include <KX11Extras>
-#endif
+#include "DesktopIntegration.h"
 
 namespace dzurkel {
 namespace {
 const QString actionId = QStringLiteral("io.github.EdinUser.Dzurkel.preview");
 const QString accelPath = QStringLiteral("<Actions>/ThunarActions/uca-action-") + actionId;
-bool thunarWindowActive()
-{
-#ifdef DZURKEL_KDE_ACTIVATION
-    if (KWindowSystem::isPlatformX11()) {
-        const auto window = KX11Extras::activeWindow();
-        if (!window) return false;
-        const KWindowInfo info(window, NET::WMPid);
-        if (!info.valid() || info.pid() <= 0) return false;
-        const QString process = QStringLiteral("/proc/%1").arg(info.pid());
-        if (QFileInfo(process).ownerId() != getuid()) return false;
-        QFile name(process + QStringLiteral("/comm"));
-        return name.open(QIODevice::ReadOnly) && name.readAll().trimmed().compare("thunar", Qt::CaseInsensitive) == 0;
-    }
-#endif
-    return false;
-}
+bool thunarWindowActive() { return desktopThunarWindowActive(); }
+
 void check(bool condition, const QString &message)
 {
     if (!condition) throw std::runtime_error(message.toStdString());

@@ -1,5 +1,5 @@
 #include "AudioPreviewProvider.h"
-#include "preview/media/AudioPreviewWidget.h"
+#include "preview/media/AudioBackend.h"
 #include <QFile>
 #include <QFileInfo>
 
@@ -30,6 +30,6 @@ PreviewData AudioPreviewProvider::load(std::unique_ptr<QFile>, PreviewData data,
 }
 QWidget *AudioPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const
 {
-    return new AudioPreviewWidget(data, parent);
+    return createAudioPreview(data, parent);
 }
 }

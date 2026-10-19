@@ -7,6 +7,22 @@ to configure Dolphin’s Space shortcut without opening a file. Repeated request
 reuse the running service and Settings dialog. Closing Settings leaves the
 service resident; use `dzurkel --quit` to exit fully.
 
+Settings has **Integration**, **Previews** and **Libraries** tabs. Previews groups
+formats into Audio, Images, Documents, Books, Tables, and Text and source. Each
+information button lists supported files and reader limitations. Libraries shows
+a dependency list for highlighting, legacy DOC extraction, PDF, archive-based
+Office/book formats and audio. Status icons use green for available, orange for
+limited/unloadable and red for missing, with text labels. Click a status or its
+information button for detection details and recovery guidance. Only highlighting
+has a usage checkbox; its library status is independent of that preference.
+**Refresh status** rechecks optional components and reports whether anything changed.
+Known missing readers show an **Open Settings** action directly in the information
+preview. Details include a copyable package-manager command for reviewed
+Fedora/Debian/Arch combinations where applicable; Dzurkel never runs it.
+Missing Dzurkel adapters need a compatible adapter package as well as the runtime
+library. Required PDF/libzip components remain part of the useful minimum.
+See [runtime requirements and release compatibility](runtime-baseline.md).
+
 ## Preview behavior
 
 Dzurkel previews images, PDFs, audio, CSV/TSV/XLSX tables, formatted documents,
@@ -46,7 +62,8 @@ process; content zoom never resizes the window. Images choose a window around th
 100% size, with a minimum of 400 × 400 logical pixels; smaller pictures stay
 centered without enlargement. Large images scale down within the usable desktop,
 leaving a small margin. Manual resizing/zooming stays under your control, and a
-maximized image window remains maximized. Image and compact information windows
+maximized image window remains maximized while browsing. After closing the
+preview, opening an image starts fitted again. Image and compact information windows
 do not overwrite the remembered document size.
 
 The filename appears once in the native title bar, followed by Dzurkel on KDE.

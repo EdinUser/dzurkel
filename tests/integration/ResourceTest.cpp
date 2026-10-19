@@ -3,6 +3,8 @@
 #include "controller/PreviewController.h"
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/TextPreviewProvider.h"
+#include "../support/OffscreenWarnings.h"
+#include <memory>
 #include <QDBusConnection>
 #include <QDBusContext>
 #include <QDBusMessage>
@@ -33,11 +35,25 @@ public:
     QString lastUrl;
     int delay = 0;
     bool reject = false;
+    bool hold = false;
+    QList<QDBusMessage> heldRequests;
+    void releaseReply()
+    {
+        hold = false;
+        for (const auto &request : heldRequests)
+            QDBusConnection::sessionBus().send(request.createReply(QVariantList{path}));
+        heldRequests.clear();
+    }
 public slots:
     QString mountUrl(const QString &url) {
         lastUrl = url;
         if (reject) {
             sendErrorReply(QStringLiteral("org.kde.KIOFuse.VFS.Error.CannotMount"), QStringLiteral("Access denied"));
+            return {};
+        }
+        if (hold) {
+            setDelayedReply(true);
+            heldRequests.append(message());
             return {};
         }
         if (delay) {
@@ -56,6 +72,7 @@ class ResourceTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void cleanupTestCase();
     void init();
     void parsesRemoteIdentityWithoutFilesystemAccess();
     void experimentalSftpRequiresOptIn();
@@ -71,6 +88,8 @@ private slots:
     void missingLocalFileIsAnAsynchronousError();
     void slowShareDoesNotBlockDismissalOrReplacement_data();
     void slowShareDoesNotBlockDismissalOrReplacement();
+    void slowInformationMapsLoadingBeforeCompacting_data();
+    void slowInformationMapsLoadingBeforeCompacting();
     void slowShareTimesOut_data();
     void slowShareTimesOut();
     void liveAuthenticatedSmbPreview();
@@ -80,10 +99,12 @@ private:
     QString remoteBase_;
     QTemporaryDir directory_;
     FakeFuse fuse_;
+    std::unique_ptr<OffscreenWarnings> warnings_;
 };
 
 void ResourceTest::initTestCase()
 {
+    warnings_ = std::make_unique<OffscreenWarnings>();
     QVERIFY(directory_.isValid());
     if (!qEnvironmentVariableIsEmpty("DZURKEL_LIVE_SMB_URL")) return;
     qputenv("XDG_CONFIG_HOME", directory_.filePath(QStringLiteral("config")).toUtf8());
@@ -91,9 +112,15 @@ void ResourceTest::initTestCase()
     QVERIFY(bus.registerService(QStringLiteral("org.kde.KIOFuse")));
     QVERIFY(bus.registerObject(QStringLiteral("/org/kde/KIOFuse"), &fuse_, QDBusConnection::ExportAllSlots));
 }
+void ResourceTest::cleanupTestCase()
+{
+    warnings_.reset();
+}
 void ResourceTest::init()
 {
     fuse_.lastUrl.clear();
+    fuse_.hold = false;
+    fuse_.heldRequests.clear();
     fuse_.reject = false;
     fuse_.delay = 0;
     if (qEnvironmentVariableIsEmpty("DZURKEL_LIVE_SMB_URL")) {
@@ -365,6 +392,34 @@ void ResourceTest::slowShareDoesNotBlockDismissalOrReplacement()
     controller.hide();
     QTest::qWait(200);
     QVERIFY(!controller.isVisible());
+}
+void ResourceTest::slowInformationMapsLoadingBeforeCompacting_data()
+{
+    slowShareDoesNotBlockDismissalOrReplacement_data();
+}
+void ResourceTest::slowInformationMapsLoadingBeforeCompacting()
+{
+    QFETCH(QString, base);
+    QString error;
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), error));
+    fuse_.hold = true;
+    fuse_.path = write(QStringLiteral("slow-information.zip"), QByteArray::fromHex("504b030400010203ff"));
+    PreviewController controller;
+    QVERIFY(controller.show(base + QStringLiteral("slow-information.zip"), error));
+    QTRY_VERIFY(!fuse_.heldRequests.isEmpty());
+    // The reply is held until the loading window actually maps. No assumption
+    // about helper startup speed or a guessed server delay is needed.
+    QTRY_VERIFY(controller.window()->isVisible());
+    QVERIFY(controller.loading());
+    QVERIFY(!controller.window()->findChild<QWidget *>(QStringLiteral("fileInfoPreview")));
+    const auto loadingSize = controller.window()->size();
+    fuse_.releaseReply();
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("information"));
+    QVERIFY(controller.window()->findChild<QWidget *>(QStringLiteral("fileInfoPreview")));
+    QTRY_VERIFY(controller.window()->width() >= 380 && controller.window()->width() <= 560);
+    QTRY_VERIFY(controller.window()->height() >= 220 && controller.window()->height() < 500);
+    QVERIFY(controller.window()->size() != loadingSize);
 }
 void ResourceTest::slowShareTimesOut_data()
 {

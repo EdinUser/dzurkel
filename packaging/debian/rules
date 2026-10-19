@@ -4,7 +4,11 @@
 	dh $@ --buildsystem=cmake
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX=/usr
+	dh_auto_configure -- -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX=/usr -DDZURKEL_HIGHLIGHTING=ON -DDZURKEL_AUDIO=ON
+
+# Optional adapters carry their own backend dependencies.
+override_dh_shlibdeps:
+	dh_shlibdeps -Xlibdzurkel_highlighting.so -Xlibdzurkel_audio.so -Xlibdzurkel_desktop.so
 
 override_dh_auto_test:
 	QT_QPA_PLATFORM=offscreen dh_auto_test -- ARGS=--output-on-failure

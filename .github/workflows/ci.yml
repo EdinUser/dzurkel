@@ -25,7 +25,7 @@ jobs:
         run: >-
           dnf install -y git tar gzip gcc-c++ cmake cmake-rpm-macros make ninja-build
           rpm-build redhat-rpm-config pkgconf-pkg-config libzip-devel shadow-utils util-linux
-          qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel
+          qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel
           qt6-qtwayland dbus-daemon python3 desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,6 +90,10 @@ jobs:
           test ! -e /usr/share/applications/dzurkel.desktop
           test ! -e /usr/share/applications/dzurkel-settings.desktop
           test ! -e /usr/share/kio/servicemenus/dzurkel.desktop
+          test ! -e /usr/share/dzurkel/build-compatibility.json
+          for adapter in audio highlighting desktop; do
+            test ! -e "/usr/lib64/dzurkel/plugins/libdzurkel_$adapter.so"
+          done
 
   clang:
     name: Fedora 44 tests (Clang)
@@ -103,7 +107,7 @@ jobs:
       - name: Install dependencies
         run: >-
           dnf install -y git tar gzip clang cmake make pkgconf-pkg-config
-          libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel
+          libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel
           dbus-daemon python3 desktop-file-utils shadow-utils util-linux
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,7 +140,7 @@ jobs:
       - name: Install build and isolated desktop test dependencies
         run: >-
           dnf install -y git gcc-c++ cmake make pkgconf-pkg-config shadow-utils
-          libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel
+          libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel
           qt6-qtwayland dbus-daemon python3 python3-gobject python3-pillow
           gnome-shell nautilus mesa-dri-drivers mesa-libEGL dejavu-sans-fonts
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -168,7 +172,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper cmake pkgconf qt6-base-dev qt6-pdf-dev qt6-multimedia-dev libkf6windowsystem-dev libzip-dev dbus-daemon python3 desktop-file-utils
+          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper cmake pkgconf qt6-base-dev qt6-pdf-dev qt6-multimedia-dev libkf6windowsystem-dev libkf6syntaxhighlighting-dev libzip-dev dbus-daemon python3 desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -223,7 +227,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm --needed git cmake qt6-base qt6-webengine qt6-multimedia qt6-multimedia-ffmpeg qt6-wayland kwindowsystem libzip dbus python desktop-file-utils
+        run: pacman -Syu --noconfirm --needed git cmake qt6-base qt6-webengine qt6-multimedia qt6-multimedia-ffmpeg qt6-wayland kwindowsystem syntax-highlighting libzip dbus python desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -274,7 +278,7 @@ jobs:
 
   release:
     name: Attach verified release packages
-    needs: [rpm, install, clang, gnome, deb-install, arch-install]
+    needs: [rpm, install, clang, gnome, deb-install, arch-install, baseline-debian12]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -306,3 +310,39 @@ jobs:
              "packages/dzurkel-$version-1-x86_64.pkg.tar.zst" release-assets/
           (cd release-assets && sha256sum ./* > SHA256SUMS)
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
+
+  baseline-debian12:
+    name: Useful baseline on Debian 12 (Qt 6.4)
+    runs-on: ubuntu-24.04
+    container: debian:12
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install baseline build and test tools
+        run: >-
+          apt-get update && apt-get install -y --no-install-recommends
+          git ca-certificates build-essential cmake pkgconf libzip-dev
+          qt6-base-dev qt6-pdf-dev dbus-daemon python3 desktop-file-utils
+          util-linux passwd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build without optional adapters
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- cmake --preset baseline
+          runuser -u builder -- cmake --build --preset baseline
+      - name: Test the baseline and staged installation
+        run: runuser -u builder -- ctest --preset baseline
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: debian-12-baseline-evidence
+          path: |
+            build-baseline/build-compatibility.json
+            build-baseline/Testing/Temporary/*.log
+          retention-days: 14

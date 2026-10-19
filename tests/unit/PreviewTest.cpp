@@ -4,6 +4,8 @@
 #include "preview/providers/TextPreviewProvider.h"
 #include "ui/ZoomPreview.h"
 #include "desktop/DesktopIntegration.h"
+#include "../support/OffscreenWarnings.h"
+#include <memory>
 #include <QFile>
 #include <QFileInfo>
 #include <QEvent>
@@ -41,11 +43,15 @@ class FirstShowSize : public QObject {
 public:
     QSize size;
     QList<QSize> mappings;
+    bool informationReadyAtFirstShow = false;
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override {
         if (event->type() == QEvent::Show && !event->spontaneous()) {
             const auto mapped = qobject_cast<QWidget *>(watched)->size();
-            if (size.isEmpty()) size = mapped;
+            if (size.isEmpty()) {
+                size = mapped;
+                informationReadyAtFirstShow = watched->findChild<QWidget *>(QStringLiteral("fileInfoPreview")) != nullptr;
+            }
             mappings.append(mapped);
         }
         return false;
@@ -56,6 +62,10 @@ class PreviewTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void cleanupTestCase();
+    void unexpectedWarningsRemainVisible();
+    void readyInformationMapsAtCompactSize_data();
+    void readyInformationMapsAtCompactSize();
     void decodesImages_data();
     void decodesImages();
     void honorsJpegOrientation();
@@ -80,18 +90,74 @@ private slots:
     void maximizedTableNavigationCompactsImagesAndRestoresTable();
     void informationFallbackRestoresMaximizedPreview();
     void coldInformationThenReopenedPdfKeepsContentAndSize();
-    void coldInformationMapsAtCompactSize_data();
-    void coldInformationMapsAtCompactSize();
+    void coldInformationRespectsLoadingGrace_data();
+    void coldInformationRespectsLoadingGrace();
     void hideBeforeFirstMappingPreventsResurrection();
     void newestRequestBeforeFirstMappingWins();
     void visiblePreviewReactivatesOnExplicitShow();
     void gnomePresentationKeepsPendingContentAndDismissal();
+    void gnomeReopenedImagesFitAfterNativeMaximize();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString makePdf();
     PreviewData load(const QString &path, const QSize &size = QSize(320, 240));
     QTemporaryDir directory_;
+    std::unique_ptr<OffscreenWarnings> warnings_;
 };
+
+void PreviewTest::gnomeReopenedImagesFitAfterNativeMaximize()
+{
+    PreviewWindow policy;
+    if (!policy.usesGnomePresentation()) {
+        if (qEnvironmentVariableIsSet("DZURKEL_REQUIRE_GNOME_NATIVE"))
+            QFAIL("Native GNOME was required");
+        QSKIP("Requires native GNOME Wayland");
+    }
+    const auto small = directory_.filePath(QStringLiteral("native-state-small.png"));
+    const auto medium = directory_.filePath(QStringLiteral("native-state-medium.png"));
+    for (const auto &[path, size] : QList<QPair<QString, QSize>>{{small, QSize(40, 30)}, {medium, QSize(650, 420)}}) {
+        QImage image(size, QImage::Format_RGB32);
+        image.fill(Qt::blue);
+        QVERIFY(image.save(path));
+    }
+    PreviewController controller(true);
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QString error;
+    QVERIFY(controller.show(medium, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        // Client-side title-bar controls act on the native QWindow, rather than
+        // calling QWidget::showMaximized() as the older geometry tests do.
+        window->windowHandle()->showMaximized();
+        QTRY_VERIFY(window->isMaximized());
+        QTRY_VERIFY(window->windowHandle()->windowStates().testFlag(Qt::WindowMaximized));
+        QVERIFY(controller.show(small, error));
+        QTRY_VERIFY(!controller.loading());
+        if (cycle == 1) window->showSettings();
+        controller.hide();
+        QVERIFY(controller.show(small, error));
+        QTRY_VERIFY(!controller.loading());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTest::qWait(250); // Observe the settled compositor configure, not just Qt's request.
+        // Dismissal ends the previous image's intentional maximization.
+        // The next preview must fit without needing a title-bar restore click.
+        QTRY_VERIFY(!window->isMaximized());
+        QTRY_VERIFY(!window->windowHandle()->windowStates().testFlag(Qt::WindowMaximized));
+        QTRY_COMPARE(window->size(), QSize(400, 400));
+        QCOMPARE(window->maximumSize(), QSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX));
+        window->resize(500, 500);
+        QTRY_COMPARE(window->size(), QSize(500, 500));
+        controller.hide();
+        QVERIFY(controller.show(small, error));
+        QTRY_VERIFY(!controller.loading());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTest::qWait(250);
+        QTRY_COMPARE(window->size(), QSize(400, 400));
+        QVERIFY(!window->isMaximized());
+        QVERIFY(!window->windowHandle()->windowStates().testFlag(Qt::WindowMaximized));
+    }
+}
 
 void PreviewTest::gnomePresentationKeepsPendingContentAndDismissal()
 {
@@ -281,13 +347,55 @@ void PreviewTest::visiblePreviewReactivatesOnExplicitShow()
     QVERIFY(!controller.isVisible());
 }
 
-void PreviewTest::coldInformationMapsAtCompactSize_data()
+void PreviewTest::cleanupTestCase()
+{
+    warnings_.reset();
+}
+void PreviewTest::unexpectedWarningsRemainVisible()
+{
+    QTest::ignoreMessage(QtWarningMsg, "Unexpected warning sentinel");
+    qWarning("Unexpected warning sentinel");
+    // Even the filtered text must remain visible at a different severity.
+    QTest::ignoreMessage(QtCriticalMsg, "This plugin does not support propagateSizeHints()");
+    qCritical("This plugin does not support propagateSizeHints()");
+}
+void PreviewTest::readyInformationMapsAtCompactSize_data()
+{
+    coldInformationRespectsLoadingGrace_data();
+}
+void PreviewTest::readyInformationMapsAtCompactSize()
+{
+    QFETCH(QString, name);
+    const auto path = write(name, QByteArray::fromHex("504b030400010203ff"));
+    // Prepare the result before presenting: this deterministically exercises
+    // the fast path without assuming helper startup takes less than 150 ms.
+    const auto data = load(path);
+    QCOMPARE(data.kind, PreviewKind::Information);
+    PreviewWindow window;
+    FirstShowSize firstShow;
+    window.installEventFilter(&firstShow);
+    window.setResource(data.resource);
+    window.setContent(new QLabel(QStringLiteral("Loading preview…")));
+    window.preparePresentation();
+    window.beginPreviewUpdate();
+    window.setContent(PreviewRegistry::createWidget(data, nullptr));
+    window.setPreviewData(data);
+    window.endPreviewUpdate();
+    window.present();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QVERIFY(firstShow.informationReadyAtFirstShow);
+    QVERIFY(firstShow.size.width() >= 380 && firstShow.size.width() <= 560);
+    QVERIFY(firstShow.size.height() >= 220 && firstShow.size.height() < 500);
+    QTest::qWait(100);
+    QCOMPARE(window.size(), firstShow.size);
+}
+void PreviewTest::coldInformationRespectsLoadingGrace_data()
 {
     QTest::addColumn<QString>("name");
     QTest::newRow("archive") << QStringLiteral("first-map.zip");
     QTest::newRow("office-document") << QStringLiteral("first-map.odt");
 }
-void PreviewTest::coldInformationMapsAtCompactSize()
+void PreviewTest::coldInformationRespectsLoadingGrace()
 {
     QFETCH(QString, name);
     const QString path = write(name, QByteArray::fromHex("504b030400010203ff"));
@@ -302,12 +410,24 @@ void PreviewTest::coldInformationMapsAtCompactSize()
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("information"));
     QVERIFY(QTest::qWaitForWindowExposed(window));
-    QVERIFY(firstShow.size.width() >= 380);
-    QVERIFY(firstShow.size.width() <= 560);
-    QVERIFY(firstShow.size.height() >= 220);
-    QVERIFY(firstShow.size.height() < 500);
+    // Classification can finish after the 150 ms loading grace period on a
+    // loaded machine. Only an information-first mapping must already be compact.
+    if (firstShow.informationReadyAtFirstShow) {
+        QVERIFY(firstShow.size.width() >= 380);
+        QVERIFY(firstShow.size.width() <= 560);
+        QVERIFY(firstShow.size.height() >= 220);
+        QVERIFY(firstShow.size.height() < 500);
+    } else {
+        const QSize area = window->screen()->availableGeometry().size();
+        QVERIFY(firstShow.size.width() >= area.width() * 80 / 100);
+        QVERIFY(firstShow.size.height() >= area.height() * 80 / 100);
+    }
+    // Both presentation paths must finish at the same compact geometry.
+    QTRY_VERIFY(window->width() >= 380 && window->width() <= 560);
+    QTRY_VERIFY(window->height() >= 220 && window->height() < 500);
+    const auto compactSize = window->size();
     QTest::qWait(100);
-    QCOMPARE(window->size(), firstShow.size);
+    QCOMPARE(window->size(), compactSize);
     QVERIFY(window->grab().save(QStringLiteral("preview-first-map-%1.png").arg(name)));
     controller.hide();
     QVERIFY(controller.show(makePdf(), error));
@@ -607,7 +727,8 @@ void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
     QVERIFY(controller.show(images.first(), error));
     QTRY_VERIFY(!controller.loading());
     QVERIFY(QTest::qWaitForWindowExposed(window));
-    QTRY_VERIFY(window->isMaximized()); // Keep an intentionally maximized preview.
+    QTRY_VERIFY(!window->isMaximized()); // A reopened image starts fitted.
+    QTRY_COMPARE(window->size(), QSize(400, 400));
 }
 
 void PreviewTest::maximizedTableNavigationCompactsImagesAndRestoresTable()
@@ -728,6 +849,7 @@ void PreviewTest::retainedPdfRuntimeStillReleasesEachDocument()
 
 void PreviewTest::initTestCase()
 {
+    warnings_ = std::make_unique<OffscreenWarnings>();
     QVERIFY(directory_.isValid());
     QImageReader::setAllocationLimit(ImagePreviewProvider::AllocationLimitMiB);
 }
@@ -821,25 +943,28 @@ void PreviewTest::rejectsOversizedAndDamagedImages()
 {
     QImage tiny(1, 1, QImage::Format_RGB32);
     tiny.fill(Qt::red);
-    const QString path = directory_.filePath(QStringLiteral("oversized.png"));
-    QVERIFY(tiny.save(path));
+    // PNG readers differ across Qt versions in whether they advertise native
+    // scaling. BMP exercises the pre-decode allocation guard consistently.
+    const QString path = directory_.filePath(QStringLiteral("oversized.bmp"));
+    QVERIFY(tiny.save(path, "BMP"));
     QFile file(path);
     QVERIFY(file.open(QIODevice::ReadOnly));
     QByteArray bytes = file.readAll();
     file.close();
-    qToBigEndian<quint32>(100000, reinterpret_cast<uchar *>(bytes.data() + 16));
-    qToBigEndian<quint32>(100000, reinterpret_cast<uchar *>(bytes.data() + 20));
-    quint32 crc = 0xffffffff;
-    for (int i = 12; i < 29; ++i) {
-        crc ^= uchar(bytes.at(i));
-        for (int bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-    }
-    qToBigEndian<quint32>(crc ^ 0xffffffff, reinterpret_cast<uchar *>(bytes.data() + 29));
-    QVERIFY(!write(QStringLiteral("oversized.png"), bytes).isEmpty());
+    // Keep dimensions within BMP's header limits while exceeding 64 MiB decoded.
+    qToLittleEndian<quint32>(8192, reinterpret_cast<uchar *>(bytes.data() + 18));
+    qToLittleEndian<quint32>(8192, reinterpret_cast<uchar *>(bytes.data() + 22));
+    QVERIFY(!write(QStringLiteral("oversized.bmp"), bytes).isEmpty());
     const auto oversized = load(path);
     QCOMPARE(oversized.kind, PreviewKind::Information);
     QVERIFY2(oversized.message.contains(QStringLiteral("budget")), qPrintable(oversized.message));
-    const auto damaged = load(write(QStringLiteral("damaged.png"), bytes.left(40)));
+    const auto damagedPath = directory_.filePath(QStringLiteral("damaged.png"));
+    QVERIFY(tiny.save(damagedPath, "PNG"));
+    file.setFileName(damagedPath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    bytes = file.read(40);
+    file.close();
+    const auto damaged = load(write(QStringLiteral("damaged.png"), bytes));
     QCOMPARE(damaged.kind, PreviewKind::Information);
     QVERIFY(!damaged.message.isEmpty());
 }

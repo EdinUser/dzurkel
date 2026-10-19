@@ -7,6 +7,10 @@ License:        GPL-3.0-or-later
 URL:            https://github.com/EdinUser/dzurkel
 Source0:        %{url}/archive/refs/tags/v%{version}/%{name}-%{version}.tar.gz
 
+# Adapters are loaded only when available; do not turn their libraries into a
+# mandatory dependency through the ELF dependency generator.
+%global __requires_exclude ^(libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia\\.so\\.6|libKF6WindowSystem\\.so\\.6).*$
+
 BuildRequires:  gcc-c++
 BuildRequires:  cmake >= 3.22
 BuildRequires:  cmake-rpm-macros
@@ -17,11 +21,16 @@ BuildRequires:  qt6-qtbase-devel >= 6.4
 BuildRequires:  qt6-qtpdf-devel
 BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  kf6-kwindowsystem-devel
+BuildRequires:  kf6-syntax-highlighting-devel >= 6.0
 BuildRequires:  dbus-daemon
 BuildRequires:  python3
 BuildRequires:  desktop-file-utils
 Requires:       qt6-qtwayland
 Recommends:     qt6-qtimageformats
+Recommends:     kf6-syntax-highlighting >= 6.0
+Suggests:       qt6-qtmultimedia
+Suggests:       kf6-kwindowsystem
+Suggests:       antiword
 Suggests:       dolphin >= 26.04
 Suggests:       nautilus
 Suggests:       thunar
@@ -39,7 +48,7 @@ Open Dzurkel Settings after installation to configure the shortcut for your user
 %autosetup
 
 %build
-%cmake -DBUILD_TESTING=ON
+%cmake -DBUILD_TESTING=ON -DDZURKEL_HIGHLIGHTING=ON -DDZURKEL_AUDIO=ON
 %cmake_build
 
 %install
@@ -58,6 +67,8 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %license LICENSE
 %doc README.md
 %{_bindir}/dzurkel
+%{_libdir}/dzurkel/
+%{_datadir}/dzurkel/
 %{_datadir}/applications/dzurkel.desktop
 %{_datadir}/applications/dzurkel-settings.desktop
 %{_datadir}/kio/servicemenus/dzurkel.desktop

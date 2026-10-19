@@ -3,6 +3,15 @@
 #include "desktop/DesktopIntegration.h"
 #include "resources/ResourceAccessPolicy.h"
 #include "preview/PreviewLibrary.h"
+#include "preview/LibraryAvailability.h"
+#include <QPainter>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QPainterPath>
+#include <QTextBrowser>
+#include <QScreen>
+#include "preview/text/TextHighlighting.h"
+#include <QTabWidget>
 #include <QCheckBox>
 #include <QEvent>
 #include <QElapsedTimer>
@@ -21,6 +30,7 @@
 #include <QStyle>
 #include <QThread>
 #include <QTimer>
+#include <QTime>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWindow>
@@ -46,6 +56,57 @@ QToolButton *information(QWidget *parent, const QString &name, const QString &ti
     });
     return button;
 }
+QIcon libraryStatusIcon(LibraryHealth health, qreal ratio)
+{
+    QPixmap pixmap(QSize(20, 20) * ratio);
+    pixmap.setDevicePixelRatio(ratio);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(health == LibraryHealth::Available ? QColor(40, 145, 75)
+        : health == LibraryHealth::Limited ? QColor(190, 110, 0) : QColor(200, 55, 55));
+    painter.drawEllipse(QRectF(2, 2, 16, 16));
+    painter.setPen(QPen(Qt::white, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    if (health == LibraryHealth::Available) {
+        QPainterPath check;
+        check.moveTo(6, 10); check.lineTo(9, 13); check.lineTo(14, 7);
+        painter.drawPath(check);
+    } else if (health == LibraryHealth::Limited) {
+        painter.drawLine(QPointF(10, 6), QPointF(10, 11));
+        painter.drawPoint(QPointF(10, 14));
+    } else {
+        painter.drawLine(QPointF(7, 7), QPointF(13, 13));
+        painter.drawLine(QPointF(13, 7), QPointF(7, 13));
+    }
+    return QIcon(pixmap);
+}
+void showLibraryDetails(QWidget *parent, const QString &title, const QString &details, const QString &command)
+{
+    QDialog dialog(parent);
+    dialog.setObjectName(QStringLiteral("libraryDetails"));
+    dialog.setWindowTitle(title);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *text = new QTextBrowser(&dialog);
+    text->setObjectName(QStringLiteral("libraryDetailsText"));
+    text->setOpenLinks(false);
+    text->setOpenExternalLinks(false);
+    text->setPlainText(details);
+    layout->addWidget(text);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    if (!command.isEmpty()) {
+        auto *copy = buttons->addButton(QStringLiteral("Copy command"), QDialogButtonBox::ActionRole);
+        copy->setObjectName(QStringLiteral("copyLibraryCommand"));
+        QObject::connect(copy, &QPushButton::clicked, &dialog, [copy, command] {
+            QGuiApplication::clipboard()->setText(command);
+            copy->setText(QStringLiteral("Copied"));
+        });
+    }
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    dialog.resize(QSize(520, 390).boundedTo(parent->screen()->availableGeometry().size() * .9));
+    dialog.exec();
+}
 QLabel *label(QWidget *parent, const QString &text, bool secondary = false)
 {
     auto *result = new QLabel(text, parent);
@@ -66,7 +127,17 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     setObjectName(QStringLiteral("settingsDialog"));
     setWindowTitle(QStringLiteral("Dzurkel Settings"));
     setWindowModality(Qt::WindowModal);
-    auto *layout = new QVBoxLayout(this);
+    auto *outer = new QVBoxLayout(this);
+    auto *tabs = new QTabWidget(this);
+    tabs->setObjectName(QStringLiteral("settingsTabs"));
+    outer->addWidget(tabs);
+    auto *integrationPage = new QWidget(this);
+    auto *previewPage = new QWidget(this);
+    auto *libraryPage = new QWidget(this);
+    tabs->addTab(integrationPage, QStringLiteral("Integration"));
+    tabs->addTab(previewPage, QStringLiteral("Previews"));
+    tabs->addTab(libraryPage, QStringLiteral("Libraries"));
+    auto *layout = new QVBoxLayout(integrationPage);
     layout->setContentsMargins(20, 20, 20, 16);
     layout->setSpacing(14);
     auto *heading = new QHBoxLayout;
@@ -118,30 +189,119 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     actions->addWidget(restore_);
     actions->addStretch();
     layout->addLayout(actions);
-    auto *separator = new QFrame(this);
-    separator->setFrameShape(QFrame::HLine);
-    layout->addWidget(separator);
-    auto *supportTitle = label(this, QStringLiteral("Preview support"));
-    supportTitle->setFont(font);
-    layout->addWidget(supportTitle);
+    auto *previews = new QVBoxLayout(previewPage);
+    previews->addWidget(label(this, QStringLiteral("Supported previews")));
     auto *support = new QGridLayout;
     support->setHorizontalSpacing(12);
     support->setVerticalSpacing(8);
-    const auto addSupport = [this, support](int row, const QString &name, const QString &theme,
-                                          const QString &object, const QString &details) {
-        auto *image = new QLabel(this);
-        image->setPixmap(QIcon::fromTheme(theme, style()->standardIcon(QStyle::SP_FileIcon)).pixmap(22, 22));
-        support->addWidget(image, row, 0);
-        support->addWidget(label(this, name), row, 1);
-        support->addWidget(label(this, QStringLiteral("Included"), true), row, 2);
-        support->addWidget(information(this, object, name, details), row, 3);
+    struct Group {
+        QString title, icon, object;
+        QStringList readers, formats;
+    };
+    const QList<Group> groups = {
+        {QStringLiteral("Audio"), QStringLiteral("audio-x-generic"), QStringLiteral("audioInfo"),
+         {"audio"}, {".mp3, .flac, .ogg, .oga, .opus, .wav, .aac, .m4a, audio-only .mp4"}},
+        {QStringLiteral("Images"), QStringLiteral("image-x-generic"), QStringLiteral("imageInfo"),
+         {"image"}, {}},
+        {QStringLiteral("Documents"), QStringLiteral("x-office-document"), QStringLiteral("documentInfo"),
+         {"pdf", "docx", "rtf", "doc"}, {".pdf", ".docx", ".rtf", ".doc (requires antiword)"}},
+        {QStringLiteral("Books"), QStringLiteral("application-epub+zip"), QStringLiteral("bookInfo"),
+         {"epub", "fb2", "sfb", "mobi"}, {".epub", ".fb2", ".sfb", ".mobi"}},
+        {QStringLiteral("Tables"), QStringLiteral("x-office-spreadsheet"), QStringLiteral("tableInfo"),
+         {"csv", "xlsx"}, {".csv / .tsv", ".xlsx"}},
+        {QStringLiteral("Text and source"), QStringLiteral("text-x-generic"), QStringLiteral("textInfo"),
+         {"markdown", "text"}, {".md / .markdown", "Plain text and text-based source/configuration files (for example .txt, .json, .xml, .sql, .php); detected by content/MIME type"}}
     };
     int row = 0;
-    for (const auto &reader : PreviewLibrary::readers())
-        addSupport(row++, reader.title, reader.icon, reader.informationObject, reader.description);
+    for (const auto &group : groups) {
+        auto *image = new QLabel(this);
+        image->setPixmap(QIcon::fromTheme(group.icon, style()->standardIcon(QStyle::SP_FileIcon)).pixmap(22, 22));
+        support->addWidget(image, row, 0);
+        support->addWidget(label(this, group.title), row, 1);
+        QString details;
+        if (group.readers == QStringList{QStringLiteral("image")}) {
+            QStringList formats;
+            for (const auto &format : QImageReader::supportedImageFormats())
+                formats.append(QStringLiteral(".") + QString::fromLatin1(format).toLower());
+            formats.removeDuplicates();
+            formats.sort();
+            details = QStringLiteral("Supported formats: %1\n\n").arg(formats.join(QStringLiteral(", ")));
+        } else {
+            details = QStringLiteral("Supported files: %1\n\n").arg(group.formats.join(QStringLiteral(", ")));
+        }
+        for (const auto &id : group.readers) {
+            if (const auto reader = PreviewLibrary::capability(id))
+                details += reader->title + QStringLiteral(": ") + reader->description + QStringLiteral("\n\n");
+        }
+        support->addWidget(information(this, group.object, group.title, details.trimmed()), row++, 2);
+    }
     support->setColumnStretch(1, 1);
-    layout->addLayout(support);
-    layout->addWidget(label(this, QStringLiteral("Other files show an icon and file information."), true));
+    previews->addLayout(support);
+    previews->addWidget(label(this, QStringLiteral("Format support depends on the file and available readers. See Libraries for optional features. Other files show file information."), true));
+    previews->addStretch();
+
+    auto *libraries = new QVBoxLayout(libraryPage);
+    auto *libraryTitle = label(this, QStringLiteral("Preview libraries"));
+    libraryTitle->setFont(font);
+    libraries->addWidget(libraryTitle);
+    auto *libraryGrid = new QGridLayout;
+    libraryGrid->setHorizontalSpacing(10);
+    libraryGrid->setVerticalSpacing(12);
+    const auto initialLibraries = libraryAvailability();
+    int libraryIndex = 0;
+    for (const auto &library : initialLibraries) {
+        if (library.id == QStringLiteral("highlighting")) {
+            highlighting_ = new QCheckBox(this);
+            highlighting_->setObjectName(QStringLiteral("syntaxHighlighting"));
+            highlighting_->setAccessibleName(QStringLiteral("Enable syntax highlighting"));
+            highlighting_->setToolTip(QStringLiteral("Use syntax highlighting for subsequently opened text previews"));
+            libraryGrid->addWidget(highlighting_, libraryIndex, 0);
+        }
+        auto *description = new QVBoxLayout;
+        description->setSpacing(1);
+        description->addWidget(label(this, library.name));
+        description->addWidget(label(this, library.purpose, true));
+        libraryGrid->addLayout(description, libraryIndex, 1);
+        auto *status = new QToolButton(this);
+        status->setObjectName(library.id + QStringLiteral("LibraryStatus"));
+        status->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        status->setAutoRaise(true);
+        status->setFocusPolicy(Qt::StrongFocus);
+        libraryGrid->addWidget(status, libraryIndex, 2, Qt::AlignLeft);
+        auto *info = new QToolButton(this);
+        info->setObjectName(library.id + QStringLiteral("LibraryInfo"));
+        info->setIcon(QIcon::fromTheme(QStringLiteral("help-about"), style()->standardIcon(QStyle::SP_MessageBoxInformation)));
+        info->setAutoRaise(true);
+        info->setFocusPolicy(Qt::StrongFocus);
+        info->setAccessibleName(library.name + QStringLiteral(" information"));
+        libraryGrid->addWidget(info, libraryIndex++, 3);
+        const auto showDetails = [this, status, name = library.name] {
+            showLibraryDetails(this, name, status->property("details").toString(), status->property("installationCommand").toString());
+        };
+        connect(status, &QToolButton::clicked, this, showDetails);
+        connect(info, &QToolButton::clicked, this, showDetails);
+        libraryRows_.append({library.id, status, info});
+    }
+    libraryGrid->setColumnStretch(1, 1);
+    libraries->addLayout(libraryGrid);
+    libraries->addWidget(label(this, QStringLiteral("Green: available · Orange: limited or cannot load · Red: missing"), true));
+    auto *recheck = new QPushButton(QStringLiteral("Refresh status"), this);
+    recheck->setObjectName(QStringLiteral("checkLibraries"));
+    recheck->setAutoDefault(false);
+    libraries->addWidget(recheck, 0, Qt::AlignLeft);
+    libraryCheckResult_ = label(this, QStringLiteral("Availability checked when Settings opens."), true);
+    libraryCheckResult_->setObjectName(QStringLiteral("libraryCheckResult"));
+    libraryCheckResult_->setAccessibleName(QStringLiteral("Library check result"));
+    libraries->addWidget(libraryCheckResult_);
+    libraries->addStretch();
+    connect(recheck, &QPushButton::clicked, this, [this] { refreshLibraries(true); });
+    connect(highlighting_, &QCheckBox::toggled, this, [this](bool enabled) {
+        QString error;
+        if (!setHighlightingEnabled(enabled, error)) {
+            refreshLibraries();
+            QMessageBox::warning(this, QStringLiteral("Syntax highlighting"), error);
+        }
+    });
     auto *locationsTitle = label(this, QStringLiteral("File locations"));
     locationsTitle->setFont(font);
     layout->addWidget(locationsTitle);
@@ -168,12 +328,19 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     });
     buttons_ = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons_, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
-    layout->addWidget(buttons_);
+    layout->addStretch();
+    outer->addWidget(buttons_);
     connect(apply_, &QPushButton::clicked, this, [this] { changeShortcuts(false); });
     connect(restore_, &QPushButton::clicked, this, [this] { changeShortcuts(true); });
     setMinimumWidth(480);
     resize(520, sizeHint().height());
     refresh();
+}
+void SettingsDialog::showLibrary(const QString &id)
+{
+    findChild<QTabWidget *>(QStringLiteral("settingsTabs"))->setCurrentIndex(2);
+    refreshLibraries();
+    for (const auto &row : libraryRows_) if (row.id == id) row.status->setFocus();
 }
 void SettingsDialog::showEvent(QShowEvent *event)
 {
@@ -367,8 +534,42 @@ void SettingsDialog::finish(const QString &error)
         ? QStringLiteral("Dolphin shortcut") : integration_ == FileManagerIntegration::Thunar
         ? QStringLiteral("Thunar shortcut") : QStringLiteral("Nautilus shortcut"), error);
 }
+void SettingsDialog::refreshLibraries(bool recheck)
+{
+    const auto libraries = libraryAvailability(recheck);
+    QString signature;
+    for (const auto &library : libraries) {
+        signature += library.id + library.status + library.details;
+        for (const auto &row : libraryRows_) {
+            if (row.id != library.id) continue;
+            row.status->setText(library.status);
+            row.status->setIcon(libraryStatusIcon(library.health, devicePixelRatioF()));
+            row.status->setProperty("health", static_cast<int>(library.health));
+            row.status->setProperty("installationCommand", library.installationCommand);
+            row.status->setProperty("details", library.status + QStringLiteral("\n\n") + library.details);
+            row.status->setAccessibleName(library.name + QStringLiteral(": ") + library.status);
+            row.status->setAccessibleDescription(library.details);
+            row.status->setToolTip(QStringLiteral("%1. Click for details and guidance.").arg(library.status));
+            row.information->setToolTip(QStringLiteral("%1: details and guidance").arg(library.name));
+            row.information->setAccessibleDescription(library.details);
+            if (library.id == QStringLiteral("highlighting")) {
+                const QSignalBlocker blocker(highlighting_);
+                highlighting_->setChecked(highlightingEnabled());
+                highlighting_->setEnabled(library.health == LibraryHealth::Available);
+            }
+        }
+    }
+    if (recheck) {
+        libraryCheckResult_->setText(QStringLiteral("Checked at %1. %2")
+            .arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")),
+                signature != librarySignature_ ? QStringLiteral("Availability updated.") : QStringLiteral("No changes found.")));
+    }
+    librarySignature_ = signature;
+}
+
 void SettingsDialog::refresh()
 {
+    refreshLibraries();
     {
         const QSignalBlocker blocker(experimentalSftp_);
         experimentalSftp_->setChecked(ResourceAccessPolicy::experimentalSftpEnabled());

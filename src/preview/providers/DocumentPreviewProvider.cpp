@@ -5,6 +5,7 @@
 #include "TextPreviewProvider.h"
 #include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
 
 namespace dzurkel {
 QString DocumentPreviewProvider::format(const QMimeType &mime, const QString &path, const QByteArray &signature)
@@ -23,6 +24,12 @@ QString DocumentPreviewProvider::format(const QMimeType &mime, const QString &pa
 bool DocumentPreviewProvider::supports(const QMimeType &mime) const { return !format(mime, {}, {}).isEmpty(); }
 PreviewData DocumentPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData data, const QSize &, const Cancellation &cancel) const
 {
+    if (cancel->load()) { data.kind = PreviewKind::Cancelled; return data; }
+    if (data.readerId == QLatin1String("doc") && QStandardPaths::findExecutable(QStringLiteral("antiword")).isEmpty()) {
+        data.missingLibrary = QStringLiteral("antiword");
+        data.message = QStringLiteral("Legacy DOC preview needs antiword. Check Settings for details!");
+        return data;
+    }
     DocumentResult result;
     if (data.readerId == QLatin1String("markdown")) {
         auto decoded = decodePreviewText(*file, TextPreviewProvider::ByteLimit, cancel);
