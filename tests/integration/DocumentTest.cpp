@@ -23,6 +23,7 @@
 #include <QAbstractTextDocumentLayout>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QPointer>
 #include <QScreen>
 #include <QToolButton>
 #include <QTest>
@@ -105,6 +106,10 @@ private slots:
     void viewIsReadOnlyAndBlocksResourceLoading();
     void typographyListsAndThemeSafeColors();
     void markdownUsesTheReadingViewAndBounds();
+    void markdownStartsAtTop_data();
+    void markdownStartsAtTop();
+    void contentsSharesNavigationRowAndFollowsPreviewLifetime_data();
+    void contentsSharesNavigationRowAndFollowsPreviewLifetime();
     void readingGeometryDoesNotReplaceOtherPreviewSizes();
     void docFooterKeepsWarningsSeparate();
     void localAndRemoteControllerUseDocument_data();
@@ -531,6 +536,100 @@ void DocumentTest::markdownUsesTheReadingViewAndBounds()
     data = PreviewRegistry::load(resource, QSize(600, 700), std::make_shared<std::atomic_bool>(false));
     QCOMPARE(data.kind, PreviewKind::Text);
     QVERIFY(data.message.contains("plain text"));
+}
+void DocumentTest::markdownStartsAtTop_data()
+{
+    QTest::addColumn<bool>("headings");
+    QTest::newRow("with-contents") << true;
+    QTest::newRow("without-contents") << false;
+}
+void DocumentTest::markdownStartsAtTop()
+{
+    QFETCH(bool, headings);
+    QByteArray markdown;
+    for (int section = 0; section < 3; ++section) {
+        if (headings) markdown += "## Section " + QByteArray::number(section) + "\n\n";
+        for (int paragraph = 0; paragraph < 30; ++paragraph)
+            markdown += "A paragraph with **emphasis** and `code` for a long preview.\n\n";
+    }
+    FileResource resource; QString error;
+    QVERIFY(resolveFileResource(write("scroll.md", markdown), resource, error));
+    auto data = PreviewRegistry::load(resource, QSize(700, 850), std::make_shared<std::atomic_bool>(false));
+    QCOMPARE(data.kind, PreviewKind::Document);
+    PreviewWindow window;
+    window.resize(700, 850);
+    for (int opening = 0; opening < 2; ++opening) {
+        window.setContent(PreviewRegistry::createWidget(data, nullptr));
+        window.show();
+        window.activateWindow();
+        auto *text = window.findChild<QTextBrowser *>(QStringLiteral("documentText"));
+        QVERIFY(text);
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTRY_VERIFY(text->hasFocus());
+        QVERIFY(text->verticalScrollBar()->maximum() > 0);
+        QCOMPARE(text->verticalScrollBar()->value(), 0);
+        QCOMPARE(text->horizontalScrollBar()->value(), 0);
+        QCOMPARE(text->textCursor().position(), 0);
+        text->verticalScrollBar()->setValue(text->verticalScrollBar()->maximum());
+        QVERIFY(text->verticalScrollBar()->value() > 0);
+    }
+}
+void DocumentTest::contentsSharesNavigationRowAndFollowsPreviewLifetime_data()
+{
+    QTest::addColumn<bool>("markdown");
+    QTest::newRow("markdown") << true;
+    QTest::newRow("formatted-document") << false;
+}
+void DocumentTest::contentsSharesNavigationRowAndFollowsPreviewLifetime()
+{
+    QFETCH(bool, markdown);
+    auto document = std::make_shared<FormattedDocument>();
+    if (markdown) {
+        document->markdown = "# Start\n\n";
+        for (int paragraph = 0; paragraph < 80; ++paragraph)
+            document->markdown += "A paragraph separating the two headings.\n\n";
+        document->markdown += "## Last section\n\nLast paragraph.\n";
+    } else {
+        document->html = "<h1><a name=\"start\">Start</a></h1>";
+        for (int paragraph = 0; paragraph < 80; ++paragraph)
+            document->html += "<p>A paragraph separating the two headings.</p>";
+        document->html += "<h2><a name=\"last\">Last section</a></h2><p>Last paragraph.</p>";
+        document->sections = {{"Start", "start"}, {"Last section", "last"}};
+    }
+    PreviewWindow window;
+    window.resize(700, 850);
+    window.setNavigation(true, true, QStringLiteral("9 / 10"));
+    window.setContent(new DocumentView(document));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QPointer<QToolButton> contents = window.findChild<QToolButton *>(QStringLiteral("documentContents"));
+    auto *next = window.findChild<QPushButton *>(QStringLiteral("nextFile"));
+    auto *text = window.findChild<QTextBrowser *>(QStringLiteral("documentText"));
+    QVERIFY(contents); QVERIFY(next); QVERIFY(text);
+    QVERIFY(contents->isVisible());
+    const auto contentsPosition = contents->mapTo(&window, contents->rect().center());
+    const auto nextPosition = next->mapTo(&window, next->rect().center());
+    QVERIFY2(qAbs(contentsPosition.y() - nextPosition.y()) <= 2,
+        "Contents must share the navigation row rather than consume another header row");
+    QVERIFY(contentsPosition.x() > nextPosition.x());
+    QVERIFY(text->mapTo(&window, QPoint()).y() > contentsPosition.y());
+    QCOMPARE(contents->menu()->actions().size(), 2);
+    contents->menu()->actions().last()->trigger();
+    QTRY_VERIFY(text->verticalScrollBar()->value() > 0);
+    const auto sectionScroll = text->verticalScrollBar()->value();
+    QCoreApplication::processEvents();
+    QCOMPARE(text->verticalScrollBar()->value(), sectionScroll);
+    contents->menu()->actions().first()->trigger();
+    QTRY_VERIFY(text->verticalScrollBar()->value() < sectionScroll);
+    window.setContent(new QLabel(QStringLiteral("Another preview")));
+    QVERIFY(contents.isNull());
+    QVERIFY(!window.findChild<QToolButton *>(QStringLiteral("documentContents")));
+    window.setContent(new DocumentView(document));
+    QTRY_VERIFY(window.findChild<QToolButton *>(QStringLiteral("documentContents"))->isVisible());
+    document = std::make_shared<FormattedDocument>();
+    document->html = "<p>A short document without sections.</p>";
+    window.setContent(new DocumentView(document));
+    QVERIFY(!window.findChild<QToolButton *>(QStringLiteral("documentContents")));
 }
 void DocumentTest::readingGeometryDoesNotReplaceOtherPreviewSizes()
 {

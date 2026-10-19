@@ -72,6 +72,12 @@ PreviewWindow::PreviewWindow(bool diagnostics)
     navigationStatus_->setAlignment(Qt::AlignCenter);
     controls->addWidget(navigationStatus_);
     controls->addWidget(next_);
+    previewToolbar_ = new QWidget(this);
+    previewToolbar_->setObjectName(QStringLiteral("previewToolbar"));
+    previewToolbarLayout_ = new QHBoxLayout(previewToolbar_);
+    previewToolbarLayout_->setContentsMargins(0, 0, 0, 0);
+    controls->addWidget(previewToolbar_);
+    previewToolbar_->hide();
     controls->addStretch();
     connect(previous_, &QPushButton::clicked, this, [this] { emit navigateRequested(-1); });
     connect(next_, &QPushButton::clicked, this, [this] { emit navigateRequested(1); });
@@ -191,10 +197,20 @@ void PreviewWindow::present(const QString &activationToken)
 void PreviewWindow::setContent(QWidget *content)
 {
     wheelRemainder_ = 0;
+    previewToolbar_->hide();
+    if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) {
+        if (auto *toolbar = zoom->toolbarWidget()) toolbar->setParent(content_);
+    }
     delete content_;
     content_ = content;
-    if (auto *zoom = qobject_cast<ZoomPreview *>(content_))
+    if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) {
         connect(zoom, &ZoomPreview::zoomChanged, this, &PreviewWindow::updateZoomControls);
+        if (auto *toolbar = zoom->toolbarWidget()) {
+            previewToolbarLayout_->addWidget(toolbar);
+            toolbar->show();
+            previewToolbar_->show();
+        }
+    }
     updateZoomControls();
     if (content_) {
         content_->setParent(contentHost_);

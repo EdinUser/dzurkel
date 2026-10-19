@@ -16,6 +16,9 @@ public:
     virtual qreal maximumZoom() const { return 8.0; }
     virtual qreal minimumZoom() const { return .1; }
     virtual QString zoomHint() const { return {}; }
+    // Optional controls owned by the preview. The window hosts them in its
+    // toolbar and returns them to the preview before replacing its content.
+    virtual QWidget *toolbarWidget() const { return nullptr; }
     // Natural content size at 100%, when a provider supports window fitting.
     virtual QSize naturalSize() const { return {}; }
     virtual void scrollVertically(int direction) { Q_UNUSED(direction); }

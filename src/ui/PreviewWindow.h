@@ -4,6 +4,7 @@
 
 class QLabel;
 class QVBoxLayout;
+class QHBoxLayout;
 class QScreen;
 class QPushButton;
 class QDialog;
@@ -77,6 +78,8 @@ private:
     QPushButton *previous_;
     QPushButton *next_;
     QLabel *navigationStatus_;
+    QWidget *previewToolbar_;
+    QHBoxLayout *previewToolbarLayout_;
     QWidget *zoomControls_;
     QLabel *zoomStatus_;
     QPushButton *fileInfoButton_;

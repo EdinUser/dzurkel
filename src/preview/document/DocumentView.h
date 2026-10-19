@@ -4,6 +4,7 @@
 #include <memory>
 
 class QTextBrowser;
+class QToolButton;
 namespace dzurkel {
 class DocumentView : public ZoomPreview {
     Q_OBJECT
@@ -16,6 +17,7 @@ public:
     qreal maximumZoom() const override { return 3.0; }
     qreal minimumZoom() const override { return .5; }
     QString zoomHint() const override;
+    QWidget *toolbarWidget() const override;
 protected:
     void changeEvent(QEvent *event) override;
 private:
@@ -23,6 +25,7 @@ private:
     void applyTypography();
     void applyColors(bool rememberSource = false);
     QTextBrowser *view_;
+    QToolButton *contents_ = nullptr;
     qreal factor_ = 1.0;
     QFont baseFont_;
 };

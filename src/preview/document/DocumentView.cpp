@@ -140,14 +140,21 @@ DocumentView::DocumentView(std::shared_ptr<const FormattedDocument> document, QW
             });
         }
         contents->setMenu(menu);
-        layout->addWidget(contents, 0, Qt::AlignLeft);
+        contents_ = contents;
+        contents->hide(); // Shown by PreviewWindow in the shared toolbar.
     }
     connect(view_, &QTextBrowser::anchorClicked, this, [this](const QUrl &url) {
         if (url.isRelative() && url.path().isEmpty() && url.hasFragment()) view_->scrollToAnchor(url.fragment());
     });
+    // Direct QTextDocument imports leave the browser cursor at the end. Qt
+    // reveals that cursor on focus, so reset it before presenting the preview.
+    view_->moveCursor(QTextCursor::Start);
+    view_->verticalScrollBar()->setValue(0);
+    view_->horizontalScrollBar()->setValue(0);
     layout->addWidget(view_);
     setFocusProxy(view_);
 }
+QWidget *DocumentView::toolbarWidget() const { return contents_; }
 void DocumentView::applyZoom(qreal factor)
 {
     factor = std::clamp(factor, .5, maximumZoom());
