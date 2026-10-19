@@ -8,6 +8,7 @@ an available access route or dependency candidate is not a desktop support claim
 
 - [Installation, updates and removal](installation.md) — Fedora, Debian and Arch packages, source installation and optional dependencies.
 - [Usage and keyboard controls](usage.md) — Settings, playback, navigation and dismissal.
+- [Preview demonstration](video/README.md) — video, GIF and recording details using synthetic files.
 - [Supported previews and limits](previews.md) — formats, simplified rendering, resource limits and filesystem policy.
 - [Runtime baseline and OS compatibility](runtime-baseline.md) — baseline application, optional adapters and build-specific requirements.
 

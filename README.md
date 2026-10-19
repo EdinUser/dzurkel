@@ -18,10 +18,12 @@ Enable Space previews in Dzurkel Settings after installation.
 [![Linux release packages](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-![Dzurkel demonstrating text, image and CSV previews in Dolphin](docs/images/dzurkel-demo.gif)
+[![Dzurkel previewing an image, PDF, DOCX, XLSX, video and source code alongside Dolphin](docs/images/dzurkel-demo.gif)](docs/video/dzurkel-demo-0.8.0.mp4)
 
-*Space → Preview → Navigate → Escape. This demo shows text, images and CSV in
-Dolphin using synthetic files. Appearance follows your Qt theme.*
+*[Watch the full video](docs/video/dzurkel-demo-0.8.0.mp4): image → PDF → DOCX →
+XLSX → video → source code, in one reusable preview window. Recorded alongside
+Dolphin with synthetic files; the GIF plays at 1.25× speed. Appearance follows
+your Qt theme. [Recording details](docs/video/README.md).*
 
 ## Features
 
