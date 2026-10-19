@@ -19,6 +19,7 @@ class StreamingMediaSource : public QIODevice {
     Q_OBJECT
 public:
     static constexpr qint64 ChunkBytes = 64 * 1024;
+    static constexpr qint64 ReadAheadBytes = 512 * 1024;
     explicit StreamingMediaSource(QObject *parent = nullptr, int readTimeoutMs = 2000);
     ~StreamingMediaSource() override;
     void start(const QString &helper, const QString &url, int simulatedReadDelayMs = 0,

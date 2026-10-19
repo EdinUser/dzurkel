@@ -8,10 +8,10 @@ reuse the running service and Settings dialog. Closing Settings leaves the
 service resident; use `dzurkel --quit` to exit fully.
 
 Settings has **Integration**, **Previews** and **Libraries** tabs. Previews groups
-formats into Audio, Images, Documents, Books, Tables, and Text and source. Each
+formats into Audio, Video, Images, Documents, Books, Tables, and Text and source. Each
 information button lists supported files and reader limitations. Libraries shows
 a dependency list for highlighting, legacy DOC extraction, PDF, archive-based
-Office/book formats and audio. Status icons use green for available, orange for
+Office/book formats and audio/video. Status icons use green for available, orange for
 limited/unloadable and red for missing, with text labels. Click a status or its
 information button for detection details and recovery guidance. Only highlighting
 has a usage checkbox; its library status is independent of that preference.
@@ -25,7 +25,7 @@ See [runtime requirements and release compatibility](runtime-baseline.md).
 
 ## Preview behavior
 
-Dzurkel previews images, PDFs, audio, CSV/TSV/XLSX tables, formatted documents,
+Dzurkel previews images, PDFs, audio/video, CSV/TSV/XLSX tables, formatted documents,
 EPUB/FB2/SFB/MOBI books, Markdown and plain text from local paths, `file://` URLs,
 and direct `smb://` URLs through the desktop KIO-FUSE service. Mounted shares
 continue to work as filesystem paths. Direct SMB requires desktop authentication;
@@ -90,20 +90,25 @@ Settings alone changes nothing and needs no sudo.
 Use Ctrl+wheel or `+`/`-` to zoom images and PDFs; `0` or **Fit** restores fit.
 For documents, EPUB, Markdown and plain text these controls adjust font size
 inside the same window; Fit restores the default text size. Plain text retains
-its original whitespace and unwrapped lines.
+its original whitespace. **Wrap lines** is on by default and remembers your
+choice; turn it off to scroll long lines horizontally.
 Plain wheel scrolls content. Zoom snaps to 10 percentage-point steps, and image
 fit does not enlarge small images above 100%. GIFs play with Pause/Play controls.
 **Previous**/**Next** and Alt+arrows browse files in natural filename order;
-images/audio/information views also accept plain Left/Right. Up/Down browse fitted
-images/audio/information views and scroll zoomed images, PDFs and text. See [preview controls and limits](previews.md#zoom-and-file-navigation).
+images/audio/video/information views also accept plain Left/Right. Up/Down browse fitted
+images/audio/video/information views and scroll zoomed images, PDFs and text. See [preview controls and limits](previews.md#zoom-and-file-navigation).
 
-Audio plays automatically with Play/Pause (`P`), a seek bar, volume and mute.
+Audio and video play automatically with Play/Pause (`P`), a seek bar, volume and
+mute. Both start with sound and share your mute/volume choice for the running
+session. Video fits the available area without changing its aspect ratio.
 Click either slider to jump to that position and give it keyboard focus; dragging
 the handle continues to adjust it normally.
-Focused audio sliders use plain arrows to adjust their value; Alt+arrows still
+Focused media sliders use plain arrows to adjust their value; Alt+arrows still
 browse files. Space/Escape dismiss and stop playback. Supported decoding depends
-on the installed Qt media backend. Damaged or unsupported audio shows a clear
-error instead of triggering codec installation.
+on the installed Qt media backend. Damaged or unsupported media shows a clear
+error instead of triggering codec installation. Slow sources show loading,
+seeking or buffering feedback; closing/changing the preview cancels playback.
+See [video previews](video-preview.md) for source policies and remaining limits.
 
 ## Preview library foundation
 

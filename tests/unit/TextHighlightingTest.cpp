@@ -133,7 +133,7 @@ private slots:
         auto *editor = widget->findChild<QPlainTextEdit *>();
         QVERIFY(editor);
         QVERIFY(editor->isReadOnly());
-        QCOMPARE(editor->lineWrapMode(), QPlainTextEdit::NoWrap);
+        QCOMPARE(editor->lineWrapMode(), QPlainTextEdit::WidgetWidth);
         QCOMPARE(hasFormatting(*editor), expectsBackend());
         auto *zoom = qobject_cast<ZoomPreview *>(widget.get());
         QVERIFY(zoom);

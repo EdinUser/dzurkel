@@ -14,7 +14,7 @@ namespace dzurkel {
 struct TabularDocument;
 struct FormattedDocument;
 using Cancellation = std::shared_ptr<std::atomic_bool>;
-enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Audio, Information, Document };
+enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Audio, Video, Information, Document };
 
 struct PreviewData {
     PreviewKind kind = PreviewKind::Information;

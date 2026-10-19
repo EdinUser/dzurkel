@@ -1,7 +1,7 @@
 #include "controller/PreviewController.h"
 #include "preview/PreviewLibrary.h"
 #include "preview/PreviewRegistry.h"
-#include "preview/media/AudioBackend.h"
+#include "preview/media/MediaBackend.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/media/StreamingMediaSource.h"
 #include <QAudioOutput>
@@ -53,7 +53,9 @@ void AudioTest::mute(PreviewController &controller)
     // Commit signals run before the widget's queued startup, so test playback
     // cannot become audible, including when checking the user's real files.
     connect(&controller, &PreviewController::stateChanged, &controller, [&controller] {
-        if (auto *audio = controller.window()->findChild<QWidget *>(QStringLiteral("audioPreview"))) qobject_cast<AudioControls *>(audio)->setMuted(true);
+        for (const auto &name : {"audioPreview", "videoPreview"})
+            if (auto *media = controller.window()->findChild<QWidget *>(QString::fromLatin1(name)))
+                qobject_cast<MediaControls *>(media)->setMuted(true);
     });
 }
 void AudioTest::initTestCase()
@@ -77,7 +79,7 @@ void AudioTest::initTestCase()
 }
 void AudioTest::cleanup()
 {
-    QTRY_COMPARE_WITH_TIMEOUT(activeAudioHelpers(), 0, 3000);
+    QTRY_COMPARE_WITH_TIMEOUT(activeMediaHelpers(), 0, 3000);
 }
 void AudioTest::selectsAgreedFormatsWithoutRequiringTheirDecoders()
 {
@@ -89,7 +91,7 @@ void AudioTest::selectsAgreedFormatsWithoutRequiringTheirDecoders()
     QFile file(invalid);
     QVERIFY(file.open(QIODevice::ReadOnly));
     const auto mime = QMimeDatabase().mimeTypeForName(QStringLiteral("application/octet-stream"));
-    for (const auto &suffix : {"mp3", "flac", "ogg", "oga", "opus", "wav", "m4a", "aac", "mp4"}) {
+    for (const auto &suffix : {"mp3", "flac", "ogg", "oga", "opus", "wav", "m4a", "aac"}) {
         QCOMPARE(PreviewLibrary::select(file, mime, QStringLiteral("sample.") + QString::fromLatin1(suffix)), QStringLiteral("audio"));
         QCOMPARE(file.pos(), 0);
     }
@@ -280,7 +282,7 @@ void AudioTest::realMusicFiles()
         QTRY_VERIFY(!controller.window()->findChild<QMediaPlayer *>());
         QCOMPARE(QFileInfo(path).size(), size);
         QCOMPARE(QFileInfo(path).lastModified(), modified);
-        QTRY_COMPARE_WITH_TIMEOUT(activeAudioHelpers(), 0, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(activeMediaHelpers(), 0, 3000);
     }
 }
 void AudioTest::generatedAudioFormats()
@@ -306,7 +308,7 @@ void AudioTest::generatedAudioFormats()
         QCOMPARE(player->error(), QMediaPlayer::NoError);
         qInfo() << "Integrated format playback/seek passed:" << name;
         controller.hide();
-        QTRY_COMPARE_WITH_TIMEOUT(activeAudioHelpers(), 0, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(activeMediaHelpers(), 0, 3000);
     }
 }
 void AudioTest::movingVideoDoesNotPlayAsAudio()
@@ -318,11 +320,10 @@ void AudioTest::movingVideoDoesNotPlayAsAudio()
     mute(controller);
     QString error;
     QVERIFY(controller.show(path, error, nullptr, {}, false, true));
-    QTRY_COMPARE_WITH_TIMEOUT(controller.previewKind(), QStringLiteral("information"), 5000);
-    QString text;
-    for (auto *label : controller.window()->findChildren<QLabel *>()) text += label->text();
-    QVERIFY2(text.contains(QStringLiteral("contains video")), qPrintable(text));
-    QVERIFY(!controller.window()->findChild<QMediaPlayer *>());
+    QTRY_COMPARE_WITH_TIMEOUT(controller.previewKind(), QStringLiteral("video"), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(controller.window()->findChild<QMediaPlayer *>()
+        && controller.window()->findChild<QMediaPlayer *>()->position() > 0, 5000);
+    QVERIFY(controller.window()->findChild<QAudioOutput *>()->isMuted());
     controller.hide();
 }
 QTEST_MAIN(AudioTest)

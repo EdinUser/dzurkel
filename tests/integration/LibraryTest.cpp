@@ -75,7 +75,7 @@ void LibraryTest::initTestCase()
 void LibraryTest::catalogDrivesSelectionAndBudgets()
 {
     const auto readers = PreviewLibrary::readers();
-    QCOMPARE(readers.size(), 14);
+    QCOMPARE(readers.size(), 15);
     QSet<QString> ids;
     for (const auto &entry : readers) {
         QVERIFY(!ids.contains(entry.id));

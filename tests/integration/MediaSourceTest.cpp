@@ -41,6 +41,7 @@ private slots:
     void readsArbitraryRangesWithoutCopyingWholeSource();
     void cancellationWakesBlockedReadWithoutFreezingEventLoop();
     void stalledReadHasDeadline();
+    void adjacentReadsReuseBoundedReadAhead();
     void rejectsMissingAndSpecialFiles_data();
     void rejectsMissingAndSpecialFiles();
     void keepsOpenedIdentityAndDetectsTruncation();
@@ -138,6 +139,29 @@ void MediaSourceTest::stalledReadHasDeadline()
     QVERIFY(elapsed.elapsed() >= 100);
     QVERIFY(elapsed.elapsed() < 1000);
     QVERIFY(source.errorString().contains(QStringLiteral("timed out")));
+    source.cancel();
+}
+void MediaSourceTest::adjacentReadsReuseBoundedReadAhead()
+{
+    QTemporaryDir directory;
+    QFile file(directory.filePath(QStringLiteral("source")));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QVERIFY(file.resize(4 * StreamingMediaSource::ReadAheadBytes));
+    file.close();
+    StreamingMediaSource source(nullptr, 3000);
+    QSignalSpy ready(&source, &StreamingMediaSource::ready);
+    source.start(QString::fromUtf8(DZURKEL_MEDIA_HELPER), file.fileName(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 3000);
+    auto first = QtConcurrent::run([&] { return source.read(32768); });
+    QTRY_VERIFY_WITH_TIMEOUT(first.isFinished(), 2000);
+    QCOMPARE(first.result().size(), 32768);
+    // A second adjacent decoder request must not incur another one-second
+    // source read. The cache is bounded and does not become a source snapshot.
+    auto adjacent = QtConcurrent::run([&] { return source.read(32768); });
+    QTRY_VERIFY_WITH_TIMEOUT(adjacent.isFinished(), 500);
+    QCOMPARE(adjacent.result().size(), 32768);
+    QCOMPARE(source.bytesTransferred(), 65536);
+    QVERIFY(source.bytesTransferred() < source.size());
     source.cancel();
 }
 void MediaSourceTest::rejectsMissingAndSpecialFiles_data()

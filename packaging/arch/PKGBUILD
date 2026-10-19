@@ -1,5 +1,5 @@
 pkgname=dzurkel
-pkgver=0.7.1
+pkgver=0.8.0
 pkgrel=1
 pkgdesc='Quick file previews for Dolphin, Nautilus and Thunar'
 arch=('x86_64')
@@ -8,7 +8,7 @@ license=('GPL-3.0-or-later')
 depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-webengine' 'qt6-wayland' 'libzip')
 makedepends=('cmake' 'syntax-highlighting>=6.0' 'qt6-multimedia' 'kwindowsystem')
 checkdepends=('dbus' 'python' 'desktop-file-utils')
-optdepends=('qt6-multimedia: optional audio previews'
+optdepends=('qt6-multimedia: optional audio and video previews'
             'kwindowsystem: optional KDE activation and Thunar focus support'
             'antiword: legacy Word DOC text extraction'
             'dolphin: file manager integration (26.04+ for Space setup)'

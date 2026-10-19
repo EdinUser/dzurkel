@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.7.1 LANGUAGES CXX)
+project(Dzurkel VERSION 0.8.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,15 +18,17 @@ endif()
 set(DZURKEL_MIN_QT "6.4")
 set(DZURKEL_MIN_LIBZIP "1.7")
 find_package(Qt6 ${DZURKEL_MIN_QT} REQUIRED COMPONENTS Core Gui Widgets DBus Concurrent Pdf PdfWidgets)
-set(DZURKEL_AUDIO "AUTO" CACHE STRING "Audio adapter: AUTO, ON or OFF")
+set(DZURKEL_AUDIO "AUTO" CACHE STRING "Audio/video media adapter: AUTO, ON or OFF")
 set_property(CACHE DZURKEL_AUDIO PROPERTY STRINGS AUTO ON OFF)
 if(NOT DZURKEL_AUDIO MATCHES "^(AUTO|ON|OFF)$")
     message(FATAL_ERROR "DZURKEL_AUDIO must be AUTO, ON or OFF")
 endif()
 if(DZURKEL_AUDIO STREQUAL "ON")
     find_package(Qt6Multimedia 6.4 REQUIRED)
+    find_package(Qt6MultimediaWidgets 6.4 REQUIRED)
 elseif(DZURKEL_AUDIO STREQUAL "AUTO")
     find_package(Qt6Multimedia 6.4 QUIET)
+    find_package(Qt6MultimediaWidgets 6.4 QUIET)
 endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip>=${DZURKEL_MIN_LIBZIP})
@@ -46,6 +48,7 @@ target_include_directories(dzurkel_media_source PUBLIC src)
 target_link_libraries(dzurkel_media_source PUBLIC Qt6::Core)
 add_library(dzurkel_core STATIC
     src/application/CommandLine.cpp
+    src/application/RuntimeCompatibility.cpp
     src/application/InstanceCoordinator.cpp
     src/controller/PreviewController.cpp
     src/desktop/DesktopIntegration.cpp
@@ -77,7 +80,8 @@ add_library(dzurkel_core STATIC
     src/preview/text/TextHighlighting.cpp
     src/preview/providers/FileInfoProvider.cpp
     src/preview/providers/AudioPreviewProvider.cpp
-    src/preview/media/AudioBackend.cpp
+    src/preview/providers/VideoPreviewProvider.cpp
+    src/preview/media/MediaBackend.cpp
     src/resources/media/MediaSourceHelper.cpp
     src/resources/FolderNavigation.cpp
     src/resources/FileResource.cpp
@@ -91,6 +95,13 @@ target_include_directories(dzurkel_core PUBLIC src)
 target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets dzurkel_media_source)
 target_link_libraries(dzurkel_core PRIVATE PkgConfig::LIBZIP)
 target_link_libraries(dzurkel_core PRIVATE Iconv::Iconv)
+file(RELATIVE_PATH DZURKEL_COMPATIBILITY_INSTALL_PATH "${CMAKE_INSTALL_FULL_BINDIR}"
+    "${CMAKE_INSTALL_FULL_DATADIR}/dzurkel/build-compatibility.json")
+target_compile_definitions(dzurkel_core PRIVATE
+    DZURKEL_COMPATIBILITY_INSTALL_PATH="${DZURKEL_COMPATIBILITY_INSTALL_PATH}"
+    DZURKEL_VERSION="${PROJECT_VERSION}"
+    DZURKEL_MIN_QT="${DZURKEL_MIN_QT}"
+    DZURKEL_MIN_LIBZIP="${DZURKEL_MIN_LIBZIP}")
 file(RELATIVE_PATH DZURKEL_HIGHLIGHTING_INSTALL_PATH "${CMAKE_INSTALL_FULL_BINDIR}"
     "${CMAKE_INSTALL_FULL_LIBDIR}/dzurkel/plugins/libdzurkel_highlighting.so")
 target_compile_definitions(dzurkel_core PRIVATE
@@ -117,15 +128,15 @@ file(RELATIVE_PATH DZURKEL_DESKTOP_INSTALL_PATH "${CMAKE_INSTALL_FULL_BINDIR}"
 target_compile_definitions(dzurkel_core PRIVATE
     DZURKEL_AUDIO_INSTALL_PATH="${DZURKEL_AUDIO_INSTALL_PATH}"
     DZURKEL_DESKTOP_INSTALL_PATH="${DZURKEL_DESKTOP_INSTALL_PATH}")
-if(NOT DZURKEL_AUDIO STREQUAL "OFF" AND TARGET Qt6::Multimedia)
-    add_library(dzurkel_audio MODULE src/preview/media/QtAudioBackend.cpp src/preview/media/AudioPreviewWidget.cpp)
+if(NOT DZURKEL_AUDIO STREQUAL "OFF" AND TARGET Qt6::Multimedia AND TARGET Qt6::MultimediaWidgets)
+    add_library(dzurkel_audio MODULE src/preview/media/QtMediaBackend.cpp src/preview/media/MediaPreviewWidget.cpp src/preview/media/MediaSession.cpp)
     target_include_directories(dzurkel_audio PRIVATE src)
-    target_link_libraries(dzurkel_audio PRIVATE Qt6::Widgets Qt6::Multimedia dzurkel_media_source)
+    target_link_libraries(dzurkel_audio PRIVATE Qt6::Widgets Qt6::MultimediaWidgets dzurkel_media_source)
     set_target_properties(dzurkel_audio PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-plugins")
     install(TARGETS dzurkel_audio LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/dzurkel/plugins)
-    message(STATUS "Audio: optional runtime adapter enabled")
+    message(STATUS "Audio/video: optional runtime media adapter enabled")
 else()
-    message(STATUS "Audio: adapter not built; baseline previews remain available")
+    message(STATUS "Audio/video: adapter not built; baseline previews remain available")
 endif()
 if(DZURKEL_WITH_KDE_ACTIVATION)
     add_library(dzurkel_desktop MODULE src/desktop/KdeDesktopBackend.cpp)
@@ -242,6 +253,15 @@ if(DZURKEL_BUILD_MEDIA_EXPERIMENT OR BUILD_TESTING)
 endif()
 if(DZURKEL_BUILD_MEDIA_EXPERIMENT)
     find_package(Qt6Multimedia 6.4 REQUIRED)
+    find_package(Qt6MultimediaWidgets 6.4 REQUIRED)
+    add_executable(dzurkel_video_experiment tests/experiments/VideoExperiment.cpp)
+    target_link_libraries(dzurkel_video_experiment PRIVATE dzurkel_media_source Qt6::MultimediaWidgets)
+    target_compile_definitions(dzurkel_video_experiment PRIVATE
+        DZURKEL_MEDIA_HELPER="$<TARGET_FILE:dzurkel_media_source_helper>")
+    add_dependencies(dzurkel_video_experiment dzurkel_media_source_helper)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(dzurkel_video_experiment PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
     add_executable(dzurkel_media_experiment tests/experiments/MediaExperiment.cpp)
     target_link_libraries(dzurkel_media_experiment PRIVATE dzurkel_media_source Qt6::Multimedia)
     target_compile_definitions(dzurkel_media_experiment PRIVATE
@@ -275,6 +295,11 @@ if(BUILD_TESTING)
     add_test(NAME dzurkel_highlighting COMMAND dzurkel_highlighting_tests)
     set_tests_properties(dzurkel_highlighting PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
     if(TARGET dzurkel_audio)
+        add_executable(dzurkel_video_tests tests/integration/VideoTest.cpp)
+        target_link_libraries(dzurkel_video_tests PRIVATE dzurkel_core Qt6::Test Qt6::MultimediaWidgets)
+        add_dependencies(dzurkel_video_tests dzurkel)
+        add_test(NAME dzurkel_video COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_video_tests>)
+        set_tests_properties(dzurkel_video PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=ffmpeg" TIMEOUT 180)
         add_executable(dzurkel_audio_tests tests/integration/AudioTest.cpp)
         target_link_libraries(dzurkel_audio_tests PRIVATE dzurkel_core Qt6::Test Qt6::Multimedia)
         add_dependencies(dzurkel_audio_tests dzurkel)
@@ -333,6 +358,7 @@ if(BUILD_TESTING)
     add_test(NAME dzurkel_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_dbus_tests>)
     set_tests_properties(dzurkel_dbus PROPERTIES TIMEOUT 60)
     add_executable(dzurkel_settings_tests tests/integration/SettingsTest.cpp)
+    add_dependencies(dzurkel_settings_tests dzurkel)
     target_link_libraries(dzurkel_settings_tests PRIVATE dzurkel_core Qt6::Test)
     add_test(NAME dzurkel_settings COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_settings_tests>)
     set_tests_properties(dzurkel_settings PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)

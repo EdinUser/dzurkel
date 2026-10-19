@@ -60,6 +60,7 @@ existing sizing and restore the appropriate geometry on return.
 | Images | PNG, JPEG, and BMP; additional formats depend on installed Qt image readers. |
 | PDF | First page on open, fit-to-width display, page count, and multipage scrolling. |
 | Audio | MP3, FLAC, Ogg/Vorbis, Opus, WAV, AAC, M4A (AAC/ALAC) and audio-only MP4, subject to installed Qt decoding support. |
+| Video | MP4/M4V, MKV, WebM, MOV, AVI, MPG/MPEG, OGV and WMV; streamed into an aspect-preserving view, subject to installed Qt decoding support. |
 | CSV / TSV | Read-only table grid; literal values, quoted fields and bounded complete records. |
 | XLSX | Same table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
 | DOCX / RTF / EPUB | Bounded content previews with basic formatting and plain-text fallback for unsupported formatting. |
@@ -85,7 +86,9 @@ plugins (Fedora's `qt6-qtimageformats` provides additional readers).
 Audio starts playing when its preview opens. Its compact view shows available
 cover art, title, artist and album, with filename/icon fallbacks. Play/Pause (`P`),
 a seek bar, time, volume and mute are available; seeking is enabled only when the
-backend supports it. Volume and mute are remembered within the resident process.
+backend supports it. Audio and video autoplay with sound and share volume/mute
+choices within the resident process. Dismissal preserves those choices; restarting
+Dzurkel resets them.
 Clicking the seek-bar track jumps directly to the selected time; clicking the
 volume track sets that level. Both sliders take keyboard focus on click, so
 plain arrows adjust that control rather than browsing files. Dragging a handle
@@ -98,16 +101,26 @@ details appear in the footer and file information.
 Audio reads and seeks through an isolated helper without copying the complete
 file. Unsupported decoding, invalid media and failed/timed-out reads stop playback
 and show file information with an explanation. No codecs are installed, no
-transcoding is attempted, and package advice is not guessed. Files with moving
-video tracks currently show an explanation instead of playing only their audio.
+transcoding is attempted, and package advice is not guessed. Moving-video tracks
+select the video view; audio-only containers select the music view without
+reopening the source. Video uses the same controls and dismissal behavior,
+preserves aspect ratio and can play silently without an audio output device.
+Loading remains visible until a frame arrives. Slow sources show seeking or
+buffering feedback; closing or changing files cancels source access independently
+of read deadlines. The helper uses a bounded 512 KiB read-ahead window and
+transfers ranges of at most 64 KiB, with no whole-file snapshot. Underlying mounts
+may cache more data. See [video behavior and limits](video-preview.md).
 See the shared [audio/video policy](preview-library.md#audio-and-video-playback-policy).
 
 PDF search, annotations, editing, printing, and password entry are not supported.
 Password-protected, damaged, oversized, or unsupported documents show an
 explanation with file information instead of an empty preview.
 
-Text is always shown in a read-only monospace editor with horizontal and vertical
-scrollbars. Markup is displayed literally. UTF-8 is preferred; a byte-order mark
+Text is shown in a read-only monospace editor and wraps to the preview width by
+default. The toolbar's **Wrap lines** toggle is remembered per user; turning it
+off enables horizontal scrolling for long lines. Whitespace and line numbers
+still describe the original bounded text, not the visual wrap positions.
+Markup is displayed literally. UTF-8 is preferred; a byte-order mark
 can identify UTF-16/UTF-32. Invalid UTF-8 may use a labeled Latin-1 fallback;
 unknown legacy encodings are not reliably detected. Binary data receives an
 information view rather than a text dump.
@@ -205,7 +218,7 @@ a simple reading view. Legacy DOC uses the same view with extracted plain text. 
 the window; there are no simulated paper pages or page counts. Selection and
 copy work, and the existing zoom controls adjust text from 50% to 300%. Fit/`0`
 restores the default text size. Plain text has the same font-zoom bounds while
-retaining its monospace font and unwrapped lines.
+retaining its monospace font and remembered wrapping choice.
 Space/Escape dismiss and Alt+arrows browse files as usual.
 
 DOCX preserves ordinary headings, paragraphs, emphasis, simple lists, tables,

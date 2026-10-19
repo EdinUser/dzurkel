@@ -1229,3 +1229,65 @@ audio, highlighting or KDE desktop libraries. Native desktop checks for the
 earlier changes are recorded above; the icon change has not received a fresh
 native desktop acceptance pass. Distribution package builds, clean installation
 and removal, the Debian 12 baseline and native GNOME gate run in release CI.
+
+## Video integration — Fedora 44, Qt 6.11.2
+
+The normal Debug build passed all 24 registered CTest suites after video
+integration (58.62 s). Video, audio, streaming-source and standalone playback
+suites also passed AddressSanitizer/UndefinedBehaviorSanitizer checks (23.06 s),
+with leak detection disabled for external Qt runtime caches. Optional-runtime
+fallback now exercises both Multimedia and Multimedia Widgets dependencies.
+
+Generated fixtures exercise silent MP4 with indexes at the beginning/end, MKV,
+VP8 WebM, AAC audio-only MP4, actual-frame seeking, pause/end behavior, dismissal,
+replacement, stale failures, invalid media and streaming selection without a
+whole-file snapshot. Fixture tools/codecs and personal-file checks are explicitly
+skipped when unavailable; their absence is not counted as native validation.
+
+Read-only local HEVC/AC-3 MKV and mounted CIFS samples passed integrated native
+KDE Wayland controls, frame delivery, seeking and dismissal checks. An actual
+active-window compositor capture was visually inspected for rendering and aspect
+fit; QWidget snapshots omit the RHI video surface. Source sizes/mtimes remained
+unchanged. These tests deliver Qt events rather than physical compositor input.
+
+Ten standalone local/CIFS playback, repeat, delayed-read and cancellation cases
+passed with the helper's fixed 512 KiB read-ahead window and <=64 KiB IPC
+transfers. Adding 250 ms per filesystem read produced approximately 1.1/0.5 s
+forward/backward seeks, versus 9.3/5.8 s without read-ahead. Cancellation during
+an initial five-second delayed read did not wait for that read to finish; helper
+cleanup completed. These are latency-injection observations with uncontrolled
+filesystem/server caches, not SMB wire-traffic or bandwidth guarantees.
+
+See [video previews](video-preview.md) for behavior, policies and opt-in test
+variables. Real disconnection/recovery, direct SMB/SFTP authentication, actual
+missing-output-device playback, other backends/codecs, decoded-memory bounds
+and full GNOME/XFCE desktop acceptance remain separate checks.
+
+Audio/video now use a shared session mute/volume choice, with audible autoplay
+by default. `VideoTest::sharesMuteAndVolumeAcrossAudioAndVideo` checks the
+default using a silent video, carries mute/volume into audio-only MP4, then
+checks unmute/zero-volume inheritance back into video after dismissal. Unmute
+checks use silent content or zero volume so the test does not emit sound.
+Personal-file playback tests explicitly mute before queued media startup.
+
+## 0.8.0 release preparation
+
+On 2026-10-19, the versioned 0.8.0 Debug build passed all 24 CTest suites
+(66.11 s). The baseline preset, with media, highlighting and KDE activation
+adapters disabled, passed all 20 registered suites (44.19 s). Both builds used
+Fedora's Qt 6.11.2; this baseline run does not establish Qt 6.4 or Debian 12
+compatibility. Earlier native media and sanitizer checks are recorded above.
+
+CMake, RPM, Debian and Arch versions agree on 0.8.0. The executable reports
+0.8.0, and both regenerated compatibility reports identify that version. The
+full build contains all three optional adapters; the baseline contains none.
+The core executable has no direct Multimedia or KF6 dependency. The desktop
+adapter's release-specific ID was advanced; media and highlighting retain
+their independent interface versions.
+
+RPM spec parsing, local documentation links, staged-path checks and diff
+whitespace checks passed. Debian now recommends Multimedia and Multimedia
+Widgets runtime libraries; their SDKs remain build dependencies. Release
+package builds, clean installation/removal and the native GNOME gate still
+require the release-publication workflow. No tag or GitHub release is created
+by this commit preparation.

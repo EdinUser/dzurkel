@@ -2,7 +2,7 @@
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/FileInfoProvider.h"
 #include "preview/providers/ImagePreviewProvider.h"
-#include "preview/media/AudioBackend.h"
+#include "preview/media/MediaBackend.h"
 #include "resources/ResourcePreparation.h"
 #include "resources/FolderNavigation.h"
 #include <QImageReader>
@@ -190,12 +190,12 @@ void PreviewController::commitReadyPreview()
     auto ready = std::move(*ready_);
     ready_.reset();
     auto &data = ready.data;
-    if (data.kind == PreviewKind::Audio) {
-        const auto availability = audioAvailability();
+    if (data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video) {
+        const auto availability = mediaAvailability();
         if (!availability.available) {
             data.kind = PreviewKind::Information;
             data.missingLibrary = QStringLiteral("multimedia");
-            data.message = QStringLiteral("Audio preview needs an optional library. Check Settings for details!");
+            data.message = QStringLiteral("Media preview needs an optional library. Check Settings for details!");
             data.detail = availability.explanation;
         }
     }
@@ -207,9 +207,12 @@ void PreviewController::commitReadyPreview()
     window_.beginPreviewUpdate();
     if (window_.usesGnomePresentation()) window_.setResource(ready.job.resource);
     window_.setContent(PreviewRegistry::createWidget(data, nullptr));
-    if (auto *audio = qobject_cast<AudioControls *>(window_.findChild<QWidget *>(QStringLiteral("audioPreview")))) {
+    QWidget *mediaWidget = window_.findChild<QWidget *>(data.kind == PreviewKind::Video
+        ? QStringLiteral("videoPreview") : QStringLiteral("audioPreview"));
+    if (auto *media = qobject_cast<MediaControls *>(mediaWidget)) {
         const auto generation = generation_;
-        audio->setCallbacks(this,
+        auto mediaData = std::make_shared<PreviewData>(data);
+        media->setCallbacks(this,
             [this, generation, job = ready.job, data](const QString &message, const QString &details) {
                 QTimer::singleShot(0, this, [this, generation, job, data, message, details] {
                     if (generation != generation_ || !isVisible()) return;
@@ -221,15 +224,29 @@ void PreviewController::commitReadyPreview()
                     commitReadyPreview();
                 });
             },
-            [this, generation, media = data](const QString &summary, const QString &details) mutable {
+            [this, generation, mediaData](const QString &summary, const QString &details) {
                 if (generation != generation_ || !isVisible()) return;
-                media.mediaSummary = summary;
-                media.detail = details;
-                window_.setPreviewData(media, false);
+                mediaData->mediaSummary = summary;
+                mediaData->detail = details;
+                window_.setPreviewData(*mediaData, false);
+            },
+            [this, generation, mediaData](bool video) {
+                if (generation != generation_ || !isVisible()) return;
+                mediaData->kind = video ? PreviewKind::Video : PreviewKind::Audio;
+                mediaData->readerId = video ? QStringLiteral("video") : QStringLiteral("audio");
+                const bool changed = kind_ != mediaData->kind;
+                kind_ = mediaData->kind;
+                if (changed) {
+                    window_.beginPreviewUpdate();
+                    window_.setPreviewData(*mediaData);
+                    window_.endPreviewUpdate();
+                    emit stateChanged();
+                }
             });
     }
     window_.setPreviewData(data);
-    window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information || data.kind == PreviewKind::Audio);
+    window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information
+        || data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video);
     window_.endPreviewUpdate();
     if (presentationPending_) {
         presentationPending_ = false;

@@ -6,6 +6,7 @@
 #include "providers/PdfPreviewProvider.h"
 #include "providers/TextPreviewProvider.h"
 #include "providers/AudioPreviewProvider.h"
+#include "providers/VideoPreviewProvider.h"
 #include "providers/DocumentPreviewProvider.h"
 #include "readers/DocumentReader.h"
 #include "readers/CsvReader.h"
@@ -22,6 +23,9 @@ QList<ReaderCapability> PreviewLibrary::readers()
     formats.removeDuplicates();
     std::sort(formats.begin(), formats.end());
     return {
+        {QStringLiteral("video"), QStringLiteral("Video"), QStringLiteral("video-x-generic"), QStringLiteral("videoInfo"),
+         QStringLiteral("Read-only streaming video previews, fitted to the window. MP4, MKV, WebM, MOV, AVI, MPEG, OGV and WMV depend on the installed Qt media backend and codecs. Autoplay uses the same session mute/volume choice as music; play/pause (P), seeking, volume and mute. Space/Escape close the preview. Audio-only containers use the audio view. Slow sources show loading, seeking or buffering feedback; leaving the preview cancels playback. A bounded source cache avoids a whole-file snapshot; underlying mounts may cache additional data."),
+         SourceAccess::Streaming, 0},
         {QStringLiteral("audio"), QStringLiteral("Audio"), QStringLiteral("audio-x-generic"), QStringLiteral("audioInfo"),
          QStringLiteral("Read-only streaming previews for MP3, FLAC, Ogg/Vorbis, Opus, WAV, AAC, M4A and audio-only MP4. Playback depends on the installed Qt media backend and codecs. Play/pause, seeking, volume and mute; Space closes the preview. Unsupported or damaged files show an error. No codecs are installed and no whole-file copy is made."),
          SourceAccess::Streaming, 0},
@@ -83,6 +87,7 @@ QString PreviewLibrary::select(QFile &file, const QMimeType &mime, const QString
     if (image || ImagePreviewProvider().supports(mime)) return QStringLiteral("image");
     const auto document = DocumentPreviewProvider::format(mime, originalPath, file.peek(16));
     if (!document.isEmpty()) return document;
+    if (VideoPreviewProvider::accepts(mime, originalPath)) return QStringLiteral("video");
     if (AudioPreviewProvider::accepts(mime, originalPath)) return QStringLiteral("audio");
     const auto suffix = QFileInfo(originalPath).suffix().toLower();
     if (XlsxPreviewProvider().supports(mime) || suffix == QStringLiteral("xlsx")) return QStringLiteral("xlsx");
@@ -99,6 +104,7 @@ std::unique_ptr<PreviewProvider> PreviewLibrary::createReader(const QString &id)
     if (id == QStringLiteral("xlsx")) return std::make_unique<XlsxPreviewProvider>();
     if (id == QStringLiteral("text")) return std::make_unique<TextPreviewProvider>();
     if (id == QStringLiteral("audio")) return std::make_unique<AudioPreviewProvider>();
+    if (id == QStringLiteral("video")) return std::make_unique<VideoPreviewProvider>();
     if (id == QStringLiteral("docx") || id == QStringLiteral("rtf") || id == QStringLiteral("epub") || id == QStringLiteral("doc") || id == QStringLiteral("markdown")
         || id == QStringLiteral("fb2") || id == QStringLiteral("sfb") || id == QStringLiteral("mobi"))
         return std::make_unique<DocumentPreviewProvider>();

@@ -12,10 +12,11 @@ Homepage: https://github.com/EdinUser/dzurkel
 Package: dzurkel
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, qt6-wayland
-Recommends: qt6-image-formats-plugins, libkf6syntaxhighlighting6 (>= 6.0)
-Suggests: libqt6multimedia6, libkf6windowsystem6, antiword, dolphin, nautilus, thunar, kio-fuse, kio-extras
+Recommends: qt6-image-formats-plugins, libkf6syntaxhighlighting6 (>= 6.0),
+ libqt6multimedia6, libqt6multimediawidgets6
+Suggests: libkf6windowsystem6, antiword, dolphin, nautilus, thunar, kio-fuse, kio-extras
 Description: Quick file previews for Dolphin, Nautilus and Thunar
- Preview images, PDFs, audio, formatted documents, e-books, text and
+ Preview images, PDFs, audio, video, formatted documents, e-books, text and
  CSV/TSV/XLSX spreadsheets in a reusable window. Open Dzurkel Settings
  to configure the optional Space shortcut
  in Dolphin (26.04 or newer), Nautilus or Thunar.

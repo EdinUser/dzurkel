@@ -1,3 +1,12 @@
+dzurkel (0.8.0-1) trixie; urgency=medium
+
+  * Add streaming video previews with shared audio/video mute and volume.
+  * Add bounded media read-ahead, slow-source feedback and adapter diagnostics.
+  * Add remembered text wrapping and Settings OS-compatibility details.
+  * Recommend media runtime libraries; keep development SDKs build-only.
+
+ -- Dzurkel contributors <noreply@github.com>  Mon, 19 Oct 2026 18:17:26 +0000
+
 dzurkel (0.7.1-1) trixie; urgency=medium
 
   * Add optional audio, highlighting and desktop backends with library guidance.

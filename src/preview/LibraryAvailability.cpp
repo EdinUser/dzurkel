@@ -1,6 +1,6 @@
 #include "LibraryAvailability.h"
 #include "text/TextHighlighting.h"
-#include "media/AudioBackend.h"
+#include "media/MediaBackend.h"
 #include "desktop/DesktopIntegration.h"
 #include <QImageReader>
 #include <QStandardPaths>
@@ -23,7 +23,7 @@ QString libraryInstallationCommand(const QString &id, const QString &distributio
     } else if (distribution == QStringLiteral("debian") && (release == QStringLiteral("12") || release == QStringLiteral("13"))) {
         prefix = QStringLiteral("sudo apt install ");
         if (id == QStringLiteral("antiword")) package = QStringLiteral("antiword");
-        else if (id == QStringLiteral("multimedia")) package = QStringLiteral("libqt6multimedia6");
+        else if (id == QStringLiteral("multimedia")) package = QStringLiteral("libqt6multimedia6 libqt6multimediawidgets6");
         else if (id == QStringLiteral("imageformats")) package = QStringLiteral("qt6-image-formats-plugins");
         else if (release == QStringLiteral("13") && id == QStringLiteral("highlighting")) package = QStringLiteral("libkf6syntaxhighlighting6");
         else if (release == QStringLiteral("13") && id == QStringLiteral("desktop")) package = QStringLiteral("libkf6windowsystem6");
@@ -40,7 +40,7 @@ QString libraryInstallationCommand(const QString &id, const QString &distributio
 QList<LibraryAvailability> libraryAvailability(bool recheck)
 {
     const auto highlighting = highlightingAvailability(recheck);
-    const auto audio = audioAvailability(recheck);
+    const auto audio = mediaAvailability(recheck);
     const auto desktop = desktopAvailability(recheck);
     const auto formats = QImageReader::supportedImageFormats();
     const bool anyExtraImages = formats.contains("webp") || formats.contains("tiff") || formats.contains("tif");
@@ -86,11 +86,11 @@ QList<LibraryAvailability> libraryAvailability(bool recheck)
              "RTF, plain text and CSV do not use it. It does not provide Excel formula calculation or Office layout fidelity. "
              "libzip is currently required to start this Dzurkel package.").arg(zipVersion)
              + (zipCompatible ? QString() : QStringLiteral("\n\nInstall a compatible Dzurkel/libzip package set. Do not replace a single system library with an unrelated build.") + guidance)},
-        {QStringLiteral("multimedia"), QStringLiteral("Qt Multimedia"), QStringLiteral("Audio playback"),
+        {QStringLiteral("multimedia"), QStringLiteral("Qt Multimedia"), QStringLiteral("Audio and video playback"),
          audio.available ? LibraryHealth::Available : audio.adapterFound ? LibraryHealth::Limited : LibraryHealth::Missing,
          audio.available ? QStringLiteral("Available") : audio.adapterFound ? QStringLiteral("Cannot load") : QStringLiteral("Missing adapter"),
-         audio.explanation + QStringLiteral("\n\nAudio is optional. Text, PDF, images and document previews remain available without it. "
-             "Individual audio formats still depend on the installed media backend, codec and output device. "
+         audio.explanation + QStringLiteral("\n\nAudio and video are optional. Text, PDF, images and document previews remain available without them. "
+             "Formats depend on the installed media backend and codecs. Audio requires an output device; video can play silently. "
              "Refresh retries a missing adapter. After replacing a loaded backend, restart Dzurkel.") + guidance},
         {QStringLiteral("imageformats"), QStringLiteral("Qt image readers"), QStringLiteral("Additional image formats"),
          extraImages ? LibraryHealth::Available : anyExtraImages ? LibraryHealth::Limited : LibraryHealth::Missing,

@@ -68,7 +68,7 @@ checksums are not signatures. There is no automatic Dzurkel update repository.
 On Debian 13, install the binary (not the optional debug package):
 
 ```bash
-sudo apt install ./dzurkel_0.7.1-1_amd64.deb
+sudo apt install ./dzurkel_0.8.0-1_amd64.deb
 dzurkel --settings
 ```
 
@@ -76,13 +76,21 @@ On current Arch Linux:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -U ./dzurkel-0.7.1-1-x86_64.pkg.tar.zst
+sudo pacman -U ./dzurkel-0.8.0-1-x86_64.pkg.tar.zst
 dzurkel --settings
 ```
 
 Use the actual filenames downloaded. Developers can obtain build metadata,
 debug packages and source packaging from successful
 [Actions artifacts](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml).
+
+The DEB includes the audio/video and highlighting adapters. Their development
+SDKs are build dependencies, not end-user requirements. Normal APT installation
+installs recommended media/highlighting runtimes; `--no-install-recommends` can
+omit them, leaving baseline previews available. Arch lists those runtimes as
+optional dependencies; Fedora recommends highlighting and suggests media support.
+Missing runtimes are explained in Settings; installed codecs still determine
+which media files can play.
 Extract those ZIPs first and use their distribution-specific checksum manifests;
 those manifests cover all files in each artifact.
 
@@ -135,7 +143,7 @@ sudo dnf install gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-d
 
 `packaging/fedora/install.sh --check` checks packages and tools without building
 or installing. Missing dependencies produce a suggested command and a nonzero
-exit. Optional audio/highlighting/desktop adapters require their development packages
+exit. Optional audio/video, highlighting and desktop adapters require their development packages
 only when building those adapters. The baseline preset needs no optional SDKs.
 For missing-library workflow tests, keep build SDKs out of the runtime VM; the
 [Arch VM workflow](arch-vm-testing.md) builds in an isolated host container.

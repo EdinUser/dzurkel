@@ -23,10 +23,15 @@ with tempfile.TemporaryDirectory(prefix='dzurkel-audio-fallback-') as temporary:
     destination.write_bytes(b'not a loadable adapter')
     subprocess.run(command, cwd=root, env=environment, check=True, timeout=30)
     content = plugin.read_bytes()
-    needed = b'libQt6Multimedia.so.6'
-    assert needed in content
-    destination.write_bytes(content.replace(needed, b'libNA6Multimedia.so.6'))
-    subprocess.run(command, cwd=root, env=environment, check=True, timeout=30)
+    for needed in (b'libQt6Multimedia.so.6', b'libQt6MultimediaWidgets.so.6'):
+        assert needed in content
+        destination.write_bytes(content.replace(needed, needed.replace(b'Qt6', b'NA6')))
+        subprocess.run(command, cwd=root, env=environment, check=True, timeout=30)
+    iid = b'org.dzurkel.MediaBackend/1'
+    assert iid in content
+    destination.write_bytes(content.replace(iid, b'org.dzurkel.MediaBackend/0'))
+    subprocess.run(command, cwd=root,
+                   env={**environment, 'DZURKEL_TEST_MEDIA_INCOMPATIBLE': '1'}, check=True, timeout=30)
     shutil.copy2(plugin, destination)
     environment['DZURKEL_TEST_AUDIO_AVAILABLE'] = '1'
     subprocess.run(command, cwd=root, env=environment, check=True, timeout=30)

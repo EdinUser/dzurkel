@@ -2,7 +2,8 @@
 
 The first library increment supplies a compiled-in reader catalog and a shared
 read-only spreadsheet view. It does not download readers, install packages, load
-third-party plugins, or enable video support. XLSX supplies a separate bounded
+third-party plugins. Audio and video use the shared optional media adapter.
+XLSX supplies a separate bounded
 reader for the same table view. DOCX/RTF/EPUB/FB2/SFB/MOBI and text-only legacy DOC share a
 separate bounded document view.
 
@@ -14,7 +15,7 @@ separate bounded document view.
 2. The selected capability supplies a complete-snapshot, bounded-prefix or streaming source
    policy and byte limit. Image/PDF snapshots remain capped at 64 MiB; CSV/text
    prefixes at 2 MiB plus one truncation-detection byte.
-   Audio retains its original identity and uses helper-backed range reads, with
+   Audio/video retain their original identity and use helper-backed range reads, with
    no media snapshot or total source-size limit.
 3. The existing single decoder worker creates `PreviewData`. Each result names
    its reader. Cancellation and request-generation checks remain in the controller.
@@ -121,7 +122,7 @@ partial table. These are application bounds, not an OS process-memory sandbox;
 cancellation cannot interrupt an individual synchronous library call.
 
 Builds require libzip 1.7+ development files and pkg-config. Legacy XLS, XLSB,
-XLSM and video require separate decisions/readers. No office suite, formula
+XLSM require separate decisions/readers. No office suite, formula
 engine, broker service or reader-package installer is introduced.
 
 ## Formatted documents and e-books
@@ -195,7 +196,7 @@ SMB/SFTP preparation routes remain shared with other readers. See
 
 ## Audio and video playback policy
 
-Audio and future video previews use the decoding support available through the
+Audio and video previews use the decoding support available through the
 installed Qt Multimedia backend. Dzurkel is a quick viewer: it does not bundle
 additional decoders, transcode files, try a second playback engine, or install
 codec packages. Playback in another application is not proof of support in
@@ -204,7 +205,10 @@ Dzurkel, because that application may use different decoder libraries.
 The initial audio candidates are MP3, FLAC, Ogg/Vorbis (`.ogg` and `.oga`), Opus,
 PCM WAV, M4A with AAC or ALAC, standalone AAC and audio-only MP4. These identify
 the intended preview scope, not an unconditional promise that every installed
-backend can decode every file. Future video candidates follow the same policy.
+backend can decode every file. Video supports MP4/M4V, MKV, WebM, MOV, AVI,
+MPG/MPEG, OGV and WMV under the same policy. Actual tracks choose audio or video
+presentation without reopening the source, including audio-only MP4. Both views
+share a playback session, controls and session mute/volume choice.
 
 Use Qt's runtime decoding-capability queries to describe available support.
 Actual opening and playback determine whether a particular file can be
@@ -235,5 +239,7 @@ cancellation and cleanup on supported Qt/backend combinations. It does not
 require every codec to be present on every system: missing decoding support is
 an expected, gracefully reported outcome. The
 [streaming experiment](media-streaming-experiment.md) supplies the current
-source-access evidence. Audio is integrated into the normal reader catalog;
-video rendering remains future work.
+source-access evidence. Audio and video are integrated into the reader catalog;
+[video previews](video-preview.md) describes frame readiness, bounded read-ahead,
+slow-source feedback and cancellation. Network-disconnection recovery, automatic
+resume, advanced tracks/subtitles and hard decoder-memory bounds are not claimed.

@@ -1,5 +1,5 @@
 Name:           dzurkel
-Version:        0.7.1
+Version:        0.8.0
 Release:        1%{?dist}
 Summary:        Quick file previews for Dolphin, Nautilus and Thunar
 
@@ -9,7 +9,7 @@ Source0:        %{url}/archive/refs/tags/v%{version}/%{name}-%{version}.tar.gz
 
 # Adapters are loaded only when available; do not turn their libraries into a
 # mandatory dependency through the ELF dependency generator.
-%global __requires_exclude ^(libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia\\.so\\.6|libKF6WindowSystem\\.so\\.6).*$
+%global __requires_exclude ^(libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia(Widgets)?\\.so\\.6|libKF6WindowSystem\\.so\\.6).*$
 
 BuildRequires:  gcc-c++
 BuildRequires:  cmake >= 3.22
@@ -38,7 +38,7 @@ Suggests:       kio-fuse
 Suggests:       kio-extras
 
 %description
-Dzurkel previews images, PDFs, audio, formatted documents, e-books, text and
+Dzurkel previews images, PDFs, audio, video, formatted documents, e-books, text and
 CSV/TSV/XLSX spreadsheets in a reusable window. It integrates with Dolphin,
 Nautilus and Thunar through optional Space
 shortcut setup.
@@ -77,6 +77,11 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
 
 %changelog
+* Mon Oct 19 2026 Dzurkel contributors - 0.8.0-1
+- Add streaming video with shared audio/video playback and mute/volume choices.
+- Add bounded media read-ahead, slow-source feedback and adapter mismatch diagnostics.
+- Add remembered text wrapping and Settings OS-compatibility details.
+
 * Mon Oct 19 2026 Dzurkel contributors - 0.7.1-1
 - Add optional backends, grouped Settings and missing-library guidance.
 - Fix Markdown opening, Contents placement and image reopening.

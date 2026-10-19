@@ -4,6 +4,8 @@
 #include <QFontDatabase>
 #include <QPlainTextEdit>
 #include <QScrollBar>
+#include <QSettings>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include "ui/ZoomPreview.h"
 #include "preview/readers/TextDecoder.h"
@@ -11,6 +13,11 @@
 
 namespace dzurkel {
 namespace {
+QSettings textSettings()
+{
+    return QSettings(QSettings::IniFormat, QSettings::UserScope,
+        QStringLiteral("dzurkel"), QStringLiteral("dzurkel"));
+}
 class TextView : public ZoomPreview {
 public:
     TextView(const PreviewData &data, QWidget *parent) : ZoomPreview(parent), editor_(new QPlainTextEdit(this))
@@ -19,7 +26,24 @@ public:
         layout->setContentsMargins(0, 0, 0, 0);
         editor_->setObjectName(QStringLiteral("textPreview"));
         editor_->setReadOnly(true);
-        editor_->setLineWrapMode(QPlainTextEdit::NoWrap);
+        wrap_ = new QToolButton(this);
+        wrap_->setObjectName(QStringLiteral("wrapLines"));
+        wrap_->setText(QStringLiteral("Wrap lines"));
+        wrap_->setToolTip(QStringLiteral("Soft wrap long lines to the preview width"));
+        wrap_->setAccessibleName(wrap_->text());
+        wrap_->setCheckable(true);
+        wrap_->setFixedHeight(30);
+        auto settings = textSettings();
+        settings.setFallbacksEnabled(false);
+        wrap_->setChecked(settings.value(QStringLiteral("previews/wrapLines"), true).toBool());
+        editor_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        editor_->setLineWrapMode(wrap_->isChecked() ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
+        connect(wrap_, &QToolButton::toggled, this, [this](bool enabled) {
+            editor_->setLineWrapMode(enabled ? QPlainTextEdit::WidgetWidth : QPlainTextEdit::NoWrap);
+            auto settings = textSettings();
+            settings.setFallbacksEnabled(false);
+            settings.setValue(QStringLiteral("previews/wrapLines"), enabled);
+        });
         baseFont_ = QFontDatabase::systemFont(QFontDatabase::FixedFont);
         if (baseFont_.pointSizeF() <= 0) baseFont_.setPointSizeF(11);
         editor_->setFont(baseFont_);
@@ -36,6 +60,7 @@ public:
     bool isFit() const override { return factor_ == 1.0; }
     qreal maximumZoom() const override { return 3.0; }
     qreal minimumZoom() const override { return .5; }
+    QWidget *toolbarWidget() const override { return wrap_; }
     QString zoomHint() const override { return QStringLiteral("Text size only; Fit restores the default font size. Whitespace and line wrapping are unchanged."); }
 private:
     void apply(qreal factor)
@@ -49,6 +74,7 @@ private:
         emit zoomChanged();
     }
     QPlainTextEdit *editor_;
+    QToolButton *wrap_;
     QFont baseFont_;
     qreal factor_ = 1.0;
 };

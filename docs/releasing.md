@@ -4,8 +4,8 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
-The current release is **0.7.1**. See the [release notes](releases/v0.7.1.md)
-for changes since 0.7.0. Publishing its GitHub prerelease starts the package and
+The current release is **0.8.0**. See the [release notes](releases/v0.8.0.md)
+for changes since 0.7.1. Publishing its GitHub prerelease starts the package and
 validation pipeline; promote it to stable only after all checks pass and the
 runtime installers and checksums are attached. Pushes and tags alone do not
 start package builds.
@@ -29,7 +29,7 @@ The Debian 12 baseline job also builds without optional SDKs and runs CTest;
 the asset-upload job waits for it. This is a source/runtime-baseline check,
 separate from the Debian 13 release package target.
 
-Normal packages ship audio, highlighting and desktop activation adapters, while
+Normal packages ship audio/video, highlighting and desktop activation adapters, while
 their backend libraries remain optional runtime dependencies. Build dependencies
 are needed in the builder only. Recommendations may be installed by DNF/APT;
 Arch optional dependencies are not automatically installed. Validate missing
@@ -98,15 +98,15 @@ report and adapters are absent. These headless tests do not establish KDE deskto
 
 1. Update CMake, RPM `Version`, Debian changelog and Arch `pkgver` together. Increment RPM `Release`
    for packaging-only rebuilds of the same upstream version.
-   Review adapter interface compatibility; the audio/desktop headers currently
-   use release-specific IDs, while highlighting uses an interface ABI version.
+   Review adapter interface compatibility. The media and highlighting interfaces
+   use independent ABI versions; the desktop adapter uses a release-specific ID.
    Regenerate and inspect the
    build compatibility report; dependency candidates alone are not supported OS claims.
 2. Run local builds and tests for the intended commit. Check the package on a real Fedora
    KDE Wayland desktop: previews, Settings, Dolphin Space setup/restoration,
    scaling/focus, upgrade from the previous package and removal.
 3. Push the intended commit, including the release workflow, and create a matching
-   tag, for example `v0.6.3`. Tag creation is a maintainer action; the workflow
+   tag, for example `v0.8.0`. Tag creation is a maintainer action; the workflow
    does not create tags itself. The tag must include the release-triggered workflow.
 4. Create a GitHub release for that tag. Review its notes with compatibility,
    installation instructions, desktop results and known limitations, then choose

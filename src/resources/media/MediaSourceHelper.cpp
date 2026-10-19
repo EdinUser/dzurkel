@@ -47,17 +47,28 @@ int dzurkel::serveMediaSource(const QString &url, int simulatedReadDelayMs)
     if (!openPreviewFile(source, file, error)) return fail(error);
     if (!send(mediaHeader(file.size(), 0))) return 1;
     QByteArray request(16, Qt::Uninitialized);
-    QByteArray buffer(StreamingMediaSource::ChunkBytes, Qt::Uninitialized);
+    // One fixed-size window per helper. Decoder requests stay <=64 KiB, while
+    // adjacent reads reuse a single bounded filesystem read on slow mounts.
+    QByteArray cache(StreamingMediaSource::ReadAheadBytes, Qt::Uninitialized);
+    qint64 cacheOffset = -1, cacheSize = 0, cachedFileSize = file.size();
     while (transfer(request.data(), request.size(), false)) {
         const auto offset = mediaHeaderValue(request.constData(), 0);
         const auto count = mediaHeaderValue(request.constData(), 1);
-        if (offset < 0 || count <= 0 || count > buffer.size()) return 2;
-        // Fault injection is used only by the standalone experiment wrapper.
-        if (delayMs) ::usleep(useconds_t(delayMs) * 1000);
+        if (offset < 0 || count <= 0 || count > StreamingMediaSource::ChunkBytes) return 2;
+        const auto currentSize = file.size();
+        if (currentSize != cachedFileSize) { cacheOffset = -1; cacheSize = 0; cachedFileSize = currentSize; }
         qint64 read = -1;
-        if (file.seek(offset)) read = file.read(buffer.data(), count);
+        if (offset >= cacheOffset && offset < cacheOffset + cacheSize) {
+            read = std::min(count, cacheOffset + cacheSize - offset);
+        } else {
+            // Fault injection models source I/O, not IPC/cache-hit latency.
+            if (delayMs) ::usleep(useconds_t(delayMs) * 1000);
+            cacheOffset = offset / StreamingMediaSource::ReadAheadBytes * StreamingMediaSource::ReadAheadBytes;
+            cacheSize = file.seek(cacheOffset) ? file.read(cache.data(), cache.size()) : -1;
+            if (cacheSize >= 0) read = std::clamp<qint64>(cacheOffset + cacheSize - offset, 0, count);
+        }
         if (!send(mediaHeader(read, 0))) return 1;
-        if (read > 0 && !transfer(buffer.data(), read, true)) return 1;
+        if (read > 0 && !transfer(cache.data() + (offset - cacheOffset), read, true)) return 1;
         if (read < 0) return 1;
     }
     return 0;

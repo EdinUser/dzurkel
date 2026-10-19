@@ -1,10 +1,10 @@
 # Media streaming experiment
 
-The source-access experiment has been integrated into normal audio previews.
+The source-access experiment has been integrated into normal audio/video previews.
 This opt-in, uninstalled probe remains available to measure the shared source
 implementation independently of the application UI. Existing snapshot readers
-and file-manager adapters retain their behavior; future video can reuse the
-same seekable access model.
+and file-manager adapters retain their behavior. Video uses the same seekable
+access model; [video previews](video-preview.md) describes the integrated view.
 
 Audio and video share the agreed [playback policy](preview-library.md#audio-and-video-playback-policy):
 use the installed Qt backend's decoding support, attempt playback, and report
@@ -12,7 +12,7 @@ failures without adding decoders or guessing package-installation advice.
 
 ## Build and run
 
-Install the usual build dependencies plus the matching Qt 6 Multimedia
+Install the usual build dependencies plus the matching Qt 6 Multimedia/Multimedia Widgets
 development package (`qt6-qtmultimedia-devel` on Fedora), then:
 
 ```bash

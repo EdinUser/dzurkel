@@ -4,7 +4,7 @@
 #include "preview/PreviewProvider.h"
 #include "preview/table/TabularDocument.h"
 #include "preview/document/FormattedDocument.h"
-#include "preview/media/AudioBackend.h"
+#include "preview/media/MediaBackend.h"
 #include <QWheelEvent>
 #include "desktop/DesktopIntegration.h"
 #include "desktop/WindowPlacement.h"
@@ -227,7 +227,7 @@ void PreviewWindow::setContent(QWidget *content)
 }
 void PreviewWindow::stopMedia()
 {
-    if (auto *audio = qobject_cast<AudioControls *>(content_)) audio->stop();
+    if (auto *media = qobject_cast<MediaControls *>(content_)) media->stop();
 }
 bool PreviewWindow::usesGnomePresentation() const
 {
@@ -402,7 +402,7 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     } else if (data.kind == PreviewKind::Document) summary_->setText(data.readerId == QLatin1String("doc")
         ? QStringLiteral("DOC · Text-only preview")
         : QStringLiteral("%1 · Content preview").arg(data.readerId == QLatin1String("markdown") ? QStringLiteral("MD") : data.readerId.toUpper()));
-    else if (data.kind == PreviewKind::Audio) summary_->setText(data.mediaSummary);
+    else if (data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video) summary_->setText(data.mediaSummary);
     else summary_->setText(data.description);
     summary_->setToolTip(fileInformation_);
     QString visibleNotice = data.kind == PreviewKind::Information ? QString() : data.message;
@@ -765,7 +765,7 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
         int direction = 0;
         auto *zoom = qobject_cast<ZoomPreview *>(content_);
         const bool verticalBrowsing = arrowNavigation_ && (!zoom || zoom->isFit());
-        const bool mediaSlider = qobject_cast<AudioControls *>(content_) && qobject_cast<QSlider *>(target);
+        const bool mediaSlider = qobject_cast<MediaControls *>(content_) && qobject_cast<QSlider *>(target);
         if (modifiers == Qt::AltModifier || (arrowNavigation_ && modifiers == Qt::NoModifier && !mediaSlider)) {
             if (key->key() == Qt::Key_Left) direction = -1;
             if (key->key() == Qt::Key_Right) direction = 1;

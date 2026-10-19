@@ -22,8 +22,15 @@ selected files in a reusable window.
 - **PDF documents**, with page navigation and zoom.
 - **Music/audio**, with playback, seeking, volume/mute and available track metadata.
   Formats depend on the installed Qt media backend and codecs.
+- **Video**, streamed into an aspect-preserving view with autoplay,
+  play/pause (**P**), seeking, volume and mute. MP4, MKV, WebM, MOV, AVI, MPEG,
+  OGV and WMV depend on the installed media backend and codecs. Audio-only
+  containers use the music view. **Space/Escape** dismiss the preview.
+  Music and video share mute/volume choices for the running session; both
+  start with sound unless muted.
 - **Text and source code**, with automatic syntax highlighting when the optional
-  backend is available, and **CSV/TSV tables**.
+  backend is available, and **CSV/TSV tables**. Text wraps to the preview width by
+  default; the **Wrap lines** toggle in the top control row remembers your choice.
 - **XLSX spreadsheets**, with sheet selection and saved formula results.
 - **DOCX, RTF, EPUB, FB2, SFB, MOBI 6 and Markdown**, with readable content and basic formatting; legacy
   **DOC** has a text-only preview when the optional `antiword` extractor is available.
@@ -35,8 +42,8 @@ the window to dismiss a preview. Dzurkel stays resident for faster reopening;
 modifies the source file. XLSX formulas are not recalculated.
 
 See [supported formats and limits](docs/previews.md) and
-[keyboard controls](docs/usage.md). See the [0.7.1 release notes](docs/releases/v0.7.1.md)
-for optional backends, library guidance, preview fixes and application icons.
+[keyboard controls](docs/usage.md). See the [0.8.0 release notes](docs/releases/v0.8.0.md)
+for streaming video, shared media controls, remembered text wrapping and OS-compatibility details.
 Protected/encrypted content shows an error; unsupported formatting falls back to
 readable text where possible.
 
@@ -91,6 +98,19 @@ Finish file operations before allowing Thunar to restart. Setup is reversible
 and preserves unrelated actions and shortcuts. See [Thunar integration](docs/thunar-integration.md).
 
 ## Compatibility
+
+The **source baseline** requires Qt 6.4+, Qt PDF/PDF Widgets 6.4+ and libzip 1.7+.
+Debian 12 meets that baseline and has passed the headless build and staged-install
+checks. Fedora 43/44 meet the reviewed baseline dependencies; Arch requires a
+current, consistent rolling system. A RHEL minimum has not been established.
+Package installation and desktop validation determine supported environments.
+
+**Downloaded packages can require a newer OS than the source baseline.** Each
+build ships a `build-compatibility.json` report with its runtime requirements,
+reviewed OS candidates and validated minimums where available. Open **Settings →
+Integration → System requirements → OS compatibility…** to see the report for
+your build. Use the release package matching your distribution and version.
+See [runtime requirements and OS compatibility](docs/runtime-baseline.md) for details.
 
 | Environment or location | Status |
 | --- | --- |

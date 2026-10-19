@@ -6,15 +6,15 @@ PDF and the existing bounded XLSX/DOCX/EPUB readers. Existing RTF/FB2/SFB/MOBI
 readers remain included. Individual format/variant and resource limits still
 apply; see [preview behavior](previews.md).
 
-Audio, syntax highlighting, legacy DOC extraction, extra image plugins and
+Audio/video, syntax highlighting, legacy DOC extraction, extra image plugins and
 specialised desktop activation are optional. Missing optional readers produce
 file information explaining the missing component and an **Open Settings**
 action. Missing highlighting leaves plain text. Unknown formats, corrupt files
 and unsupported variants keep their own explanations.
 
-Normal distribution packages build and ship audio, highlighting and desktop
+Normal distribution packages build and ship media, highlighting and desktop
 adapters where their development dependencies exist. Only the adapters link
-Qt Multimedia, KSyntaxHighlighting and KF6 WindowSystem; the executable does not
+Qt Multimedia/Multimedia Widgets, KSyntaxHighlighting and KF6 WindowSystem; the executable does not
 require those libraries at startup. Adapters are loaded from application-relative
 build/install locations and must match the Dzurkel release and Qt runtime.
 Successful modules remain loaded until exit. Refresh status can retry previously
@@ -30,7 +30,7 @@ the command with their package manager.
 
 Distribution package grouping still matters: Arch supplies Qt PDF in
 [qt6-webengine](https://archlinux.org/packages/extra/x86_64/qt6-webengine/), which
-also depends on FFmpeg. Optional audio in Dzurkel does not remove that separate
+also depends on FFmpeg. Optional audio/video in Dzurkel does not remove that separate
 package-level dependency.
 
 ## Build-time calculation
@@ -39,6 +39,13 @@ Each executable build generates `build-compatibility.json`. Installation places
 it under the configured data directory, normally
 `/usr/share/dzurkel/build-compatibility.json`. Python and readelf are build tools;
 the report is static data and needs neither tool on end-user machines.
+
+Open **Settings → Integration → System requirements → OS compatibility…** for
+the installed build's runtime requirements and per-distribution results. The
+summary distinguishes reviewed dependency candidates from validated minimums;
+missing or incompatible reports show an explicit unavailable message. Build-tree
+executables read their adjacent report, and installed executables read the report
+from their configured data directory relative to the executable.
 
 The calculation runs offline from the reviewed
 [distribution catalog](../packaging/compatibility/platforms.json). It does not
@@ -85,11 +92,14 @@ cmake --build --preset baseline
 ctest --preset baseline
 ```
 
-This builds the useful minimum without audio, highlighting or KDE SDKs. Existing
+This builds the useful minimum without audio/video, highlighting or KDE SDKs. Existing
 compatible adapters can still be added afterward. There is no separate reduced
 text-only product/package. The ordinary build uses `DZURKEL_AUDIO=AUTO|ON|OFF`
-(default AUTO); ON requires Qt Multimedia development files, OFF omits that
-adapter. Highlighting has the equivalent existing build modes, and desktop
+(default AUTO); ON requires Qt Multimedia and Multimedia Widgets development
+files, OFF omits the audio/video adapter. The existing `DZURKEL_AUDIO` option
+and `libdzurkel_audio.so` filename are retained for build/package compatibility;
+the adapter now implements the versioned media interface for both views.
+Highlighting has the equivalent existing build modes, and desktop
 activation retains its explicit build option.
 
 The Debian 12 CI gate builds against its native Qt 6.4 without optional SDKs,

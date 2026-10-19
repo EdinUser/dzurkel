@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "application/RuntimeCompatibility.h"
 #include "ipc/NautilusPreviewService.h"
 #include "desktop/DesktopIntegration.h"
 #include "resources/ResourceAccessPolicy.h"
@@ -81,14 +82,15 @@ QIcon libraryStatusIcon(LibraryHealth health, qreal ratio)
     }
     return QIcon(pixmap);
 }
-void showLibraryDetails(QWidget *parent, const QString &title, const QString &details, const QString &command)
+void showLibraryDetails(QWidget *parent, const QString &title, const QString &details, const QString &command,
+                        const QString &name = QStringLiteral("libraryDetails"))
 {
     QDialog dialog(parent);
-    dialog.setObjectName(QStringLiteral("libraryDetails"));
+    dialog.setObjectName(name);
     dialog.setWindowTitle(title);
     auto *layout = new QVBoxLayout(&dialog);
     auto *text = new QTextBrowser(&dialog);
-    text->setObjectName(QStringLiteral("libraryDetailsText"));
+    text->setObjectName(name + QStringLiteral("Text"));
     text->setOpenLinks(false);
     text->setOpenExternalLinks(false);
     text->setPlainText(details);
@@ -201,6 +203,8 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     const QList<Group> groups = {
         {QStringLiteral("Audio"), QStringLiteral("audio-x-generic"), QStringLiteral("audioInfo"),
          {"audio"}, {".mp3, .flac, .ogg, .oga, .opus, .wav, .aac, .m4a, audio-only .mp4"}},
+        {QStringLiteral("Video"), QStringLiteral("video-x-generic"), QStringLiteral("videoInfo"),
+         {"video"}, {".mp4, .m4v, .mkv, .webm, .mov, .avi, .mpg, .mpeg, .ogv, .wmv"}},
         {QStringLiteral("Images"), QStringLiteral("image-x-generic"), QStringLiteral("imageInfo"),
          {"image"}, {}},
         {QStringLiteral("Documents"), QStringLiteral("x-office-document"), QStringLiteral("documentInfo"),
@@ -329,6 +333,25 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     buttons_ = new QDialogButtonBox(QDialogButtonBox::Close, this);
     connect(buttons_, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
     layout->addStretch();
+    const auto compatibility = RuntimeCompatibility::load();
+    auto *requirementsHeading = new QHBoxLayout;
+    auto *requirementsTitle = label(this, QStringLiteral("System requirements"));
+    requirementsTitle->setFont(font);
+    requirementsHeading->addWidget(requirementsTitle);
+    requirementsHeading->addStretch();
+    auto *compatibilityButton = new QPushButton(QStringLiteral("OS compatibility…"), this);
+    compatibilityButton->setObjectName(QStringLiteral("systemRequirementsDetails"));
+    compatibilityButton->setAutoDefault(false);
+    requirementsHeading->addWidget(compatibilityButton);
+    layout->addLayout(requirementsHeading);
+    auto *requirementsSummary = label(this, compatibility.summary, true);
+    requirementsSummary->setObjectName(QStringLiteral("systemRequirementsSummary"));
+    requirementsSummary->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    layout->addWidget(requirementsSummary);
+    connect(compatibilityButton, &QPushButton::clicked, this, [this, compatibility] {
+        showLibraryDetails(this, QStringLiteral("System requirements and OS compatibility"), compatibility.details, {},
+            QStringLiteral("compatibilityDetails"));
+    });
     outer->addWidget(buttons_);
     connect(apply_, &QPushButton::clicked, this, [this] { changeShortcuts(false); });
     connect(restore_, &QPushButton::clicked, this, [this] { changeShortcuts(true); });

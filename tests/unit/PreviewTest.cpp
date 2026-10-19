@@ -27,9 +27,11 @@
 #include <QPlainTextEdit>
 #include <QSemaphore>
 #include <QSignalSpy>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QTest>
+#include <QToolButton>
 #include <QScreen>
 #include <QWindow>
 #include <QtEndian>
@@ -72,6 +74,7 @@ private slots:
     void rejectsOversizedAndDamagedImages();
     void decodesText_data();
     void decodesText();
+    void remembersSoftWrapInExistingToolbar();
     void boundsTextAndRejectsBinary();
     void loadsMultipagePdfAndReleasesIt();
     void handlesInvalidAndProtectedPdf();
@@ -851,6 +854,7 @@ void PreviewTest::initTestCase()
 {
     warnings_ = std::make_unique<OffscreenWarnings>();
     QVERIFY(directory_.isValid());
+    qputenv("XDG_CONFIG_HOME", directory_.filePath(QStringLiteral("config")).toUtf8());
     QImageReader::setAllocationLimit(ImagePreviewProvider::AllocationLimitMiB);
 }
 QString PreviewTest::write(const QString &name, const QByteArray &bytes)
@@ -995,7 +999,7 @@ void PreviewTest::decodesText()
     auto *view = widget->findChild<QPlainTextEdit *>();
     QVERIFY(view);
     QVERIFY(view->isReadOnly());
-    QCOMPARE(view->lineWrapMode(), QPlainTextEdit::NoWrap);
+    QCOMPARE(view->lineWrapMode(), QPlainTextEdit::WidgetWidth);
     QCOMPARE(view->toPlainText(), expected);
     PreviewWindow window(data.resource);
     window.setContent(widget.release());
@@ -1003,6 +1007,47 @@ void PreviewTest::decodesText()
     QCOMPARE(window.findChild<QLabel *>(QStringLiteral("previewSummary"))->text(),
         QStringLiteral("%1 · %2 %3").arg(data.detail).arg(lines)
             .arg(lines == 1 ? QStringLiteral("line") : QStringLiteral("lines")));
+}
+void PreviewTest::remembersSoftWrapInExistingToolbar()
+{
+    const auto data = load(write(QStringLiteral("wrap.txt"), QByteArray(1000, 'x') + "\n  indented\ttext\n"));
+    PreviewWindow window(data.resource);
+    window.setContent(PreviewRegistry::createWidget(data, nullptr));
+    window.setPreviewData(data);
+    window.show();
+    auto *toggle = window.findChild<QToolButton *>(QStringLiteral("wrapLines"));
+    auto *editor = window.findChild<QPlainTextEdit *>();
+    QVERIFY(toggle);
+    QVERIFY(editor);
+    QVERIFY(toggle->isChecked());
+    auto *toolbar = window.findChild<QWidget *>(QStringLiteral("previewToolbar"));
+    QCOMPARE(toggle->parentWidget(), toolbar);
+    QVERIFY(toggle->isVisible());
+    const auto headerY = toggle->mapTo(&window, toggle->rect().center()).y();
+    const auto *zoom = window.findChild<QPushButton *>(QStringLiteral("zoomIn"));
+    QCOMPARE(headerY, zoom->mapTo(&window, zoom->rect().center()).y());
+    const auto blocks = editor->document()->blockCount();
+    QTest::mouseClick(toggle, Qt::LeftButton);
+    QCOMPARE(editor->lineWrapMode(), QPlainTextEdit::NoWrap);
+    QCOMPARE(editor->toPlainText(), data.text);
+    QCOMPARE(editor->document()->blockCount(), blocks);
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope,
+        QStringLiteral("dzurkel"), QStringLiteral("dzurkel"));
+    settings.sync();
+    QCOMPARE(settings.value(QStringLiteral("previews/wrapLines")).toBool(), false);
+    window.setContent(PreviewRegistry::createWidget(data, nullptr));
+    toggle = window.findChild<QToolButton *>(QStringLiteral("wrapLines"));
+    editor = window.findChild<QPlainTextEdit *>();
+    QVERIFY(!toggle->isChecked());
+    QCOMPARE(editor->lineWrapMode(), QPlainTextEdit::NoWrap);
+    QTest::mouseClick(toggle, Qt::LeftButton);
+    QCOMPARE(editor->lineWrapMode(), QPlainTextEdit::WidgetWidth);
+    QCOMPARE(editor->toPlainText(), data.text);
+    window.setContent(new QWidget);
+    QVERIFY(!toolbar->isVisible());
+    QVERIFY(!window.findChild<QToolButton *>(QStringLiteral("wrapLines")));
+    window.setContent(PreviewRegistry::createWidget(data, nullptr));
+    QVERIFY(window.findChild<QToolButton *>(QStringLiteral("wrapLines"))->isChecked());
 }
 void PreviewTest::boundsTextAndRejectsBinary()
 {

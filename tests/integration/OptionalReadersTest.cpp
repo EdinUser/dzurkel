@@ -1,6 +1,6 @@
 #include "controller/PreviewController.h"
 #include "preview/PreviewLibrary.h"
-#include "preview/media/AudioBackend.h"
+#include "preview/media/MediaBackend.h"
 #include "ui/SettingsDialog.h"
 #include "../support/OffscreenWarnings.h"
 #include <QApplication>
@@ -29,15 +29,34 @@ private slots:
     void catalogDoesNotDependOnInstalledReaders()
     {
         QVERIFY(PreviewLibrary::capability(QStringLiteral("audio")));
+        QVERIFY(PreviewLibrary::capability(QStringLiteral("video")));
         QVERIFY(PreviewLibrary::capability(QStringLiteral("doc")));
-        QCOMPARE(audioAvailability().available, qEnvironmentVariableIntValue("DZURKEL_TEST_AUDIO_AVAILABLE") == 1);
+        QCOMPARE(mediaAvailability().available, qEnvironmentVariableIntValue("DZURKEL_TEST_AUDIO_AVAILABLE") == 1);
+    }
+    void missingAudioExplainsRequirementAndOpensLibraries_data()
+    {
+        QTest::addColumn<QString>("suffix");
+        QTest::newRow("audio") << QStringLiteral("mp3");
+        QTest::newRow("video") << QStringLiteral("mkv");
+    }
+    void mismatchedAdapterExplainsRebuild()
+    {
+        if (!qEnvironmentVariableIsSet("DZURKEL_TEST_MEDIA_INCOMPATIBLE")) QSKIP("Isolated incompatible-adapter case.");
+        const auto availability = mediaAvailability();
+        QVERIFY(!availability.available);
+        QVERIFY(availability.adapterFound);
+        QVERIFY2(availability.explanation.contains(QStringLiteral("does not match")), qPrintable(availability.explanation));
+        QVERIFY(availability.explanation.contains(QStringLiteral("Rebuild and reinstall")));
+        QVERIFY(availability.explanation.contains(QStringLiteral("libdzurkel_audio.so")));
+        QVERIFY(!availability.explanation.contains(QStringLiteral("Unknown error")));
     }
     void missingAudioExplainsRequirementAndOpensLibraries()
     {
-        if (audioAvailability().available) QSKIP("Missing adapter is exercised by the isolated fallback harness.");
+        QFETCH(QString, suffix);
+        if (mediaAvailability().available) QSKIP("Missing adapter is exercised by the isolated fallback harness.");
         PreviewController controller;
         QString error;
-        QVERIFY(controller.show(write(QStringLiteral("missing.mp3"), "ID3fixture"), error));
+        QVERIFY(controller.show(write(QStringLiteral("missing.") + suffix, "ID3fixture"), error));
         QTRY_VERIFY(!controller.loading());
         QCOMPARE(controller.previewKind(), QStringLiteral("information"));
         auto *button = controller.window()->findChild<QPushButton *>(QStringLiteral("openLibrarySettings"));
@@ -91,18 +110,18 @@ private slots:
     {
         const auto source = qEnvironmentVariable("DZURKEL_TEST_ADD_AUDIO_ADAPTER");
         if (source.isEmpty()) QSKIP("Only runs in the isolated copied-binary harness.");
-        QVERIFY(!audioAvailability().available);
+        QVERIFY(!mediaAvailability().available);
         const QDir application(QCoreApplication::applicationDirPath());
         QVERIFY(application.mkpath(QStringLiteral("dzurkel-plugins")));
         const auto destination = application.filePath(QStringLiteral("dzurkel-plugins/libdzurkel_audio.so"));
         QVERIFY(QFile::copy(source, destination));
-        QVERIFY(!audioAvailability().available);
-        const auto state = audioAvailability(true);
+        QVERIFY(!mediaAvailability().available);
+        const auto state = mediaAvailability(true);
         QVERIFY2(state.available, qPrintable(state.explanation));
         PreviewData data;
         data.kind = PreviewKind::Audio;
-        std::unique_ptr<QWidget> view(createAudioPreview(data, nullptr));
-        QVERIFY(qobject_cast<AudioControls *>(view.get()));
+        std::unique_ptr<QWidget> view(createMediaPreview(data, nullptr));
+        QVERIFY(qobject_cast<MediaControls *>(view.get()));
         // Delete before queued playback startup; this checks loading, not audio.
         view.reset();
         QVERIFY(QFile::remove(destination));

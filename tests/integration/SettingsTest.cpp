@@ -1,11 +1,15 @@
 #include "desktop/DolphinSession.h"
 #include "ui/SettingsDialog.h"
+#include "application/RuntimeCompatibility.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QDBusConnectionInterface>
 #include <QFile>
 #include <QFutureWatcher>
 #include <QLabel>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
@@ -47,6 +51,9 @@ private slots:
     void init();
     void cleanup();
     void informationIsAccessibleAndClickable();
+    void systemRequirementsUseBuildReport();
+    void compatibilityDistinguishesCandidatesFromSupport();
+    void compatibilityRejectsInvalidReports();
     void experimentalSftpIsExplicitAndPersistent();
     void libraryPreferencePersistsAndRechecks();
     void missingLibraryHasGuidanceAndRefreshes();
@@ -149,7 +156,7 @@ void SettingsTest::informationIsAccessibleAndClickable()
 {
     SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
     dialog.show();
-    for (const auto &name : {"shortcutInfo", "imageInfo", "documentInfo", "textInfo", "tableInfo", "bookInfo", "audioInfo", "sftpInfo"}) {
+    for (const auto &name : {"shortcutInfo", "imageInfo", "documentInfo", "textInfo", "tableInfo", "bookInfo", "audioInfo", "videoInfo", "sftpInfo"}) {
         auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY(button);
         QVERIFY(!button->toolTip().isEmpty());
@@ -160,13 +167,13 @@ void SettingsTest::informationIsAccessibleAndClickable()
     QVERIFY(tabs);
     QCOMPARE(tabs->count(), 3);
     tabs->setCurrentIndex(1);
-    for (const auto &name : {"imageInfo", "documentInfo", "textInfo", "tableInfo", "bookInfo", "audioInfo"}) {
+    for (const auto &name : {"imageInfo", "documentInfo", "textInfo", "tableInfo", "bookInfo", "audioInfo", "videoInfo"}) {
         auto *button = dialog.findChild<QToolButton *>(QString::fromLatin1(name));
         QVERIFY(button->isVisible());
         QVERIFY(button->accessibleDescription().contains(QStringLiteral("Supported")));
     }
     QVERIFY(dialog.height() < 800);
-    for (const auto &name : {"imageInfo", "documentInfo", "bookInfo", "tableInfo", "textInfo", "audioInfo"}) {
+    for (const auto &name : {"imageInfo", "documentInfo", "bookInfo", "tableInfo", "textInfo", "audioInfo", "videoInfo"}) {
         bool detailsSeen = false;
         QTimer timer;
         connect(&timer, &QTimer::timeout, this, [&] {
@@ -181,6 +188,91 @@ void SettingsTest::informationIsAccessibleAndClickable()
         QVERIFY(detailsSeen);
     }
     QVERIFY(dialog.grab().save(QStringLiteral("settings-redesign.png")));
+}
+void SettingsTest::systemRequirementsUseBuildReport()
+{
+    const auto compatibility = RuntimeCompatibility::load();
+    QVERIFY(compatibility.reportAvailable);
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
+    dialog.show();
+    auto *tabs = dialog.findChild<QTabWidget *>(QStringLiteral("settingsTabs"));
+    QCOMPARE(tabs->currentIndex(), 0);
+    auto *summary = dialog.findChild<QLabel *>(QStringLiteral("systemRequirementsSummary"));
+    auto *button = dialog.findChild<QPushButton *>(QStringLiteral("systemRequirementsDetails"));
+    QVERIFY(summary);
+    QVERIFY(button);
+    QVERIFY(summary->isVisible());
+    QVERIFY(button->isVisible());
+    QCOMPARE(summary->text(), compatibility.summary);
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-system-requirements.png")));
+    bool detailsSeen = false;
+    QTimer timer;
+    connect(&timer, &QTimer::timeout, this, [&] {
+        auto *details = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!details || details->objectName() != QStringLiteral("compatibilityDetails")) return;
+        auto *text = details->findChild<QTextBrowser *>(QStringLiteral("compatibilityDetailsText"));
+        detailsSeen = text && text->toPlainText() == compatibility.details;
+        details->grab().save(QStringLiteral("settings-os-compatibility.png"));
+        details->accept();
+    });
+    timer.start(10);
+    button->click();
+    QVERIFY(detailsSeen);
+}
+void SettingsTest::compatibilityDistinguishesCandidatesFromSupport()
+{
+    QFile file(QCoreApplication::applicationDirPath() + QStringLiteral("/build-compatibility.json"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    auto report = QJsonDocument::fromJson(file.readAll()).object();
+    report.insert(QStringLiteral("artifact_requirements"), QJsonObject{
+        {"qt_base", "6.11.2"}, {"qt_pdf", "6.11.2"}, {"libzip", "1.7"}});
+    report.insert(QStringLiteral("baseline_requirements"), QJsonObject{
+        {"qt_base", "6.4"}, {"qt_pdf", "6.4"}, {"libzip", "1.7"}});
+    report.insert(QStringLiteral("baseline_os_candidates"), QJsonArray{QJsonObject{
+        {"distribution", "debian"}, {"earliest_reviewed_candidate", "12"}}});
+    report.insert(QStringLiteral("artifact_os_candidates"), QJsonArray{
+        QJsonObject{{"distribution", "debian"}, {"earliest_reviewed_candidate", QJsonValue::Null}},
+        QJsonObject{{"distribution", "fedora"}, {"earliest_reviewed_candidate", "44"}},
+        QJsonObject{{"distribution", "arch"}, {"earliest_reviewed_candidate", QJsonValue::Null}}
+    });
+    auto compatibility = RuntimeCompatibility::fromReport(QJsonDocument(report).toJson());
+    QVERIFY(compatibility.reportAvailable);
+    QVERIFY(compatibility.summary.contains(QStringLiteral("Qt 6.11.2")));
+    QVERIFY(compatibility.details.contains(QStringLiteral("Debian: no minimum established for this build")));
+    QVERIFY(compatibility.details.contains(QStringLiteral("Fedora: earliest reviewed dependency candidate: 44")));
+    QVERIFY(compatibility.details.contains(QStringLiteral("package and desktop validation pending")));
+    QVERIFY(compatibility.details.contains(QStringLiteral("Arch Linux: no minimum established")));
+    QVERIFY(compatibility.details.contains(QStringLiteral("Qt 6.4")));
+    QVERIFY(!compatibility.details.contains(QStringLiteral("validated minimum:")));
+    auto candidates = report.value(QStringLiteral("artifact_os_candidates")).toArray();
+    auto fedora = candidates[1].toObject();
+    fedora.insert(QStringLiteral("supported_minimum"), QStringLiteral("44"));
+    candidates[1] = fedora;
+    report.insert(QStringLiteral("artifact_os_candidates"), candidates);
+    compatibility = RuntimeCompatibility::fromReport(QJsonDocument(report).toJson());
+    QVERIFY(compatibility.details.contains(QStringLiteral("Fedora: validated minimum: 44")));
+}
+void SettingsTest::compatibilityRejectsInvalidReports()
+{
+    QFile file(QCoreApplication::applicationDirPath() + QStringLiteral("/build-compatibility.json"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto valid = QJsonDocument::fromJson(file.readAll()).object();
+    QVERIFY(RuntimeCompatibility::fromReport(QJsonDocument(valid).toJson()).reportAvailable);
+    QList<QByteArray> invalid{QByteArray(), QByteArray("invalid JSON"), QByteArray("{}")};
+    for (const auto &field : {"schema_version", "dzurkel_version", "artifact", "artifact_requirements", "artifact_os_candidates"}) {
+        auto report = valid;
+        report.remove(QLatin1String(field));
+        invalid.append(QJsonDocument(report).toJson());
+    }
+    auto otherVersion = valid;
+    otherVersion.insert(QStringLiteral("dzurkel_version"), QStringLiteral("0.0.0"));
+    invalid.append(QJsonDocument(otherVersion).toJson());
+    for (const auto &json : invalid) {
+        const auto compatibility = RuntimeCompatibility::fromReport(json);
+        QVERIFY(!compatibility.reportAvailable);
+        QVERIFY(compatibility.summary.contains(QStringLiteral("unavailable")));
+        QVERIFY(!compatibility.details.contains(QStringLiteral("validated minimum:")));
+    }
 }
 void SettingsTest::libraryPreferencePersistsAndRechecks()
 {
@@ -228,7 +320,7 @@ void SettingsTest::installationCommandsAreReleaseSpecific()
     QCOMPARE(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("fedora"), QStringLiteral("44")),
         QStringLiteral("sudo dnf install antiword"));
     QCOMPARE(libraryInstallationCommand(QStringLiteral("multimedia"), QStringLiteral("debian"), QStringLiteral("12")),
-        QStringLiteral("sudo apt install libqt6multimedia6"));
+        QStringLiteral("sudo apt install libqt6multimedia6 libqt6multimediawidgets6"));
     QVERIFY(libraryInstallationCommand(QStringLiteral("highlighting"), QStringLiteral("debian"), QStringLiteral("12")).isEmpty());
     QVERIFY(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("fedora"), QStringLiteral("14")).isEmpty());
     QVERIFY(libraryInstallationCommand(QStringLiteral("antiword"), QStringLiteral("rhel"), QStringLiteral("9")).isEmpty());
