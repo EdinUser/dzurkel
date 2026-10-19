@@ -1212,3 +1212,20 @@ were checked. Release publication remains the workflow's only trigger; no tag,
 release package build or release publication is part of this commit preparation.
 The final Fedora Qt 6.11.2 build passed all 23 CTest suites (51.99 s), including
 the revised image-budget fixture and Settings clipboard checks.
+
+## 0.7.1 release preparation
+
+On 2026-10-19, the versioned 0.7.1 Debug build passed all 23 CTest suites
+(48.13 s), including the staged installation with all eight color PNG sizes and
+both scalable SVG icons. The desktop entries validate; the Settings entry retains
+the existing multiple-main-category hint. PNG dimensions, SVG XML, RPM spec
+parsing, shell syntax and diff whitespace checks passed.
+
+CMake, RPM, Debian and Arch versions agree on 0.7.1. Release-specific audio and
+desktop adapter IDs were advanced together; the highlighting interface retains
+its independent ABI version. The regenerated compatibility report identifies
+0.7.1 and confirms the core executable has no direct dependency on the optional
+audio, highlighting or KDE desktop libraries. Native desktop checks for the
+earlier changes are recorded above; the icon change has not received a fresh
+native desktop acceptance pass. Distribution package builds, clean installation
+and removal, the Debian 12 baseline and native GNOME gate run in release CI.

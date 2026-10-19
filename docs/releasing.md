@@ -4,11 +4,11 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
-The next planned release is **0.7.1**. The current changes are unreleased;
-one further change is pending before release preparation. See the
-[draft notes](release-notes-0.7.1.md). Committing or pushing these changes must not
-publish a release or start a package build. Version fields remain unchanged until
-that release preparation step.
+The current release is **0.7.1**. See the [release notes](releases/v0.7.1.md)
+for changes since 0.7.0. Publishing its GitHub prerelease starts the package and
+validation pipeline; promote it to stable only after all checks pass and the
+runtime installers and checksums are attached. Pushes and tags alone do not
+start package builds.
 
 ## Release builds and validation
 

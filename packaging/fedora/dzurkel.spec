@@ -1,5 +1,5 @@
 Name:           dzurkel
-Version:        0.7.0
+Version:        0.7.1
 Release:        1%{?dist}
 Summary:        Quick file previews for Dolphin, Nautilus and Thunar
 
@@ -77,6 +77,11 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
 
 %changelog
+* Mon Oct 19 2026 Dzurkel contributors - 0.7.1-1
+- Add optional backends, grouped Settings and missing-library guidance.
+- Fix Markdown opening, Contents placement and image reopening.
+- Add application icons, compatibility reports and Arch VM tooling.
+
 * Mon Oct 19 2026 Dzurkel contributors - 0.7.0-1
 - Add streaming audio and bounded document/e-book previews.
 - Add reading typography, portrait defaults and content-only text zoom.

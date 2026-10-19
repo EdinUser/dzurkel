@@ -25,6 +25,6 @@ AudioAvailability audioAvailability(bool recheck = false);
 QWidget *createAudioPreview(const PreviewData &data, QWidget *parent);
 int activeAudioHelpers();
 }
-Q_DECLARE_INTERFACE(dzurkel::AudioControls, "org.dzurkel.AudioControls/0.7.0")
-#define DZURKEL_AUDIO_BACKEND_IID "org.dzurkel.AudioBackend/0.7.0"
+Q_DECLARE_INTERFACE(dzurkel::AudioControls, "org.dzurkel.AudioControls/0.7.1")
+#define DZURKEL_AUDIO_BACKEND_IID "org.dzurkel.AudioBackend/0.7.1"
 Q_DECLARE_INTERFACE(dzurkel::AudioBackend, DZURKEL_AUDIO_BACKEND_IID)

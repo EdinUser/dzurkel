@@ -1,3 +1,12 @@
+dzurkel (0.7.1-1) trixie; urgency=medium
+
+  * Add optional audio, highlighting and desktop backends with library guidance.
+  * Group Settings and add missing-reader recovery and compatibility reports.
+  * Fix Markdown opening position, Contents placement and image reopening.
+  * Add application icons to windows, launchers and file-manager menus.
+
+ -- Dzurkel contributors <noreply@github.com>  Mon, 19 Oct 2026 12:53:05 +0000
+
 dzurkel (0.7.0-1) trixie; urgency=medium
 
   * Add streaming audio previews with playback controls and track metadata.
