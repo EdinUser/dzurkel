@@ -143,6 +143,22 @@ visual styling, charts and formula evaluation are outside its scope. Neither
 reader depends on QXlsx, LibreOffice or external
 converters. See [the library contract](preview-library.md).
 
+DOCX, RTF, EPUB, FB2, SFB, MOBI and text-only legacy DOC use the same immutable
+`FormattedDocument` payload and reflowing `DocumentView`. Worker-side readers
+retain basic structure, escape text and generate only supported markup. The
+view offers selection/copy, existing zoom and a compact menu of retained
+sections. It has no editing or persistence features. DOCX/EPUB use libzip/Qt XML;
+RTF uses a small bounded parser and libc character conversion. Legacy DOC uses
+optional `antiword` with bounded input/output and cancellation. Document and
+widget resource loaders reject filesystem/network fallbacks.
+
+Reading previews (formatted documents, Markdown and plain text) retain their
+own portrait-default normal size and window state. PDF/tables retain the
+previous geometry separately. Image and compact modes continue borrowing the
+active normal geometry through the existing restoration path. Font zoom changes
+content only. Markdown uses bounded worker-decoded source and Qt's HTML-disabled
+Markdown parser on the GUI thread, followed by shared typography normalization.
+
 The opt-in [media streaming probe](media-streaming-experiment.md) exercises the
 same seekable source implementation used by audio. The probe is uninstalled;
 the normal executable contains its own media helper mode. Future video previews

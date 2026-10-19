@@ -101,6 +101,11 @@ absent. These headless tests do not establish KDE desktop acceptance.
    cause. Reruns replace assets on that same release. Editing release notes does
    not start another build.
 
+To validate before marking a version stable, publish it as a prerelease using
+the final version tag. After every package, test and clean-install job succeeds
+and the verified assets are attached, promote that same prerelease to the stable
+release. A saved draft does not run the pipeline.
+
 For example, after downloading release assets into one directory:
 
 ```bash

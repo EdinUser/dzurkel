@@ -1,5 +1,74 @@
 # Validation
 
+## Document and e-book checks
+
+`dzurkel_documents` covers DOCX structure and text fallback, EPUB spine order and
+sanitization, old XHTML document types, font obfuscation versus encryption,
+RTF Unicode/code pages and skipped destinations, bounded image loading,
+FB2 structure/metadata and XML rejection, UTF-8 SFB with unknown-marker fallback,
+MOBI PalmDOC literals/backreferences/trailers and unsupported/encrypted variants,
+malformed input, resource limits, cancellation, missing DOC extraction support,
+read-only rendering and resource-loading denial. Controller checks cover local
+and simulated SMB preparation, zoom, Space dismissal and view release.
+
+Private samples are never committed. To run the optional sample sweep locally:
+
+```bash
+QT_QPA_PLATFORM=offscreen DZURKEL_DOCUMENT_SAMPLES=/path/to/private/samples \
+  dbus-run-session -- ./build/dzurkel_document_tests optionalPrivateSamples
+```
+
+Multiple directories use `:` separators. Logs report aggregate counts/timing,
+without document text or metadata. This checks extraction and view construction;
+it does not establish exact Word layout or full EPUB reading-system compliance.
+Set `DZURKEL_DOCUMENT_SCREENSHOTS=1` to save FB2/SFB/MOBI view captures in the
+test executable directory for local visual inspection. Captures may contain
+private sample text and must not be committed.
+
+Validation on 2026-10-19: all 18 configured suites passed (43.44 s). The
+document suite passed ASan/UBSan with leak detection and the existing Qt PDF
+suppression, including 78 private samples: 74 EPUB, two DOC and two DOCX files.
+All produced readable content; 57 intentionally stopped at preview limits.
+The sample sweep under sanitizers took 14.2 s including view construction;
+this is not a per-file latency or process-memory benchmark. A native KDE
+Wayland smoke run passed read-only rendering, local/simulated SMB loading,
+zoom, dismissal and widget-release checks. Synthetic light/dark screenshots
+were visually inspected. Broader focus, scaling and desktop acceptance across
+other environments remains separate.
+
+Follow-up coverage adds rendered title/heading hierarchy, hanging list nesting,
+source-color contrast and palette changes, Markdown structure/code/tables and
+resource denial, conservative table-size fallback, compact DOC footer warnings,
+and content zoom without geometry changes. Reading/PDF/table sizes are checked
+independently through audio, small/large images and hide/reopen. Existing
+table/image and maximized PDF restoration checks remain in the preview suite;
+their initial provider now matches the geometry group under test.
+
+The optimized follow-up build passed all 18 suites (49.69 s). ASan/UBSan with
+leak detection passed the complete document suite and all 78 private samples
+(20 Qt Test results passed; 57 samples intentionally partial). Native KDE
+Wayland checks passed the refined views, profile transitions and existing
+maximized PDF/table restoration checks. The local installation was updated;
+installed DOCX/DOC/EPUB/RTF/Markdown smoke checks passed. First-map tests were
+rerun without concurrent compiler load: the ordinary preview suite passed
+(12.53 s), after timing-sensitive loading-window assertions failed while both
+sanitizer and optimized builds were compiling. Light/dark theme behavior and
+synthetic typography/Markdown screenshots were checked.
+
+E-book follow-up: FB2/SFB/MOBI samples were added to the private sweep (81 files,
+60 intentionally partial). The full document suite and sample sweep passed
+ASan/UBSan with leak detection: 24 results, no failures or skips. FB2 multi-line
+titles, inline spaces, SFB block markers and adjacent heading lines, and MOBI
+nested quote indentation/repeated line breaks were checked visually. Native
+ebook extraction and controller checks passed; the native geometry test passed
+when rerun after compiler load stopped, following a compositor timing failure
+during concurrent builds. No geometry code was changed for these readers.
+The final optimized build passed all 18 registered suites (42.44 s). The local
+installation was refreshed and all eight document readers passed installed
+preview/replacement/hide/quit checks, including the new FB2/SFB/MOBI samples.
+The versioned 0.7.0 release build also passed all 18 suites (43.01 s), with CMake,
+RPM, Debian and Arch version fields checked together.
+
 ## Environment
 
 Validated on 2026-10-17 with Fedora 44 KDE, Plasma 6.7.5, Dolphin 26.08.1,

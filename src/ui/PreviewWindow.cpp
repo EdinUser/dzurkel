@@ -3,6 +3,7 @@
 #include "ZoomPreview.h"
 #include "preview/PreviewProvider.h"
 #include "preview/table/TabularDocument.h"
+#include "preview/document/FormattedDocument.h"
 #include "preview/media/AudioPreviewWidget.h"
 #include <QWheelEvent>
 #include "desktop/DesktopIntegration.h"
@@ -289,7 +290,7 @@ void PreviewWindow::updateZoomControls()
         zoomStatus_->setText(QStringLiteral("%1%").arg(qRound(zoom->zoomFactor() * 100)));
         zoomStatus_->setToolTip(zoom->zoomHint());
         findChild<QPushButton *>(QStringLiteral("zoomIn"))->setEnabled(zoom->zoomFactor() < zoom->maximumZoom() - .00001);
-        findChild<QPushButton *>(QStringLiteral("zoomOut"))->setEnabled(zoom->zoomFactor() > std::min(.1, zoom->maximumZoom()) + .00001);
+        findChild<QPushButton *>(QStringLiteral("zoomOut"))->setEnabled(zoom->zoomFactor() > std::min(zoom->minimumZoom(), zoom->maximumZoom()) + .00001);
     }
 }
 void PreviewWindow::setStatus(const QString &status)
@@ -307,6 +308,11 @@ void PreviewWindow::setStatus(const QString &status)
 }
 void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
 {
+    if (updateGeometry && (data.kind == PreviewKind::Text || data.kind == PreviewKind::Document
+        || data.kind == PreviewKind::Pdf || data.kind == PreviewKind::Table)) {
+        const bool changed = selectReadingGeometry(data.kind == PreviewKind::Text || data.kind == PreviewKind::Document);
+        if (changed && !imageMode_ && !informationMode_) restoreDocumentSize();
+    }
     if (updateGeometry && data.kind != PreviewKind::Image && imageMode_) {
         imageMode_ = false;
         imageRestorePending_ = false;
@@ -339,6 +345,10 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
         add(QStringLiteral("Encoding"), data.detail);
         add(data.truncated ? QStringLiteral("Lines shown") : QStringLiteral("Lines"), QString::number(data.textLineCount));
     } else add(QStringLiteral("Preview"), data.detail);
+    if (data.document) {
+        add(QStringLiteral("Title"), data.document->title);
+        add(QStringLiteral("Author"), data.document->author);
+    }
     add(QStringLiteral("Notice"), data.message);
     fileInformation_ = QStringLiteral("<qt><table cellspacing='0' cellpadding='3'>%1</table></qt>").arg(rows);
     fileInfoButton_->setToolTip(fileInformation_);
@@ -373,10 +383,19 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     } else if (data.kind == PreviewKind::Text) {
         summary_->setText(QStringLiteral("%1 · %2 %3").arg(data.detail).arg(data.textLineCount)
             .arg(data.textLineCount == 1 ? QStringLiteral("line") : QStringLiteral("lines")));
-    } else if (data.kind == PreviewKind::Audio) summary_->setText(data.mediaSummary);
+    } else if (data.kind == PreviewKind::Document) summary_->setText(data.readerId == QLatin1String("doc")
+        ? QStringLiteral("DOC · Text-only preview")
+        : QStringLiteral("%1 · Content preview").arg(data.readerId == QLatin1String("markdown") ? QStringLiteral("MD") : data.readerId.toUpper()));
+    else if (data.kind == PreviewKind::Audio) summary_->setText(data.mediaSummary);
     else summary_->setText(data.description);
     summary_->setToolTip(fileInformation_);
-    setStatus(data.kind == PreviewKind::Information ? QString() : data.message);
+    QString visibleNotice = data.kind == PreviewKind::Information ? QString() : data.message;
+    if (data.kind == PreviewKind::Document) {
+        visibleNotice.remove(QStringLiteral("Text-only preview; document formatting omitted."));
+        visibleNotice.remove(QStringLiteral("Document layout simplified."));
+        visibleNotice = visibleNotice.trimmed();
+    }
+    setStatus(visibleNotice);
     if (data.kind == PreviewKind::Table && data.readerId == QStringLiteral("xlsx") && data.message.isEmpty())
         setStatus(QStringLiteral("Saved results may be stale"));
     if (imageMode_) fitImage();
@@ -463,6 +482,34 @@ void PreviewWindow::restoreDocumentSize()
     resizePreview(previewWindowSize_);
     setPreviewState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
     fitScreen(screen());
+}
+bool PreviewWindow::selectReadingGeometry(bool reading)
+{
+    if (readingGeometry_ == reading) return false;
+    const bool temporary = imageMode_ || informationMode_;
+    const auto state = temporary ? previewWindowState_
+        : windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+    const auto normalSize = temporary ? previewWindowSize_ : state ? normalGeometry().size() : size();
+    if (readingGeometry_) {
+        readingWindowSize_ = normalSize;
+        readingWindowState_ = state;
+    } else {
+        generalWindowSize_ = normalSize;
+        generalWindowState_ = state;
+    }
+    readingGeometry_ = reading;
+    if (reading && readingWindowSize_.isEmpty()) {
+        readingWindowSize_ = QSize(700, 900);
+        if (screen()) {
+            const auto available = screen()->availableGeometry().size() * .9;
+            if (readingWindowSize_.width() > available.width() || readingWindowSize_.height() > available.height())
+                readingWindowSize_.scale(available, Qt::KeepAspectRatio);
+        }
+    }
+    previewWindowSize_ = reading ? readingWindowSize_ : generalWindowSize_;
+    previewWindowState_ = reading ? readingWindowState_ : generalWindowState_;
+    previewContentSize_ = previewWindowSize_; // Decode target remains bounded independently.
+    return true;
 }
 void PreviewWindow::enterImageMode()
 {

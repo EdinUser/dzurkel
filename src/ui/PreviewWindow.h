@@ -61,6 +61,7 @@ private:
     void fitImage(const QSize &natural = {});
     void resizePreview(const QSize &size, const QSize &imageSize = {}, const QSize &chrome = {});
     void restoreDocumentSize();
+    bool selectReadingGeometry(bool reading);
     void showFileInformation();
     void updateZoomControls();
     void watchScreen(QScreen *screen);
@@ -98,6 +99,13 @@ private:
     QSize previewWindowSize_;
     QSize previewContentSize_;
     Qt::WindowStates previewWindowState_;
+    // Reading previews borrow the existing temporary-mode machinery, but keep
+    // their manual size/state independent of PDFs and spreadsheets.
+    bool readingGeometry_ = false;
+    QSize readingWindowSize_;
+    Qt::WindowStates readingWindowState_;
+    QSize generalWindowSize_;
+    Qt::WindowStates generalWindowState_;
     QMetaObject::Connection screenGeometryConnection_;
     QWidget *contentHost_;
     QWidget *content_ = nullptr;

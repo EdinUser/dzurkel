@@ -43,6 +43,14 @@ retained. A 150 ms fallback shows a loading window for slow operations;
 it does not impose a delay on fast previews. Initial loading and format selection
 remain asynchronous, without GUI-thread source-file reads.
 
+DOC/DOCX, RTF, EPUB, Markdown and plain text have a separate reading geometry:
+the first preview uses a 700 × 900 logical-pixel portrait window, scaled down
+proportionally to fit within 90% of the available screen. Manual resizing and
+maximization are remembered within the resident process, independently of the
+existing PDF/table geometry. The aspect ratio is not locked. Content zoom never
+resizes the window. Images and compact audio/information views keep their
+existing sizing and restore the appropriate geometry on return.
+
 ## Supported content
 
 | Content | Behavior |
@@ -52,6 +60,9 @@ remain asynchronous, without GUI-thread source-file reads.
 | Audio | MP3, FLAC, Ogg/Vorbis, Opus, WAV, AAC, M4A (AAC/ALAC) and audio-only MP4, subject to installed Qt decoding support. |
 | CSV / TSV | Read-only table grid; literal values, quoted fields and bounded complete records. |
 | XLSX | Same table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
+| DOCX / RTF / EPUB | Bounded content previews with basic formatting and plain-text fallback for unsupported formatting. |
+| Markdown | Formatted MD/Markdown headings, lists, emphasis, quotes, code and tables; embedded HTML and external resources disabled. |
+| Legacy DOC | Text only, using optional `antiword`; file information if the extractor is unavailable. |
 | Text | Plain text, logs, JSON, XML, and source files identified as text by Qt. |
 | Other files | Filename, type/MIME, size, modification time, icon, and explanation. |
 | Directories, links, special objects | Information only; contents/targets are not opened. |
@@ -115,7 +126,9 @@ information view rather than a text dump.
   manual-zoom limit, not a total process-memory guarantee or a new fit-mode limit.
 - Image zoom scales the retained decoded pixels. Images larger than the bounded
   decode do not regain full source detail at higher zoom; the percentage tooltip
-  explains this. No zoom-sized image bitmap is allocated. Text font zoom is deferred.
+  explains this. No zoom-sized image bitmap is allocated. Plain text and formatted
+  documents use 50–300% font zoom inside the existing window; Fit restores the
+  default font size. Plain text keeps its whitespace and horizontal scrolling.
 - Opening/replacing a file resets zoom to fit; resizing while fitted recomputes fit.
 - **Previous**/**Next** and Alt+arrows browse sibling files for every provider.
   Plain Left/Right also browse images, audio and information views. Plain Up/Down browse
@@ -153,7 +166,84 @@ CSV/TSV use the shared spreadsheet view; regular arrows move between cells,
 while Alt+arrows and Previous/Next browse files. Values are never recalculated or
 coerced to numbers. See [CSV rules, fallback and limits](preview-library.md#csv--tsv).
 XLSX uses the same grid; see [its scope and limits](preview-library.md#xlsx).
-Legacy XLS and DOCX are not enabled.
+Legacy XLS is not enabled.
+
+## Formatted documents and e-books
+
+DOCX, RTF, Markdown, DRM-free EPUB 2/3, FB2, SFB and supported MOBI 6 books share
+a simple reading view. Legacy DOC uses the same view with extracted plain text. Content reflows to
+the window; there are no simulated paper pages or page counts. Selection and
+copy work, and the existing zoom controls adjust text from 50% to 300%. Fit/`0`
+restores the default text size. Plain text has the same font-zoom bounds while
+retaining its monospace font and unwrapped lines.
+Space/Escape dismiss and Alt+arrows browse files as usual.
+
+DOCX preserves ordinary headings, paragraphs, emphasis, simple lists, tables,
+notes and bounded embedded raster images. List numbering and style inheritance
+are approximate; advanced layouts, merged-cell presentation and floating-object
+placement are simplified. Inserted revision text is included; deleted and
+explicitly hidden text is omitted. Stored field text is shown without updating
+fields. Headers/footers and comment interfaces are omitted.
+
+Titles/subtitles and section headings have distinct sizes and spacing, using
+the same reading typography as EPUB/Markdown. Ordinary bullet/decimal lists
+use hanging indentation and bounded nesting; unsupported numbering falls back
+to bullets. Repeated empty DOCX paragraphs are reduced to one. Explicit RGB
+text colors, including simple inherited style colors, are preserved only when
+they have readable contrast against the current theme; otherwise normal theme
+text is used. The original color is reconsidered when the theme changes.
+
+RTF preserves basic emphasis, Unicode and common legacy code pages. Tables
+fall back to text with cell/row separators. Images and embedded objects use
+placeholders. Legacy binary DOC uses `antiword` to extract plain text, without
+starting an office suite. This optional executable must already be installed;
+Dzurkel does not install it. Missing or failed extraction shows file information
+with an explanation.
+
+The DOC footer reads **DOC · Text-only preview**; the full formatting explanation
+stays in file information. Partial-preview and other warnings remain separate.
+
+Markdown uses Qt's built-in GitHub-style parser for `.md`/`.markdown` files and
+recognized Markdown MIME types. Code whitespace is preserved; raw HTML is
+disabled and image/file/network resources are not loaded. Other text/source
+formats remain literal plain text. A 2 MiB bounded source prefix feeds at most
+200,000 UTF-16 text units and 5,000 physical lines into the reading view; stopped
+input is labelled partial. Parsing and bounded typography happen on the GUI
+thread after worker-side decoding, not through an external converter.
+Potentially excessive Markdown table layouts conservatively fall back to plain
+text before Qt parsing: more than 256 pipes in a line, or a maximum line pipe
+count plus one multiplied by retained line count above 100,000. This estimate
+can also simplify pipe-heavy code/prose; its contents remain available as text.
+
+EPUB follows the package's declared reading order and opens into content,
+skipping an image-only opening cover. The compact Contents menu lists only
+sections retained in the preview, not the entire book. Title and author are
+available through file information. Publisher fonts, colors, CSS and exact
+pagination are omitted. Fixed-layout content is simplified with a notice;
+scripts, remote resources and audio/video overlays are not loaded. Encrypted
+books are unsupported. Obfuscated fonts do not prevent text previews because
+embedded fonts are not used.
+
+FB2 previews preserve chapter hierarchy, paragraphs and basic emphasis, with
+additional note bodies after the main content. Images use placeholders and
+tables reduce to readable text. SFB previews support Chitanka's UTF-8 text with
+common title, chapter and emphasis markers; unknown formatting remains text.
+MOBI previews support unencrypted MOBI 6 with PalmDOC compression or uncompressed
+UTF-8/Windows-1252 text. Basic HTML structure is simplified, images use placeholders,
+and source links/resources are ignored. HUFF/CDIC-compressed MOBI and standalone
+KF8 files show an unsupported-format explanation. AZW/AZW3 and KFX are not enabled.
+
+DRM-protected and encrypted content is not unlocked or converted. When protection
+prevents extraction, Dzurkel shows a clear error in the information view. Ordinary
+unsupported formatting falls back to readable text where extraction is possible;
+unsupported binary compression or encoding shows an explanation instead.
+
+Unsupported formatting wrappers retain their readable descendant text where
+possible. Non-text objects get small placeholders. Damaged packages, invalid
+markup or unavailable readable content show file information rather than raw
+XML, RTF commands or archive bytes. A visible partial-preview notice identifies
+content stopped by display limits. There are no editing, export, annotation,
+bookmark or reading-progress features.
 
 ## Resource limits
 
@@ -168,6 +258,9 @@ Limits are configured in the provider source files:
   lines. A multibyte character cut off at the byte limit is omitted safely.
 - PDF: at most 64 MiB and 10,000 pages. File loading happens on a worker;
   `QPdfView` renders and scrolls the accepted document.
+- DOCX/RTF/EPUB/DOC/FB2/SFB/MOBI: complete source snapshots up to 16 MiB; up to 200,000
+  retained text characters and 5,000 block boundaries. See
+  [document reader bounds](preview-library.md#formatted-documents-and-e-books).
 - Audio: no whole-file size/copy limit; one outstanding read of at most 64 KiB,
   with a two-second source-read deadline. Opening/loading has a 30-second deadline
   per phase. At most two source helpers may exist while cancellation is reaped.

@@ -1,5 +1,5 @@
 Name:           dzurkel
-Version:        0.6.2
+Version:        0.7.0
 Release:        1%{?dist}
 Summary:        Quick file previews for Dolphin, Nautilus and Thunar
 
@@ -29,8 +29,9 @@ Suggests:       kio-fuse
 Suggests:       kio-extras
 
 %description
-Dzurkel previews images, PDFs, audio, text and CSV/TSV/XLSX spreadsheets in a reusable
-window. It integrates with Dolphin, Nautilus and Thunar through optional Space
+Dzurkel previews images, PDFs, audio, formatted documents, e-books, text and
+CSV/TSV/XLSX spreadsheets in a reusable window. It integrates with Dolphin,
+Nautilus and Thunar through optional Space
 shortcut setup.
 Open Dzurkel Settings after installation to configure the shortcut for your user.
 
@@ -62,6 +63,10 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/kio/servicemenus/dzurkel.desktop
 
 %changelog
+* Mon Oct 19 2026 Dzurkel contributors - 0.7.0-1
+- Add streaming audio and bounded document/e-book previews.
+- Add reading typography, portrait defaults and content-only text zoom.
+
 * Sun Oct 18 2026 Dzurkel contributors - 0.6.2-1
 - Add reversible Thunar Space/context-menu setup and Settings restart focus.
 - Publish runtime installers with a concise checksum manifest.

@@ -2,8 +2,9 @@
 
 The first library increment supplies a compiled-in reader catalog and a shared
 read-only spreadsheet view. It does not download readers, install packages, load
-third-party plugins, or enable DOCX/video support. XLSX now supplies a separate
-bounded reader for the same table view.
+third-party plugins, or enable video support. XLSX supplies a separate bounded
+reader for the same table view. DOCX/RTF/EPUB/FB2/SFB/MOBI and text-only legacy DOC share a
+separate bounded document view.
 
 ## Current pipeline
 
@@ -120,8 +121,77 @@ partial table. These are application bounds, not an OS process-memory sandbox;
 cancellation cannot interrupt an individual synchronous library call.
 
 Builds require libzip 1.7+ development files and pkg-config. Legacy XLS, XLSB,
-XLSM, DOCX and video require separate decisions/readers. No office suite, formula
+XLSM and video require separate decisions/readers. No office suite, formula
 engine, broker service or reader-package installer is introduced.
+
+## Formatted documents and e-books
+
+Stable reader IDs `docx`, `rtf`, `epub`, `fb2`, `sfb`, `mobi`, `markdown` and `doc` share `FormattedDocument` and
+`DocumentView`. The worker produces escaped, application-generated HTML, plain
+text, retained section anchors and already-decoded images. Source HTML/CSS is
+never handed directly to Qt. Unsupported formatting is reduced to readable text
+where possible. Both the QTextDocument and QTextBrowser resource loaders block
+filesystem/network fallback; only retained image identifiers resolve. External
+links do not navigate. Internal links scroll to retained anchors.
+
+Markdown has a separate prefix-snapshot capability (2 MiB plus a truncation
+detection byte). Worker-side text decoding bounds its source to 200,000 UTF-16
+units and 5,000 lines. The view uses Qt's built-in Markdown parser with raw HTML
+disabled and the same resource-denying document. It adds no dependency. Shared
+block typography distinguishes title anchors, heading levels and ordinary/list
+paragraph spacing. DOCX emits semantic list items; inherited explicit RGB run
+colors are retained in source-color properties so contrast can be reconsidered
+on palette changes. Font zoom scales all reading typography without requesting
+window geometry changes. Plain text uses an independent monospace zoom wrapper.
+
+DOCX and EPUB use libzip public APIs and Qt XML parsing. Package relationships
+and EPUB spine order determine content paths. Paths stay inside the archive;
+entries are never extracted to disk. RTF uses a bounded group/control parser
+and libc iconv for legacy character decoding. DOC calls optional `antiword`
+directly, with UTF-8 text output and no shell, against a private copy of bounded
+input. Its output is capped at 1 MiB, with cancellation/deadline checks while
+draining it; failure and missing dependencies return information-only results.
+
+FB2 uses the same bounded XML tree and renders body sections in order, including
+additional note bodies after the main body. Metadata is kept separate from body
+text and base64 binaries are not rendered. Unknown wrappers retain their text;
+tables reduce to text separators and images use placeholders. SFB accepts UTF-8
+Chitanka text, interprets common title/chapter and emphasis markers, and retains
+unknown commands as escaped text. It does not interpret HTML or resolve links.
+
+MOBI uses a small native reader for unencrypted MOBI 6 with uncompressed or
+PalmDOC-compressed text (UTF-8 or Windows-1252). It validates monotonically
+increasing record offsets (at most 8,192 records), strips bounded trailing data,
+limits each expanded text record to 4,096 bytes, and retains at most 2 MiB of
+source HTML before display limits. A bounded tokenizer generates only approved
+tags, with at most 200,000 tokens and 64 open elements. Attributes and resources
+are discarded, tables become text, and images become placeholders. No source
+HTML is passed to Qt. Encrypted, HUFF/CDIC and standalone KF8 variants return
+information with an explanation. No additional dependency or converter is used.
+
+Limits: 16 MiB compressed/source input; 2,048 ZIP entries; 64 MiB declared
+expanded bytes across all entries and 64 MiB cumulative actual reads; 8 MiB per
+consumed part. XML retains at most 200,000 element/text nodes across consumed
+parts, with depth 64. DTDs and entity declarations are rejected, except for
+EPUB XHTML's ordinary HTML document-type declaration without an internal subset.
+No external DTD is fetched; a fixed small map handles common HTML entities.
+
+Display retains at most 200,000 UTF-16 text units, 5,000 block boundaries and
+2 Mi UTF-16 units of generated HTML. EPUB visits at most 128 linear spine items;
+EPUB Contents retains at most 64 entries; FB2/SFB retain at most 128. Exceeding display bounds yields a labelled
+partial preview. Package/XML/resource failures yield file information instead.
+Tables beyond four nesting levels reduce to text. Up to 16 distinct raster
+images are decoded: 4 MiB encoded bytes and 2,097,152 pixels per image, with
+8,388,608 pixels total. Displayed images fit within 640 × 640 logical pixels.
+Unsupported, absent or excess images become placeholders. SVG/fonts/scripts
+and remote assets are not decoded or fetched.
+
+A five-second cooperative loading budget applies. These are application bounds,
+not an OS memory sandbox; synchronous Qt/libzip calls cannot be interrupted
+mid-call. GUI layout is bounded by retained content, but is not asynchronous.
+The source identity, request-generation checks, mounted-share and optional
+SMB/SFTP preparation routes remain shared with other readers. See
+[user-facing scope](previews.md#formatted-documents-and-e-books).
 
 ## Audio and video playback policy
 

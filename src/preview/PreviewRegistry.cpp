@@ -6,6 +6,7 @@
 #include "providers/PdfPreviewProvider.h"
 #include "providers/TextPreviewProvider.h"
 #include "providers/AudioPreviewProvider.h"
+#include "providers/DocumentPreviewProvider.h"
 #include <QFile>
 #include <QImageReader>
 #include <QMimeDatabase>
@@ -54,6 +55,7 @@ QWidget *PreviewRegistry::createWidget(const PreviewData &data, QWidget *parent)
     case PreviewKind::Text: return TextPreviewProvider().createWidget(data, parent);
     case PreviewKind::Table: return new SpreadsheetView(data.table, parent);
     case PreviewKind::Audio: return AudioPreviewProvider().createWidget(data, parent);
+    case PreviewKind::Document: return DocumentPreviewProvider().createWidget(data, parent);
     default: return FileInfoProvider::createWidget(data, parent);
     }
 }
@@ -65,6 +67,7 @@ QString PreviewRegistry::kindName(PreviewKind kind)
     case PreviewKind::Text: return QStringLiteral("text");
     case PreviewKind::Table: return QStringLiteral("table");
     case PreviewKind::Audio: return QStringLiteral("audio");
+    case PreviewKind::Document: return QStringLiteral("document");
     case PreviewKind::Information: return QStringLiteral("information");
     default: return QStringLiteral("none");
     }

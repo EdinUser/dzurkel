@@ -14,6 +14,7 @@ public:
     virtual qreal zoomFactor() const = 0;
     virtual bool isFit() const = 0;
     virtual qreal maximumZoom() const { return 8.0; }
+    virtual qreal minimumZoom() const { return .1; }
     virtual QString zoomHint() const { return {}; }
     // Natural content size at 100%, when a provider supports window fitting.
     virtual QSize naturalSize() const { return {}; }
@@ -23,7 +24,7 @@ protected:
     {
         const auto current = zoomFactor();
         const auto maximum = maximumZoom();
-        const auto minimum = std::min(.1, maximum);
+        const auto minimum = std::min(minimumZoom(), maximum);
         if (!steps || (steps > 0 && current >= maximum) || (steps < 0 && current <= minimum)) return current;
         // Snap in the requested direction, then advance on a 10 percentage-point
         // grid. The tolerance avoids jumping over exact steps due to rounding.

@@ -15,6 +15,7 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, qt6-wayland
 Recommends: qt6-image-formats-plugins
 Suggests: dolphin, nautilus, thunar, kio-fuse, kio-extras
 Description: Quick file previews for Dolphin, Nautilus and Thunar
- Preview images, PDFs, audio, text and CSV/TSV/XLSX spreadsheets in a reusable
- window. Open Dzurkel Settings to configure the optional Space shortcut
+ Preview images, PDFs, audio, formatted documents, e-books, text and
+ CSV/TSV/XLSX spreadsheets in a reusable window. Open Dzurkel Settings
+ to configure the optional Space shortcut
  in Dolphin (26.04 or newer), Nautilus or Thunar.

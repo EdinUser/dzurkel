@@ -9,7 +9,8 @@ service resident; use `dzurkel --quit` to exit fully.
 
 ## Preview behavior
 
-Dzurkel previews images, PDFs, audio, CSV/TSV/XLSX tables, and plain text from local paths, `file://` URLs,
+Dzurkel previews images, PDFs, audio, CSV/TSV/XLSX tables, formatted documents,
+EPUB/FB2/SFB/MOBI books, Markdown and plain text from local paths, `file://` URLs,
 and direct `smb://` URLs through the desktop KIO-FUSE service. Mounted shares
 continue to work as filesystem paths. Direct SMB requires desktop authentication;
 see [remote resources](previews.md#smb-resources).
@@ -37,8 +38,11 @@ monitors may list its Qt/D-Bus/Wayland threads as separate rows sharing the same
 memory. Temporary worker threads can disappear after an idle timeout; this does
 not indicate extra application instances. Use `dzurkel --quit` to exit fully.
 
-PDF, text and table previews initially fill 85% of the usable screen and retain
-your reading size across previews. Images choose a window around their natural
+PDF and table previews initially fill 85% of the usable screen and retain
+their size across previews. Documents, EPUB, Markdown and plain text use a
+separate portrait default of 700 × 900 logical pixels, scaled down for smaller
+screens. Each group remembers manual size/maximization within the resident
+process; content zoom never resizes the window. Images choose a window around their natural
 100% size, with a minimum of 400 × 400 logical pixels; smaller pictures stay
 centered without enlargement. Large images scale down within the usable desktop,
 leaving a small margin. Manual resizing/zooming stays under your control, and a
@@ -67,6 +71,9 @@ Settings alone changes nothing and needs no sudo.
 ## Zoom and browsing files
 
 Use Ctrl+wheel or `+`/`-` to zoom images and PDFs; `0` or **Fit** restores fit.
+For documents, EPUB, Markdown and plain text these controls adjust font size
+inside the same window; Fit restores the default text size. Plain text retains
+its original whitespace and unwrapped lines.
 Plain wheel scrolls content. Zoom snaps to 10 percentage-point steps, and image
 fit does not enlarge small images above 100%. GIFs play with Pause/Play controls.
 **Previous**/**Next** and Alt+arrows browse files in natural filename order;

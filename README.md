@@ -20,6 +20,8 @@ selected files in a reusable window.
   Formats depend on the installed Qt media backend and codecs.
 - **Plain text** and **CSV/TSV tables**.
 - **XLSX spreadsheets**, with sheet selection and saved formula results.
+- **DOCX, RTF, EPUB, FB2, SFB, MOBI 6 and Markdown**, with readable content and basic formatting; legacy
+  **DOC** has a text-only preview when the optional `antiword` extractor is available.
 - **File information** for unsupported formats, directories and symbolic links.
 
 Use arrow keys to browse supported neighboring files. Press **Escape** or close
@@ -28,7 +30,9 @@ the window to dismiss a preview. Dzurkel stays resident for faster reopening;
 modifies the source file. XLSX formulas are not recalculated.
 
 See [supported formats and limits](docs/previews.md) and
-[keyboard controls](docs/usage.md).
+[keyboard controls](docs/usage.md). See the [0.7.0 release notes](docs/releases/v0.7.0.md)
+for audio, document and e-book additions. Protected/encrypted content shows an
+error; unsupported formatting falls back to readable text where possible.
 
 ## Install on Fedora KDE
 

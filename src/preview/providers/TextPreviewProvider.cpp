@@ -2,9 +2,52 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QPlainTextEdit>
+#include <QScrollBar>
+#include <QVBoxLayout>
+#include "ui/ZoomPreview.h"
 #include "preview/readers/TextDecoder.h"
 
 namespace dzurkel {
+namespace {
+class TextView : public ZoomPreview {
+public:
+    TextView(const QString &text, QWidget *parent) : ZoomPreview(parent), editor_(new QPlainTextEdit(this))
+    {
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(0, 0, 0, 0);
+        editor_->setObjectName(QStringLiteral("textPreview"));
+        editor_->setReadOnly(true);
+        editor_->setLineWrapMode(QPlainTextEdit::NoWrap);
+        baseFont_ = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        if (baseFont_.pointSizeF() <= 0) baseFont_.setPointSizeF(11);
+        editor_->setFont(baseFont_);
+        editor_->setPlainText(text);
+        layout->addWidget(editor_);
+        setFocusProxy(editor_);
+    }
+    void zoomBy(int steps) override { apply(steppedZoom(steps)); }
+    void fit() override { apply(1.0); }
+    qreal zoomFactor() const override { return factor_; }
+    bool isFit() const override { return factor_ == 1.0; }
+    qreal maximumZoom() const override { return 3.0; }
+    qreal minimumZoom() const override { return .5; }
+    QString zoomHint() const override { return QStringLiteral("Text size only; Fit restores the default font size. Whitespace and line wrapping are unchanged."); }
+private:
+    void apply(qreal factor)
+    {
+        const auto line = editor_->verticalScrollBar()->value();
+        factor_ = std::clamp(factor, .5, maximumZoom());
+        auto font = baseFont_;
+        font.setPointSizeF(baseFont_.pointSizeF() * factor_);
+        editor_->setFont(font);
+        editor_->verticalScrollBar()->setValue(line);
+        emit zoomChanged();
+    }
+    QPlainTextEdit *editor_;
+    QFont baseFont_;
+    qreal factor_ = 1.0;
+};
+}
 bool TextPreviewProvider::supports(const QMimeType &mime) const
 {
     return mime.inherits(QStringLiteral("text/plain"))
@@ -57,12 +100,6 @@ PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData d
 }
 QWidget *TextPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const
 {
-    auto *view = new QPlainTextEdit(parent);
-    view->setObjectName(QStringLiteral("textPreview"));
-    view->setReadOnly(true);
-    view->setLineWrapMode(QPlainTextEdit::NoWrap);
-    view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    view->setPlainText(data.text);
-    return view;
+    return new TextView(data.text, parent);
 }
 } // namespace dzurkel

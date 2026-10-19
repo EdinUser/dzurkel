@@ -6,6 +6,8 @@
 #include "providers/PdfPreviewProvider.h"
 #include "providers/TextPreviewProvider.h"
 #include "providers/AudioPreviewProvider.h"
+#include "providers/DocumentPreviewProvider.h"
+#include "readers/DocumentReader.h"
 #include "readers/CsvReader.h"
 #include <QFile>
 #include <QFileInfo>
@@ -35,6 +37,30 @@ QList<ReaderCapability> PreviewLibrary::readers()
         {QStringLiteral("xlsx"), QStringLiteral("Excel XLSX tables"), QStringLiteral("x-office-spreadsheet"), QStringLiteral("xlsxInfo"),
          QStringLiteral("Simple read-only tables and sheet tabs for XLSX. Shows saved values, recognized dates/times and markers for unavailable formula results; never calculates formulas. Saved results may be stale. Other formatting, charts and macros are ignored. Bounded loading with partial-preview notices; legacy XLS is not supported."),
          SourceAccess::CompleteSnapshot, XlsxReader::ByteLimit},
+        {QStringLiteral("docx"), QStringLiteral("Word DOCX"), QStringLiteral("x-office-document"), QStringLiteral("docxInfo"),
+         QStringLiteral("Quick content previews with basic headings, emphasis, lists, tables and images. Unsupported formatting contributes readable text where possible; exact page layout is omitted. Bounded loading; no editing or external content."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("rtf"), QStringLiteral("Rich text RTF"), QStringLiteral("x-office-document"), QStringLiteral("rtfInfo"),
+         QStringLiteral("Quick content previews with basic emphasis and readable text. Complex formatting and tables are simplified; embedded objects are placeholders. Bounded loading; no editing."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("epub"), QStringLiteral("EPUB books"), QStringLiteral("application-epub+zip"), QStringLiteral("epubInfo"),
+         QStringLiteral("Quick previews of the beginning of DRM-free EPUB books in reading order. Basic formatting, images and a compact Contents menu. Publisher layout is simplified; scripts, remote content and embedded fonts are ignored. No library or reading-progress management."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("doc"), QStringLiteral("Legacy Word DOC"), QStringLiteral("x-office-document"), QStringLiteral("docInfo"),
+         QStringLiteral("Bounded text-only previews using the optional antiword extractor. Formatting is omitted. If antiword is unavailable, file information explains the limitation. No office suite or package installation."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("fb2"), QStringLiteral("FictionBook FB2"), QStringLiteral("application-epub+zip"), QStringLiteral("fb2Info"),
+         QStringLiteral("Bounded previews of FictionBook XML with headings, emphasis and readable text. Images use placeholders; complex layouts and links are simplified. No editing or external resources."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("sfb"), QStringLiteral("Chitanka SFB"), QStringLiteral("text-x-generic"), QStringLiteral("sfbInfo"),
+         QStringLiteral("Bounded UTF-8 previews with basic Chitanka titles, chapter headings and emphasis. Unrecognized formatting remains readable text."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("mobi"), QStringLiteral("Mobipocket MOBI"), QStringLiteral("application-epub+zip"), QStringLiteral("mobiInfo"),
+         QStringLiteral("Bounded previews of unencrypted MOBI 6 books using PalmDOC compression or uncompressed text. Basic formatting; images use placeholders. HUFF/CDIC, KF8 and encrypted variants show an explanation. No external converter is required."),
+         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+        {QStringLiteral("markdown"), QStringLiteral("Markdown"), QStringLiteral("text-markdown"), QStringLiteral("markdownInfo"),
+         QStringLiteral("Read-only formatted previews for MD and Markdown: headings, lists, emphasis, quotes, code and tables. Embedded HTML and external resources are disabled. Bounded content with partial-preview notices."),
+         SourceAccess::PrefixSnapshot, TextPreviewProvider::ByteLimit + 1},
         {QStringLiteral("text"), QStringLiteral("Plain text"), QStringLiteral("text-x-generic"), QStringLiteral("textInfo"),
          QStringLiteral("Read-only text and source files. Large files are truncated with a notice; binary files show file information instead."),
          SourceAccess::PrefixSnapshot, TextPreviewProvider::ByteLimit + 1}
@@ -55,6 +81,8 @@ QString PreviewLibrary::select(QFile &file, const QMimeType &mime, const QString
     }
     file.seek(0);
     if (image || ImagePreviewProvider().supports(mime)) return QStringLiteral("image");
+    const auto document = DocumentPreviewProvider::format(mime, originalPath, file.peek(16));
+    if (!document.isEmpty()) return document;
     if (AudioPreviewProvider::accepts(mime, originalPath)) return QStringLiteral("audio");
     const auto suffix = QFileInfo(originalPath).suffix().toLower();
     if (XlsxPreviewProvider().supports(mime) || suffix == QStringLiteral("xlsx")) return QStringLiteral("xlsx");
@@ -71,6 +99,9 @@ std::unique_ptr<PreviewProvider> PreviewLibrary::createReader(const QString &id)
     if (id == QStringLiteral("xlsx")) return std::make_unique<XlsxPreviewProvider>();
     if (id == QStringLiteral("text")) return std::make_unique<TextPreviewProvider>();
     if (id == QStringLiteral("audio")) return std::make_unique<AudioPreviewProvider>();
+    if (id == QStringLiteral("docx") || id == QStringLiteral("rtf") || id == QStringLiteral("epub") || id == QStringLiteral("doc") || id == QStringLiteral("markdown")
+        || id == QStringLiteral("fb2") || id == QStringLiteral("sfb") || id == QStringLiteral("mobi"))
+        return std::make_unique<DocumentPreviewProvider>();
     return {};
 }
 }

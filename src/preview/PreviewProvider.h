@@ -12,8 +12,9 @@ class QWidget;
 
 namespace dzurkel {
 struct TabularDocument;
+struct FormattedDocument;
 using Cancellation = std::shared_ptr<std::atomic_bool>;
-enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Audio, Information };
+enum class PreviewKind { Cancelled, Image, Pdf, Text, Table, Audio, Information, Document };
 
 struct PreviewData {
     PreviewKind kind = PreviewKind::Information;
@@ -35,6 +36,7 @@ struct PreviewData {
     QString text;
     int textLineCount = 0; // Physical lines in the bounded text, excluding a trailing empty paragraph.
     std::shared_ptr<const TabularDocument> table;
+    std::shared_ptr<const FormattedDocument> document;
     bool truncated = false;
     std::shared_ptr<QPdfDocument> pdf;
     QList<QSizeF> pdfPageSizes;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.6.2 LANGUAGES CXX)
+project(Dzurkel VERSION 0.7.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,6 +12,7 @@ include(CTest)
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets DBus Concurrent Pdf PdfWidgets Multimedia)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip>=1.7)
+find_package(Iconv REQUIRED)
 option(DZURKEL_WITH_KDE_ACTIVATION "Use KDE's public Wayland activation support" ON)
 if(DZURKEL_WITH_KDE_ACTIVATION)
     find_package(KF6WindowSystem 6.0 REQUIRED)
@@ -35,6 +36,12 @@ add_library(dzurkel_core STATIC
     src/preview/PreviewLibrary.cpp
     src/preview/providers/CsvPreviewProvider.cpp
     src/preview/providers/XlsxPreviewProvider.cpp
+    src/preview/providers/DocumentPreviewProvider.cpp
+    src/preview/readers/DocumentReader.cpp
+    src/preview/readers/RtfReader.cpp
+    src/preview/readers/LegacyDocReader.cpp
+    src/preview/readers/EbookReader.cpp
+    src/preview/document/DocumentView.cpp
     src/preview/readers/XlsxReader.cpp
     src/preview/readers/CsvReader.cpp
     src/preview/readers/TextDecoder.cpp
@@ -57,6 +64,7 @@ add_library(dzurkel_core STATIC
 target_include_directories(dzurkel_core PUBLIC src)
 target_link_libraries(dzurkel_core PUBLIC Qt6::Widgets Qt6::DBus Qt6::Concurrent Qt6::PdfWidgets Qt6::Multimedia dzurkel_media_source)
 target_link_libraries(dzurkel_core PRIVATE PkgConfig::LIBZIP)
+target_link_libraries(dzurkel_core PRIVATE Iconv::Iconv)
 if(DZURKEL_WITH_KDE_ACTIVATION)
     target_link_libraries(dzurkel_core PRIVATE KF6::WindowSystem)
     target_compile_definitions(dzurkel_core PRIVATE DZURKEL_KDE_ACTIVATION)
@@ -216,6 +224,11 @@ if(BUILD_TESTING)
     add_test(NAME dzurkel_library COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_library_tests>)
     set_tests_properties(dzurkel_library PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
     add_executable(dzurkel_xlsx_tests tests/integration/XlsxTest.cpp)
+    add_executable(dzurkel_document_tests tests/integration/DocumentTest.cpp)
+    target_link_libraries(dzurkel_document_tests PRIVATE dzurkel_core Qt6::Test PkgConfig::LIBZIP)
+    add_dependencies(dzurkel_document_tests dzurkel)
+    add_test(NAME dzurkel_documents COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_document_tests>)
+    set_tests_properties(dzurkel_documents PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
     target_link_libraries(dzurkel_xlsx_tests PRIVATE dzurkel_core Qt6::Test PkgConfig::LIBZIP)
     add_dependencies(dzurkel_xlsx_tests dzurkel)
     add_test(NAME dzurkel_xlsx COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_xlsx_tests>)

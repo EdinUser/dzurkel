@@ -350,8 +350,11 @@ void PreviewTest::newestRequestBeforeFirstMappingWins()
     QCOMPARE(controller.previewKind(), QStringLiteral("text"));
     QCOMPARE(window->windowTitle(), QStringLiteral("current-first-map.txt"));
     const QSize area = window->screen()->availableGeometry().size();
-    QVERIFY(firstShow.size.width() >= area.width() * 80 / 100);
-    QVERIFY(firstShow.size.height() >= area.height() * 80 / 100);
+    // A slow classification can map the generic loading window first. The
+    // committed text preview must use the independent portrait geometry.
+    QTRY_VERIFY(window->height() > window->width());
+    QVERIFY(firstShow.size.width() <= area.width());
+    QVERIFY(firstShow.size.height() <= area.height());
 }
 
 void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
@@ -456,7 +459,6 @@ void PreviewTest::informationFallbackTemporarilyCompactsWindow()
 
 void PreviewTest::mappedImageAndTableTransitionsRestoreReadingSize()
 {
-    const auto text = write(QStringLiteral("mapped-reading.txt"), "A document starts at its reading size.\n");
     const auto table = write(QStringLiteral("mapped-reading.csv"), "Name,Value\nFirst,42\n");
     const auto imagePath = directory_.filePath(QStringLiteral("mapped-small.png"));
     QImage image(40, 30, QImage::Format_RGB32);
@@ -466,7 +468,7 @@ void PreviewTest::mappedImageAndTableTransitionsRestoreReadingSize()
     auto *window = const_cast<PreviewWindow *>(controller.window());
     QSignalSpy dismissed(window, &PreviewWindow::dismissed);
     QString error;
-    QVERIFY(controller.show(text, error));
+    QVERIFY(controller.show(table, error));
     QTRY_VERIFY(!controller.loading());
     QVERIFY(QTest::qWaitForWindowExposed(window));
     window->showNormal();
@@ -679,7 +681,7 @@ void PreviewTest::informationFallbackRestoresMaximizedPreview()
     const QString unsupported = write(QStringLiteral("maximized.bin"), QByteArray::fromHex("00010203ff"));
     PreviewController controller;
     QString error;
-    QVERIFY(controller.show(text, error));
+    QVERIFY(controller.show(pdf, error));
     QTRY_VERIFY(!controller.loading());
     auto *window = controller.window()->findChild<QPushButton *>(QStringLiteral("fileInfoButton"))->window();
     QVERIFY(QTest::qWaitForWindowExposed(window));
@@ -696,6 +698,12 @@ void PreviewTest::informationFallbackRestoresMaximizedPreview()
     QVERIFY(controller.show(pdf, error));
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
+    QTRY_VERIFY(window->isMaximized());
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(!window->isMaximized());
+    QVERIFY(controller.show(pdf, error));
+    QTRY_VERIFY(!controller.loading());
     QTRY_VERIFY(window->isMaximized());
 }
 
@@ -859,7 +867,7 @@ void PreviewTest::decodesText()
     QCOMPARE(data.text, expected);
     QCOMPARE(data.textLineCount, lines);
     std::unique_ptr<QWidget> widget(PreviewRegistry::createWidget(data, nullptr));
-    auto *view = qobject_cast<QPlainTextEdit *>(widget.get());
+    auto *view = widget->findChild<QPlainTextEdit *>();
     QVERIFY(view);
     QVERIFY(view->isReadOnly());
     QCOMPARE(view->lineWrapMode(), QPlainTextEdit::NoWrap);
