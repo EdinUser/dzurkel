@@ -179,7 +179,14 @@ The core installation contains:
 ~/.local/share/applications/dzurkel-settings.desktop
 ~/.local/share/kio/servicemenus/dzurkel.desktop
 ~/.local/share/dzurkel/build-compatibility.json
+~/.local/share/icons/hicolor/<size>x<size>/apps/dzurkel.png
+~/.local/share/icons/hicolor/scalable/apps/dzurkel.svg
+~/.local/share/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
 ```
+
+Color icons are installed at 16, 22, 24, 32, 48, 64, 128 and 256 px, along with
+the scalable color and symbolic icons. Application windows also have embedded
+color icons when run directly from the build directory.
 
 Built optional adapters are installed below the configured library directory as
 `dzurkel/plugins/libdzurkel_audio.so`, `libdzurkel_highlighting.so` and
@@ -198,7 +205,8 @@ Use `--jobs 4`, `--build-dir /path/to/build`, or `--prefix /absolute/prefix` to
 override defaults. `--qt-only` omits KDE activation integration, with best-effort
 focus behavior. Custom `XDG_DATA_HOME` layouts require copying the three generated
 desktop entries into that data directory's `applications/` and
-`kio/servicemenus/` directories; keep the service menu executable. The installer
+`kio/servicemenus/` directories, and the installed `icons/hicolor/` tree into
+that data directory's `icons/hicolor/`; keep the service menu executable. The installer
 uses the selected prefix's `share/` directory.
 
 ## Staging and repeatability

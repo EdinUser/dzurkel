@@ -72,6 +72,9 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/applications/dzurkel.desktop
 %{_datadir}/applications/dzurkel-settings.desktop
 %{_datadir}/kio/servicemenus/dzurkel.desktop
+%{_datadir}/icons/hicolor/*/apps/dzurkel.png
+%{_datadir}/icons/hicolor/scalable/apps/dzurkel.svg
+%{_datadir}/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
 
 %changelog
 * Mon Oct 19 2026 Dzurkel contributors - 0.7.0-1

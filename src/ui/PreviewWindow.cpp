@@ -14,7 +14,6 @@
 #include <QDialogButtonBox>
 #include <QIcon>
 #include <QLocale>
-#include <QMimeDatabase>
 #include <QStyle>
 #include <QSlider>
 #include <QTabWidget>
@@ -373,9 +372,6 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     fileInformation_ = QStringLiteral("<qt><table cellspacing='0' cellpadding='3'>%1</table></qt>").arg(rows);
     fileInfoButton_->setToolTip(fileInformation_);
     fileInfoButton_->setAccessibleDescription(plain.join(QChar('\n')));
-    const auto mime = QMimeDatabase().mimeTypeForName(data.mimeType);
-    const auto icon = QIcon::fromTheme(mime.iconName(), style()->standardIcon(QStyle::SP_FileIcon));
-    if (windowIcon().isNull() || windowIcon().name() != icon.name()) setWindowIcon(icon);
     if (data.kind == PreviewKind::Image) {
         summary_->setText(QStringLiteral("%1 × %2 px").arg(data.imageSize.width()).arg(data.imageSize.height()));
     } else if (data.kind == PreviewKind::Table && data.table) {

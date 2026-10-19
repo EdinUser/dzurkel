@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Service
 Name=Dzurkel
-Icon=preview
+Icon=dzurkel
 StartupNotify=true
 MimeType=application/octet-stream;
 Actions=dzurkel;
@@ -11,5 +11,5 @@ X-KDE-Priority=TopLevel
 
 [Desktop Action dzurkel]
 Name=Dzurkel
-Icon=preview
+Icon=dzurkel
 Exec="@DZURKEL_EXEC@" --show -- %u

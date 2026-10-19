@@ -2,7 +2,7 @@
 Type=Application
 Name=Dzurkel Settings
 Comment=Enable Space previews in Dolphin and configure Dzurkel
-Icon=preview
+Icon=dzurkel
 Exec="@DZURKEL_EXEC@" --settings
 Terminal=false
 StartupNotify=true

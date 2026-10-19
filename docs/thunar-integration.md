@@ -19,6 +19,10 @@ no additional Thunar plugin, global shortcut or window-control utility. Thunar's
 GUI shortcut picker rejects bare Space, but its action dispatcher accepts a
 configured Space accelerator. The context action has a Z mnemonic.
 
+New setups use the installed Dzurkel application icon for the context action.
+If setup predates the custom icon, use **Restore previous shortcuts…**, then
+**Enable Space shortcut…** after installing the updated app to refresh the action.
+
 Only these per-user files are updated:
 
 - `$XDG_CONFIG_HOME/Thunar/uca.xml` (normally `~/.config/Thunar/uca.xml`).

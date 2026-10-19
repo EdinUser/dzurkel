@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="16x16/apps/dzurkel.png">hicolor/16x16/apps/dzurkel.png</file>
+        <file alias="22x22/apps/dzurkel.png">hicolor/22x22/apps/dzurkel.png</file>
+        <file alias="24x24/apps/dzurkel.png">hicolor/24x24/apps/dzurkel.png</file>
+        <file alias="32x32/apps/dzurkel.png">hicolor/32x32/apps/dzurkel.png</file>
+        <file alias="48x48/apps/dzurkel.png">hicolor/48x48/apps/dzurkel.png</file>
+        <file alias="64x64/apps/dzurkel.png">hicolor/64x64/apps/dzurkel.png</file>
+        <file alias="128x128/apps/dzurkel.png">hicolor/128x128/apps/dzurkel.png</file>
+        <file alias="256x256/apps/dzurkel.png">hicolor/256x256/apps/dzurkel.png</file>
+    </qresource>
+</RCC>

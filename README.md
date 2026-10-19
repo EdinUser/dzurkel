@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/resources/icons/hicolor/scalable/apps/dzurkel.svg" width="128" height="128" alt="Dzurkel — a peeking amber eye behind a blue shutter">
+</p>
+
 # Dzurkel — quick file previews for Linux
 
 **Peek-a-Dzurkel!** Preview a file without opening a full application.

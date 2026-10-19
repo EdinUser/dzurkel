@@ -111,6 +111,13 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
     assert report["dzurkel_version"] == args.version
     assert not any("Multimedia" in name or "KF6" in name for name in report["artifact"]["needed_sonames"])
     expected = {binary, menu, application, settings, compatibility}
+    icons = root / args.datadir.lstrip("/") / "icons/hicolor"
+    source_icons = Path(__file__).resolve().parents[2] / "src/resources/icons/hicolor"
+    for relative in [*(f"{size}x{size}/apps/dzurkel.png" for size in (16, 22, 24, 32, 48, 64, 128, 256)),
+                     "scalable/apps/dzurkel.svg", "scalable/apps/dzurkel-symbolic.svg"]:
+        installed_icon = icons / relative
+        expected.add(installed_icon)
+        assert installed_icon.read_bytes() == (source_icons / relative).read_bytes()
     if plugin := os.environ.get("DZURKEL_TEST_HIGHLIGHTING_PLUGIN"):
         expected.add(root / plugin.lstrip("/"))
     for adapter in ("dzurkel_audio", "dzurkel_desktop"):
@@ -120,6 +127,8 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
     assert ' --settings' in settings.read_text()
     assert 'NoDisplay=true' not in settings.read_text()
     assert '@DZURKEL_EXEC@' not in settings.read_text()
+    for entry in (menu, application, settings):
+        assert "Icon=dzurkel" in entry.read_text()
     assert os.access(binary, os.X_OK)
     assert os.access(menu, os.X_OK), "KDE user-local service menus must be executable"
     assert not os.access(application, os.X_OK)

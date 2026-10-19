@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Dzurkel — peeking eye</title>
+  <desc id="desc">A curious amber eye looks out from between a blue shutter and two dark geometric folds.</desc>
+  <defs>
+    <linearGradient id="back" x1=".15" y1=".05" x2=".9" y2="1" objectBoundingBox="true">
+      <stop offset="0" stop-color="#254b69"/><stop offset=".52" stop-color="#102b41"/><stop offset="1" stop-color="#081a29"/>
+    </linearGradient>
+    <linearGradient id="left" x1=".03" y1=".05" x2=".86" y2=".96" objectBoundingBox="true">
+      <stop stop-color="#55c2ed"/><stop offset=".42" stop-color="#268fc7"/><stop offset="1" stop-color="#115078"/>
+    </linearGradient>
+    <linearGradient id="upper" x1="0" y1="0" x2=".8" y2="1" objectBoundingBox="true">
+      <stop stop-color="#396a8a"/><stop offset="1" stop-color="#193a53"/>
+    </linearGradient>
+    <linearGradient id="lower" x1="0" y1="0" x2="1" y2=".8" objectBoundingBox="true">
+      <stop stop-color="#366f8d"/><stop offset=".48" stop-color="#224e6c"/><stop offset="1" stop-color="#173449"/>
+    </linearGradient>
+    <linearGradient id="white" x1="0" y1="1" x2=".8" y2="0" objectBoundingBox="true">
+      <stop stop-color="#e0bca1"/><stop offset=".32" stop-color="#fff0dd"/><stop offset=".8" stop-color="#ffffff"/><stop offset="1" stop-color="#d8e2e6"/>
+    </linearGradient>
+    <radialGradient id="iris" cx=".55" cy=".65" r=".72">
+      <stop offset="0" stop-color="#ffd77e"/><stop offset=".45" stop-color="#f3a835"/><stop offset=".78" stop-color="#c47119"/><stop offset="1" stop-color="#854314"/>
+    </radialGradient>
+    <radialGradient id="pupil" cx=".35" cy=".18" r=".94">
+      <stop stop-color="#1b3546"/><stop offset=".48" stop-color="#0c2231"/><stop offset="1" stop-color="#040d19"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1" objectBoundingBox="true">
+      <stop stop-color="#86d7f3"/><stop offset="1" stop-color="#0a364f"/>
+    </linearGradient>
+    <clipPath id="round"><rect x="12" y="12" width="232" height="232" rx="56" ry="56"/></clipPath>
+    <clipPath id="eye"><path d="M 84,161 C 100,128 124,112 155,109 C 184,107 210,123 224,142 C 206,170 178,186 151,191 C 121,195 94,184 84,161 Z"/></clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <!-- Rounded perimeter establishes a native desktop icon silhouette. -->
+    <rect x="12" y="12" width="232" height="232" fill="url(#back)"/>
+    <!-- A deep aperture behind the eye. -->
+    <path d="M 127,52 L 250,127 L 244,160 L 78,249 L 101,97 Z" fill="#071827"/>
+    <path d="M 130,55 C 179,80 213,104 248,129 L 248,144 C 206,116 169,105 132,113 Z" fill="#152d40"/>
+    <!-- Eyeball, confined to its almond-shaped opening. -->
+    <g clip-path="url(#eye)">
+      <rect x="78" y="101" width="153" height="102" fill="url(#white)"/>
+      <ellipse cx="148" cy="151" rx="47" ry="49" fill="url(#iris)"/>
+      <ellipse cx="151" cy="144" rx="29" ry="33" fill="url(#pupil)"/>
+      <ellipse cx="163" cy="127" rx="9.5" ry="10" fill="#fffdf3"/>
+      <ellipse cx="178" cy="165" rx="4" ry="6" fill="#ffd787" opacity=".35"/>
+    </g>
+    <!-- Eye expression with solid, readable lid shapes. -->
+    <path d="M 86,157 C 108,119 136,107 159,105 C 187,104 209,122 225,141 C 201,125 182,120 159,121 C 131,120 107,134 86,166 Z" fill="#0b2032"/>
+    <path d="M 85,166 C 108,190 131,196 151,193 C 180,191 205,174 226,144 C 208,174 181,196 150,200 C 122,202 100,190 85,172 Z" fill="#10283a"/>
+    <!-- Upper cover folds over the viewing opening. -->
+    <path d="M 131,11 H 194 C 221,11 245,35 245,68 V 135 L 125,57 Z" fill="url(#upper)"/>
+    <path d="M 125,57 L 245,135 V 143 L 125,65 Z" fill="#0e2c43"/>
+    <path d="M 131,12 L 125,57 L 245,135" fill="none" stroke="#5da2c2" stroke-width="2.2" opacity=".4"/>
+    <!-- Lower cover closes the aperture without covering the gaze. -->
+    <path d="M 245,150 V 199 C 245,223 226,244 198,244 H 76 Z" fill="url(#lower)"/>
+    <path d="M 76,244 L 245,150" fill="none" stroke="#4d97b3" stroke-width="3" opacity=".7"/>
+    <path d="M 77,249 L 246,155" fill="none" stroke="#0b2335" stroke-width="3" opacity=".6"/>
+    <!-- Blue sliding leaf: the recognizable negative-space reveal. -->
+    <path d="M 67,12 H 135 L 79,244 H 61 C 33,244 12,220 12,191 V 72 C 12,39 36,12 67,12 Z" fill="url(#left)"/>
+    <path d="M 135,12 L 79,244" fill="none" stroke="#061e32" stroke-width="6" opacity=".6"/>
+    <path d="M 133,13 L 77,244" fill="none" stroke="url(#rim)" stroke-width="3" opacity=".85"/>
+    <path d="M 12,83 C 12,41 34,12 76,12 H 131" fill="none" stroke="#a0e5f7" stroke-width="2.5" opacity=".63"/>
+  </g>
+  <!-- Subtle defining rim, no platform-specific squircular badge background. -->
+  <rect x="12.8" y="12.8" width="230.4" height="230.4" rx="55.2" ry="55.2" fill="none" stroke="#285273" stroke-width="1.5" opacity=".68"/>
+</svg>

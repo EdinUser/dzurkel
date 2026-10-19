@@ -64,7 +64,7 @@ QByteArray action(const QString &executable)
     QXmlStreamWriter xml(&bytes);
     xml.writeStartElement(QStringLiteral("action"));
     const auto element = [&xml](const char *name, const QString &text) { xml.writeTextElement(QString::fromLatin1(name), text); };
-    element("icon", QStringLiteral("document-preview"));
+    element("icon", QStringLiteral("dzurkel"));
     element("name", QStringLiteral("Preview with D_zurkel"));
     element("unique-id", actionId);
     element("command", quote(executable) + QStringLiteral(" --show -- %f"));

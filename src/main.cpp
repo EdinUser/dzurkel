@@ -10,6 +10,7 @@
 #include "resources/media/MediaSourceHelper.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QTextStream>
 
 namespace {
@@ -79,6 +80,12 @@ int main(int argc, char *argv[])
     application.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
     application.setApplicationDisplayName(QStringLiteral("Dzurkel"));
     application.setDesktopFileName(QStringLiteral("dzurkel"));
+    // Embedded raster sizes also work before installation and without Qt SVG.
+    QIcon applicationIcon;
+    for (const int size : {16, 22, 24, 32, 48, 64, 128, 256}) {
+        applicationIcon.addFile(QStringLiteral(":/icons/%1x%1/apps/dzurkel.png").arg(size), QSize(size, size));
+    }
+    application.setWindowIcon(QIcon::fromTheme(QStringLiteral("dzurkel"), applicationIcon));
     application.setQuitOnLastWindowClosed(false);
     dzurkel::PreviewController controller(request.diagnostics);
     dzurkel::NautilusPreviewService nautilus(controller);

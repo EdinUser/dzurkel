@@ -140,7 +140,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dzurkel_media_source PUBLIC -Wall -Wextra -Wpedantic)
 endif()
 
-add_executable(dzurkel src/main.cpp)
+add_executable(dzurkel src/main.cpp src/resources/icons/icons.qrc)
+set_target_properties(dzurkel PROPERTIES AUTORCC ON)
 target_link_libraries(dzurkel PRIVATE dzurkel_core)
 target_compile_definitions(dzurkel PRIVATE DZURKEL_VERSION="${PROJECT_VERSION}")
 foreach(adapter dzurkel_highlighting dzurkel_audio dzurkel_desktop)
@@ -218,6 +219,9 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-application.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications RENAME dzurkel.desktop)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-settings.desktop"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(DIRECTORY src/resources/icons/hicolor/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor
+    FILES_MATCHING PATTERN "*.png" PATTERN "*.svg")
 
 option(DZURKEL_BUILD_BENCHMARKS "Build the isolated-session latency and stability tool" OFF)
 if(DZURKEL_BUILD_BENCHMARKS)

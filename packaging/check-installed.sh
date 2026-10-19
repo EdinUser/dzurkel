@@ -21,6 +21,10 @@ paths = subprocess.check_output(command, text=True).splitlines()
 runtime = {"/usr/bin/dzurkel", "/usr/share/applications/dzurkel.desktop",
            "/usr/share/applications/dzurkel-settings.desktop",
            "/usr/share/kio/servicemenus/dzurkel.desktop", "/usr/share/dzurkel/build-compatibility.json"}
+runtime.update(f"/usr/share/icons/hicolor/{size}x{size}/apps/dzurkel.png"
+               for size in (16, 22, 24, 32, 48, 64, 128, 256))
+runtime.update(f"/usr/share/icons/hicolor/scalable/apps/{name}.svg"
+               for name in ("dzurkel", "dzurkel-symbolic"))
 files = {path for path in paths if pathlib.Path(path).is_file()}
 assert runtime <= files, runtime - files
 adapters = {path for path in files
@@ -39,6 +43,11 @@ PY
         for path in /usr/bin/dzurkel /usr/share/applications/dzurkel{,-settings}.desktop /usr/share/kio/servicemenus/dzurkel.desktop /usr/share/dzurkel/build-compatibility.json; do
             test ! -e "$path"
         done
+        for size in 16 22 24 32 48 64 128 256; do
+            test ! -e "/usr/share/icons/hicolor/${size}x${size}/apps/dzurkel.png"
+        done
+        test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel.svg
+        test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
         for directory in /usr/lib/dzurkel/plugins /usr/lib64/dzurkel/plugins /usr/lib/*/dzurkel/plugins; do
             for adapter in audio highlighting desktop; do
                 test ! -e "$directory/libdzurkel_$adapter.so"

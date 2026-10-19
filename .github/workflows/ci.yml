@@ -74,6 +74,11 @@ jobs:
           # System service menus are trusted by location; RPM normalizes .desktop permissions.
           test -f /usr/share/kio/servicemenus/dzurkel.desktop
           test -f /usr/share/applications/dzurkel-settings.desktop
+          for size in 16 22 24 32 48 64 128 256; do
+            test -f "/usr/share/icons/hicolor/${size}x${size}/apps/dzurkel.png"
+          done
+          test -f /usr/share/icons/hicolor/scalable/apps/dzurkel.svg
+          test -f /usr/share/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -91,6 +96,11 @@ jobs:
           test ! -e /usr/share/applications/dzurkel-settings.desktop
           test ! -e /usr/share/kio/servicemenus/dzurkel.desktop
           test ! -e /usr/share/dzurkel/build-compatibility.json
+          for size in 16 22 24 32 48 64 128 256; do
+            test ! -e "/usr/share/icons/hicolor/${size}x${size}/apps/dzurkel.png"
+          done
+          test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel.svg
+          test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
           for adapter in audio highlighting desktop; do
             test ! -e "/usr/lib64/dzurkel/plugins/libdzurkel_$adapter.so"
           done
