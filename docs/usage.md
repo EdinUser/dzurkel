@@ -125,3 +125,12 @@ out of Plasma and sign back in. Select one item in a compatible KDE chooser's
 file list and press Space. The chooser stays open; dismissing Dzurkel returns
 focus, and cancelling the chooser closes only its owned preview. Filename
 fields retain ordinary spaces. See [scope and setup](file-dialog-previews.md).
+
+## Folder information
+
+Select one folder and preview it through the CLI or your configured file-manager
+action. Contents size and file/subfolder counts update asynchronously when a
+desktop calculator is available. **Stop calculating** keeps an explicitly
+incomplete count; closing or replacing the preview cancels it. Reopen to refresh.
+Existing Thunar setups need **Update folder previews…** in Settings.
+See [folder behavior and limits](folder-previews.md).

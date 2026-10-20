@@ -1,9 +1,8 @@
 # Folder information and contents size
 
-Folder previews show an icon, name, location, type and modification time. The
-current source also calculates contents size asynchronously through optional
-KIO and GIO adapters. This is not included in the
-published 0.8.0 installers.
+Folder previews show an icon, name, location, type and modification time.
+Version 0.9.0 adds asynchronous contents size through optional KIO and GIO
+adapters. The older 0.8.0 installers do not include these calculators.
 
 The old directory-entry size (often 4 KiB) is no longer presented as contents
 size. With the adapter available, the view initially says Calculating, then

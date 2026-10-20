@@ -386,7 +386,7 @@ size, with normal preview dimensions restored when reopening a compact window.
 ## Folder contents size
 
 Folder entry metadata is not a contents total. The current source uses an
-optional KDE calculator for asynchronous contents size and counts, with explicit
+optional KIO/GIO desktop calculators for asynchronous contents size and counts, with explicit
 partial/stopped/unavailable states. See [folder previews](folder-previews.md)
 for behavior, dependencies and counting semantics.
 

@@ -1466,3 +1466,10 @@ shell syntax, documentation links and whitespace checks passed. The release
 workflow now installs the folder/dialog SDK dependencies in its builders.
 This is source validation; no 0.9.0 GitHub release or release installers have
 been published by this preparation step.
+
+The release audit compared v0.8.0 with the prepared 0.9.0 source and corrected
+the clean-install checker to recognize folder calculators and the KDE chooser
+module, including their removal. A fresh Arch runtime container passed that
+updated install/launcher/removal checker using the previously tested development
+package containing all new modules. This preflight did not rebuild a 0.9.0
+release package; the published-release workflow validates those artifacts.

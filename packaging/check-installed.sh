@@ -27,10 +27,15 @@ runtime.update(f"/usr/share/icons/hicolor/scalable/apps/{name}.svg"
                for name in ("dzurkel", "dzurkel-symbolic"))
 files = {path for path in paths if pathlib.Path(path).is_file()}
 assert runtime <= files, runtime - files
+plugin_names = ("dzurkel_highlighting", "dzurkel_audio", "dzurkel_desktop",
+                "dzurkel_folder_size", "dzurkel_folder_size_gio")
 adapters = {path for path in files
             if path.startswith(("/usr/lib/", "/usr/lib64/"))
-            and path.endswith(tuple("/dzurkel/plugins/lib" + name + ".so" for name in ("dzurkel_highlighting", "dzurkel_audio", "dzurkel_desktop")))}
-assert len(adapters) == 3, adapters
+            and (path.endswith(tuple("/dzurkel/plugins/lib" + name + ".so" for name in plugin_names))
+                 or path.endswith("/dzurkel/qt-plugins/generic/libdzurkel_chooser.so"))}
+required = {"libdzurkel_highlighting.so", "libdzurkel_audio.so",
+            "libdzurkel_desktop.so", "libdzurkel_folder_size_gio.so"}
+assert required <= {pathlib.Path(path).name for path in adapters}, adapters
 unexpected = {path for path in files - runtime
               if path not in adapters
               and not path.startswith(("/usr/share/doc/dzurkel/", "/usr/share/licenses/dzurkel/"))}
@@ -49,9 +54,12 @@ PY
         test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel.svg
         test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
         for directory in /usr/lib/dzurkel/plugins /usr/lib64/dzurkel/plugins /usr/lib/*/dzurkel/plugins; do
-            for adapter in audio highlighting desktop; do
+            for adapter in audio highlighting desktop folder_size folder_size_gio; do
                 test ! -e "$directory/libdzurkel_$adapter.so"
             done
+        done
+        for directory in /usr/lib/dzurkel/qt-plugins /usr/lib64/dzurkel/qt-plugins /usr/lib/*/dzurkel/qt-plugins; do
+            test ! -e "$directory/generic/libdzurkel_chooser.so"
         done
         ;;
     *) exit 2 ;;

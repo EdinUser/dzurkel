@@ -28,8 +28,8 @@ for your user. RPM installation does not open a GUI or change shortcut files.
 The package uses system Qt/KDE libraries; optional KIO services enable direct
 network URLs as described below.
 
-The current source includes an optional KDE file-dialog adapter, separate from
-Dolphin shortcut setup. It is not included in the published 0.8.0 installers.
+Version 0.9.0 adds an optional KDE file-dialog adapter, separate from
+Dolphin shortcut setup. It is not included in the older 0.8.0 installers.
 With a build containing the adapter, enable **Space previews in KDE file
 dialogs** in Settings and sign out/in. Disable it and sign out/in before
 uninstalling to clean up the managed session environment. See
@@ -93,13 +93,16 @@ Use the actual filenames downloaded. Developers can obtain build metadata,
 debug packages and source packaging from successful
 [Actions artifacts](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml).
 
-The DEB includes the audio/video and highlighting adapters. Their development
+Normal packages include audio/video, highlighting and GIO folder-size adapters,
+plus the KDE folder/dialog modules where compatible SDKs are available. Their development
 SDKs are build dependencies, not end-user requirements. Normal APT installation
 installs recommended media/highlighting runtimes; `--no-install-recommends` can
 omit them, leaving baseline previews available. Arch lists those runtimes as
 optional dependencies; Fedora recommends highlighting and suggests media support.
 Missing runtimes are explained in Settings; installed codecs still determine
 which media files can play.
+Folder sizing uses GIO >= 2.78 on GNOME/XFCE or KIO >= 6.30 on KDE; its libraries
+remain optional. See [folder counting semantics and fallback](folder-previews.md).
 For Actions artifacts, extract the ZIPs first and use their distribution-specific
 checksum manifests; those manifests cover all files in each artifact.
 
@@ -147,7 +150,8 @@ Install the build and test dependencies explicitly:
 
 ```bash
 sudo dnf install gcc-c++ cmake make pkgconf-pkg-config libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel \
-  kf6-kwindowsystem-devel kf6-syntax-highlighting-devel dbus-daemon python3 desktop-file-utils
+  kf6-kwindowsystem-devel kf6-syntax-highlighting-devel glib2-devel kf6-kio-devel kf6-kcoreaddons-devel \
+  dbus-daemon python3 desktop-file-utils
 ```
 
 `packaging/fedora/install.sh --check` checks packages and tools without building
@@ -207,7 +211,9 @@ color icons when run directly from the build directory.
 
 Built optional adapters are installed below the configured library directory as
 `dzurkel/plugins/libdzurkel_audio.so`, `libdzurkel_highlighting.so` and
-`libdzurkel_desktop.so`. The library directory may be `lib`, `lib64` or a
+`libdzurkel_desktop.so`, with folder calculators `libdzurkel_folder_size.so`
+(KIO) and `libdzurkel_folder_size_gio.so` (GIO). The chooser module installs as
+`dzurkel/qt-plugins/generic/libdzurkel_chooser.so`. The library directory may be `lib`, `lib64` or a
 distribution-specific multiarch path. The build's `install_manifest.txt` lists
 the exact installed paths, including only the adapters built by that configuration.
 

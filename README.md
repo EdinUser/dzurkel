@@ -58,7 +58,7 @@ autoplay with sound unless muted. Dzurkel stays resident for reopening;
 
 Media support depends on installed Qt backends and codecs. Audio-only containers
 use the music view. See [supported formats and preview limits](docs/previews.md)
-and [what's new in the upcoming 0.9.0](docs/releases/v0.9.0.md).
+and [what's new in 0.9.0](docs/releases/v0.9.0.md).
 
 ## Installation
 
@@ -105,8 +105,8 @@ the published 0.8.0 installers. See [setup, scope and validation](docs/file-dial
 
 The 0.9.0 source adds [folder contents sizing](docs/folder-previews.md) through
 optional desktop libraries. Existing Thunar setups offer **Update folder previews…**
-in Settings. See the [0.9.0 preparation notes](docs/releases/v0.9.0.md); release
-packages have not been published yet.
+in Settings. The [0.9.0 release candidate](docs/releases/v0.9.0.md) must pass
+package validation before installers are attached and stable promotion completes.
 
 ## Lightweight by design
 
@@ -148,7 +148,7 @@ See [runtime requirements and OS compatibility](docs/runtime-baseline.md) for de
 | Fedora 44, KDE Plasma 6, Wayland | Primary development and desktop validation environment |
 | Dolphin 26.04+ | Target for Space shortcut integration |
 | Ubuntu 26.04.1, GNOME 50, Nautilus 50.2.2, Wayland | VM validation; opt-in Space previews for local files |
-| Arch Linux, XFCE 4.20, Thunar 4.20.10, X11 | VM validation; opt-in Space and context-menu previews for single local files |
+| Arch Linux, XFCE 4.20, Thunar 4.20.10, X11 | VM validation; opt-in Space and context-menu previews for one local file or folder |
 | Other distributions or desktops | Not yet validated; source builds may work |
 | Local files and mounted shares | Supported |
 | Direct SMB URLs | Optional KIO-FUSE/KIO workers required; authenticate in Dolphin |

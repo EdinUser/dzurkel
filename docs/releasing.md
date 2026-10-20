@@ -11,9 +11,10 @@ For future releases, publishing a prerelease starts the package and validation
 pipeline; promote it only after all gates pass and assets are attached. Pushes
 and tags alone do not start package builds.
 
-The current source prepares **0.9.0**, adding folder contents sizing and KDE
-dialog integration. Its [preparation notes](releases/v0.9.0.md) distinguish local
-and VM validation from the release pipeline, which has not run for 0.9.0 yet.
+The **0.9.0 release candidate** adds folder contents sizing and KDE dialog
+integration. Its [release notes](releases/v0.9.0.md) distinguish local/VM checks
+from the release pipeline; all required gates and asset upload must pass before
+stable promotion.
 
 ## Release builds and validation
 
