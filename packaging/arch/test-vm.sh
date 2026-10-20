@@ -86,18 +86,19 @@ podman run --rm -i --userns=keep-id --user 0:0 \
 set -euo pipefail
 pacman -Syu --noconfirm --needed dbus
 pacman -U --noconfirm "/artifacts/$1"
-for package in qt6-multimedia syntax-highlighting kwindowsystem antiword; do
+for package in qt6-multimedia syntax-highlighting kwindowsystem antiword kio kcoreaddons; do
     if pacman -Q "$package" >/dev/null 2>&1; then
         printf 'Unexpected optional runtime dependency installed: %s\n' "$package" >&2
         exit 1
     fi
 done
-for adapter in audio highlighting desktop; do
+for adapter in audio highlighting desktop folder_size folder_size_gio; do
     test -f "/usr/lib/dzurkel/plugins/libdzurkel_$adapter.so"
 done
 ldd /usr/lib/dzurkel/plugins/libdzurkel_audio.so | grep -F 'libQt6Multimedia.so.6 => not found'
 # Probe resolves adapters relative to the same /usr/bin location as the app.
 install -m755 /artifacts/dzurkel_optional_readers_tests /usr/bin/
+install -m755 /artifacts/dzurkel_folder_size_tests /usr/bin/
 export QT_QPA_PLATFORM=offscreen DZURKEL_TEST_AUDIO_AVAILABLE=0
 export XDG_RUNTIME_DIR=/tmp/dzurkel-runtime-test
 mkdir -m700 "$XDG_RUNTIME_DIR"
@@ -105,6 +106,12 @@ dbus-run-session -- /usr/bin/dzurkel_optional_readers_tests \
     catalogDoesNotDependOnInstalledReaders \
     missingAudioExplainsRequirementAndOpensLibraries \
     missingAntiwordHasDistinctRecoveryAction baselineRemainsUsable
+XDG_CURRENT_DESKTOP=XFCE dbus-run-session -- /usr/bin/dzurkel_folder_size_tests \
+    realDesktopCalculatorHandlesNestedAndEmptyFolders realDesktopErrorsAndCancellationDoNotBecomeSuccessfulZero
+# GLib is already a standard runtime here; hide only our module to check fallback.
+mv /usr/lib/dzurkel/plugins/libdzurkel_folder_size_gio.so /tmp/dzurkel-folder-size-gio.so
+dbus-run-session -- /usr/bin/dzurkel_folder_size_tests missingDesktopCalculatorKeepsFolderUsable
+mv /tmp/dzurkel-folder-size-gio.so /usr/lib/dzurkel/plugins/libdzurkel_folder_size_gio.so
 /usr/bin/dzurkel --version
 RUNTIME
 printf 'Runtime isolation checks passed. Package: %s/artifacts/%s\n' "$work" "$package"

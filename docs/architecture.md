@@ -215,3 +215,21 @@ same seekable source implementation used by audio and video. The probe is
 uninstalled; the normal executable contains its own media helper mode. See
 [video previews](video-preview.md) for frame readiness, source deadlines and
 buffering policies.
+
+## Folder statistics
+
+Folder previews use an optional FolderSizeBackend interface. The KDE module
+wraps KIO::DirectorySizeJob; a second module uses GIO's apparent-size measurement
+API. KDE prefers KIO and other desktops prefer GIO, with load-time fallback.
+Resource preparation supplies the resolved directory path while retaining the
+original URL identity; the backend therefore uses the existing remote access
+and authentication route. KIO runs asynchronously; GIO runs on a cancellable
+worker with bounded outstanding requests. Polling reads progress without listing
+or reading source entries in the GUI thread. Both modules remain optional.
+
+The controller owns the cancellable request and rejects obsolete callbacks.
+Progress updates existing labels and shared information text without remapping
+or activating the preview. Stop, replacement, dismissal and destruction cancel
+the desktop job; a 30-second deadline yields an explicit incomplete result.
+No custom scanner, additional helper process or persistent cache is introduced.
+See [folder previews](folder-previews.md).

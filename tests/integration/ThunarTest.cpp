@@ -5,6 +5,8 @@
 #include <QDBusConnectionInterface>
 #include <QFile>
 #include <QLabel>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
 #include <QProcess>
 #include <QPushButton>
@@ -58,7 +60,8 @@ private slots:
         QVERIFY(config.enable(error)); QCOMPARE(get(config.actionsFile()), first);
         QCOMPARE(command(first), QStringLiteral("'/preview path/dzurkel'\\''s # 100%% app' --show -- %f"));
         QVERIFY(first.contains("<range>1-1</range>"));
-        QVERIFY(!first.contains("<directories"));
+        QVERIFY(first.contains("<directories"));
+        QVERIFY(!config.needsUpdate());
         QVERIFY2(config.restore(error), qPrintable(error));
         QVERIFY(!QFileInfo::exists(config.actionsFile()));
         QVERIFY(!QFileInfo::exists(config.shortcutsFile()));
@@ -78,6 +81,41 @@ private slots:
         QVERIFY2(config.restore(error), qPrintable(error));
         QCOMPARE(get(config.actionsFile()), actions); QCOMPARE(get(config.shortcutsFile()), keys);
         QCOMPARE(QFileInfo(config.actionsFile()).permissions(), permissions);
+    }
+    void upgradesLegacyActionAndPreservesOriginalRestoreAndUnrelatedEdits() {
+        QTemporaryDir dir; auto config = setup(dir); QString error;
+        const QByteArray originalActions = "<actions><!-- original --></actions>";
+        const QByteArray originalKeys = "(gtk_accel_path \"other\" \"space\")\n";
+        QVERIFY(put(config.actionsFile(), originalActions));
+        QVERIFY(put(config.shortcutsFile(), originalKeys));
+        QVERIFY(config.enable(error));
+        auto legacy = get(config.actionsFile());
+        legacy.replace("<directories/>", "");
+        legacy.replace("Preview the selected file or folder", "Preview the selected file");
+        QVERIFY(put(config.actionsFile(), legacy));
+        const auto backupPath = dir.filePath("state/thunar-preview-backup.json");
+        auto saved = QJsonDocument::fromJson(get(backupPath)).object();
+        auto managed = QJsonDocument::fromJson(QByteArray::fromBase64(saved.value("managed").toString().toLatin1())).object();
+        managed.remove("directories");
+        managed.insert("description", "Preview the selected file");
+        saved.insert("managed", QString::fromLatin1(QJsonDocument(managed).toJson(QJsonDocument::Compact).toBase64()));
+        saved.insert("installedActions", QString::fromLatin1(legacy.toBase64()));
+        QVERIFY(put(backupPath, QJsonDocument(saved).toJson()));
+        QVERIFY(config.enabled()); QVERIFY(config.needsUpdate());
+        legacy.replace("</actions>", "<action><unique-id>new</unique-id><name>Keep me</name></action></actions>");
+        QVERIFY(put(config.actionsFile(), legacy));
+        const auto keys = get(config.shortcutsFile());
+        QVERIFY2(config.enable(error), qPrintable(error));
+        QVERIFY(config.enabled()); QVERIFY(!config.needsUpdate());
+        QVERIFY(get(config.actionsFile()).contains("<directories"));
+        QVERIFY(get(config.actionsFile()).contains("Keep me"));
+        QCOMPARE(get(config.shortcutsFile()), keys);
+        const auto upgraded = get(config.actionsFile());
+        QVERIFY(config.enable(error)); QCOMPARE(get(config.actionsFile()), upgraded);
+        QVERIFY2(config.restore(error), qPrintable(error));
+        QVERIFY(get(config.actionsFile()).contains("Keep me"));
+        QVERIFY(!get(config.actionsFile()).contains("<directories"));
+        QCOMPARE(get(config.shortcutsFile()), originalKeys);
     }
     void retainsSystemDefaultsWhenCreatingUserActions() {
         QTemporaryDir dir; QString error;

@@ -1,5 +1,5 @@
 Name:           dzurkel
-Version:        0.8.0
+Version:        0.9.0
 Release:        1%{?dist}
 Summary:        Quick file previews for Dolphin, Nautilus and Thunar
 
@@ -9,7 +9,7 @@ Source0:        %{url}/archive/refs/tags/v%{version}/%{name}-%{version}.tar.gz
 
 # Adapters are loaded only when available; do not turn their libraries into a
 # mandatory dependency through the ELF dependency generator.
-%global __requires_exclude ^(libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia(Widgets)?\\.so\\.6|libKF6WindowSystem\\.so\\.6|libKF6KIO(Core|FileWidgets)\\.so\\.6).*$
+%global __requires_exclude ^(libgio-2\\.0\\.so\\.0|libgobject-2\\.0\\.so\\.0|libglib-2\\.0\\.so\\.0|libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia(Widgets)?\\.so\\.6|libKF6WindowSystem\\.so\\.6|libKF6CoreAddons\\.so\\.6|libKF6KIO(Core|FileWidgets)\\.so\\.6).*$
 
 BuildRequires:  gcc-c++
 BuildRequires:  cmake >= 3.22
@@ -17,6 +17,7 @@ BuildRequires:  cmake-rpm-macros
 BuildRequires:  make
 BuildRequires:  ninja-build
 BuildRequires:  pkgconfig(libzip) >= 1.7
+BuildRequires:  pkgconfig(gio-2.0) >= 2.78
 BuildRequires:  qt6-qtbase-devel >= 6.4
 BuildRequires:  qt6-qtpdf-devel
 BuildRequires:  qt6-qtmultimedia-devel
@@ -31,6 +32,8 @@ Requires:       qt6-qtwayland
 Recommends:     qt6-qtimageformats
 Recommends:     kf6-syntax-highlighting >= 6.0
 Suggests:       qt6-qtmultimedia
+Suggests:       glib2 >= 2.78
+Suggests:       kf6-kio-core
 Suggests:       kf6-kio-file-widgets
 Suggests:       kf6-kwindowsystem
 Suggests:       antiword
@@ -80,6 +83,11 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
 
 %changelog
+* Tue Oct 20 2026 Dzurkel contributors - 0.9.0-1
+- Add desktop-backed folder contents sizing with optional KIO and GIO adapters.
+- Add reversible Thunar folder preview setup and opt-in KDE file-dialog previews.
+- Cover media failure/recovery and keep desktop libraries optional at runtime.
+
 * Mon Oct 19 2026 Dzurkel contributors - 0.8.0-1
 - Add streaming video with shared audio/video playback and mute/volume choices.
 - Add bounded media read-ahead, slow-source feedback and adapter mismatch diagnostics.

@@ -22,6 +22,7 @@ PreviewData FileInfoProvider::describe(const FileResource &resource)
         data.modified = QDateTime::fromString(metadata.value(QStringLiteral("modified")).toString(), Qt::ISODateWithMs);
         data.linkTarget = metadata.value(QStringLiteral("linkTarget")).toString();
         data.message = metadata.value(QStringLiteral("message")).toString();
+        if (data.mimeType == QStringLiteral("inode/directory")) data.size = -1;
         return data;
     }
     const QFileInfo info(resource.path);
@@ -36,7 +37,9 @@ PreviewData FileInfoProvider::describe(const FileResource &resource)
         data.mimeType = QStringLiteral("inode/symlink");
         data.message = QStringLiteral("Symbolic links are shown as information only; targets are not opened.");
     } else if (info.isDir()) {
-        data.message = QStringLiteral("Directory information — contents are not listed.");
+        data.size = -1;
+        data.mimeType = QStringLiteral("inode/directory");
+        data.message = QStringLiteral("Reopen to refresh folder information.");
     } else if (!info.isFile()) {
         data.description = QStringLiteral("Special filesystem object");
         data.mimeType = QStringLiteral("application/octet-stream");
@@ -65,8 +68,31 @@ QWidget *FileInfoProvider::createWidget(const PreviewData &data, QWidget *parent
         label->setWordWrap(true);
         layout->addWidget(label);
     };
-    add(QStringLiteral("%1 (%2)").arg(data.description, data.mimeType));
-    add(QStringLiteral("Size: %1 (%2 bytes)").arg(QLocale().formattedDataSize(data.size)).arg(data.size));
+    add(data.mimeType == QStringLiteral("inode/directory") ? data.description
+        : QStringLiteral("%1 (%2)").arg(data.description, data.mimeType));
+    if (data.mimeType == QStringLiteral("inode/directory")) {
+        auto *size = new QLabel(QStringLiteral("Contents size: ") + folderSizeText(data.folderSize), widget);
+        size->setObjectName(QStringLiteral("folderSize"));
+        size->setTextFormat(Qt::PlainText);
+        size->setWordWrap(true);
+        layout->addWidget(size);
+        auto *counts = new QLabel(folderCountText(data.folderSize), widget);
+        counts->setObjectName(QStringLiteral("folderCounts"));
+        counts->setVisible(!counts->text().isEmpty());
+        layout->addWidget(counts);
+        auto *notice = new QLabel(data.folderSize.explanation, widget);
+        notice->setObjectName(QStringLiteral("folderSizeNotice"));
+        notice->setTextFormat(Qt::PlainText);
+        notice->setWordWrap(true);
+        notice->setVisible(!notice->text().isEmpty());
+        layout->addWidget(notice);
+        auto *stop = new QPushButton(QStringLiteral("Stop calculating"), widget);
+        stop->setObjectName(QStringLiteral("stopFolderSize"));
+        stop->setVisible(data.folderSize.state == FolderSizeState::Calculating);
+        layout->addWidget(stop, 0, Qt::AlignLeft);
+    } else {
+        add(QStringLiteral("Size: %1 (%2 bytes)").arg(QLocale().formattedDataSize(data.size)).arg(data.size));
+    }
     add(QStringLiteral("Modified: %1").arg(data.modified.isValid() ? QLocale().toString(data.modified, QLocale::ShortFormat) : QStringLiteral("Unavailable")));
     if (!data.linkTarget.isEmpty()) add(QStringLiteral("Target: %1").arg(data.linkTarget));
     add(data.message);

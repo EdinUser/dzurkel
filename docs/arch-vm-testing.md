@@ -31,9 +31,12 @@ development-testing workflow; the clean-HEAD release scripts remain separate.
 Artifacts, metadata and logs are retained under `build-arch-vm/package.*`.
 Containers are removed after use and downloaded packages are cached on the host.
 
-The builder compiles and ships every adapter. The fresh runtime check verifies
-that Qt Multimedia, KSyntaxHighlighting, KF6 WindowSystem and antiword are absent,
-while baseline previews and missing-reader recovery work. The test VM's existing
+The builder compiles and ships every adapter, including both KIO and GIO folder-size
+modules. The fresh runtime check verifies that Qt Multimedia, KSyntaxHighlighting,
+KF6 WindowSystem, KIO, CoreAddons and antiword are absent, while baseline previews,
+missing-reader recovery and GIO folder measurement work. It temporarily hides the
+GIO module to verify unavailable folder-size fallback too. KIO and
+CoreAddons remain optional package dependencies. The test VM's existing
 optional libraries are preserved, including any required by its desktop.
 
 The package and installer are staged under `~/Dzurkel-packages/package.*`, with a

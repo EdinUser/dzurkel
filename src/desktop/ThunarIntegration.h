@@ -12,6 +12,7 @@ public:
                       std::function<bool()> running = {}, QString defaultActions = {},
                       std::function<bool()> activeWindow = {});
     bool enabled() const;
+    bool needsUpdate() const;
     bool hasBackup() const;
     bool enable(QString &error);
     bool restore(QString &error);

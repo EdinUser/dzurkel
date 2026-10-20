@@ -15,7 +15,7 @@ class PreviewController : public QObject {
     Q_OBJECT
 public:
     using Loader = std::function<PreviewData(const FileResource &, const QSize &, const Cancellation &)>;
-    explicit PreviewController(bool diagnostics = false, Loader loader = {});
+    explicit PreviewController(bool diagnostics = false, Loader loader = {}, FolderSizeBackend *statistics = nullptr);
     ~PreviewController() override;
     // Folder navigation suppresses activation when updating a mapped preview.
     bool show(const QString &url, QString &error, ResourceError *failure = nullptr,
@@ -49,6 +49,8 @@ private:
     QThreadPool pool_;
     QPointer<QFutureWatcher<PreviewData>> watcher_;
     QPointer<ResourcePreparation> preparation_;
+    QPointer<QObject> folderSizeJob_;
+    FolderSizeBackend *statisticsBackend_ = nullptr;
     QString chooserOwner_;
     Loader loader_;
     Cancellation cancellation_;

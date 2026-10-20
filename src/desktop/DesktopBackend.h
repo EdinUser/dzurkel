@@ -12,5 +12,5 @@ public:
     virtual bool thunarActive() = 0;
 };
 }
-#define DZURKEL_DESKTOP_BACKEND_IID "org.dzurkel.DesktopBackend/0.8.0"
+#define DZURKEL_DESKTOP_BACKEND_IID "org.dzurkel.DesktopBackend/0.9.0"
 Q_DECLARE_INTERFACE(dzurkel::DesktopBackend, DZURKEL_DESKTOP_BACKEND_IID)

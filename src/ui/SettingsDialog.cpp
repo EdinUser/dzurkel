@@ -162,7 +162,7 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     heading->addStretch();
     heading->addWidget(information(this, QStringLiteral("shortcutInfo"), headingText,
         dolphin ? QStringLiteral("Preview selected files with Space in Dolphin 26.04 or newer. If Space stops working while the context-menu action still works, close all Dolphin windows and reopen Dolphin. This replaces Space selection and conflicting Space shortcuts; alternate bindings are kept. Restore previous shortcuts uses the backup to undo only Dzurkel’s changes, preserving unrelated toolbar and menu edits.")
-        : thunarSelected ? QStringLiteral("Preview one selected local file with Space or Preview with Dzurkel in Thunar’s context menu. Setup uses Thunar’s built-in custom actions and shortcuts, with no extra plugin or global shortcut. Conflicting Space bindings are backed up. Restore removes Dzurkel’s action and restores those bindings, preserving unrelated edits. Thunar must restart when applying or restoring setup.")
+        : thunarSelected ? QStringLiteral("Preview one selected local file or folder with Space or Preview with Dzurkel in Thunar’s context menu. Setup uses Thunar’s built-in custom actions and shortcuts, with no extra plugin or global shortcut. Conflicting Space bindings are backed up. Restore removes Dzurkel’s action and restores those bindings, preserving unrelated edits. Thunar must restart when applying or restoring setup.")
         : QStringLiteral("Preview selected local files with Space in Nautilus (Files). Dzurkel becomes the user’s Nautilus preview provider. Arrow navigation follows the selection in Files; Alt+arrows work while reading documents. Restore returns the previous user registration, allowing a system provider such as Sushi to be used again. No GNOME extension or global shortcut change is needed.")));
     layout->addLayout(heading);
     status_ = label(this, {});
@@ -625,13 +625,16 @@ void SettingsDialog::refresh()
     }
     if (integration_ == FileManagerIntegration::Thunar) {
         const bool active = thunar_.enabled(), backup = thunar_.hasBackup();
-        status_->setText(active ? QStringLiteral("Space and context-menu previews enabled in Thunar")
+        const bool update = thunar_.needsUpdate();
+        status_->setText(update ? QStringLiteral("Thunar previews enabled; update setup to include folders")
+            : active ? QStringLiteral("Space and context-menu previews enabled in Thunar")
             : backup ? QStringLiteral("Thunar preview settings changed after setup. Review them before restoring.")
             : QStringLiteral("Space and context-menu previews not enabled in Thunar"));
-        shortcutChanges_->setText(QStringLiteral("Use Space or Preview with Dzurkel on one selected local file. Conflicting Space shortcuts will be backed up for restore."));
-        shortcutChanges_->setVisible(!backup);
-        apply_->setVisible(!backup);
-        apply_->setEnabled(!busy_ && !backup);
+        shortcutChanges_->setText(QStringLiteral("Use Space or Preview with Dzurkel on one selected local file or folder. Conflicting Space shortcuts will be backed up for restore."));
+        shortcutChanges_->setVisible(!backup || update);
+        apply_->setText(update ? QStringLiteral("Update folder previews…") : QStringLiteral("Use Space for previews…"));
+        apply_->setVisible(!backup || update);
+        apply_->setEnabled(!busy_ && (!backup || update));
         restore_->setVisible(backup);
         restore_->setEnabled(!busy_ && backup);
         return;

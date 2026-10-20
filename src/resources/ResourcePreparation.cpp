@@ -168,6 +168,8 @@ int prepareResourceSnapshot(const QString &url, const QString &directory)
             .arg(original.url.scheme().toUpper()));
     auto data = FileInfoProvider::describe(source);
     auto object = metadata(data);
+    if (data.mimeType == QStringLiteral("inode/directory"))
+        object.insert(QStringLiteral("directoryPath"), path);
     object.insert(QStringLiteral("informationOnly"), true);
     if (source.informationOnly) return report(object);
     QFile input;

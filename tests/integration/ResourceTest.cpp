@@ -83,6 +83,8 @@ private slots:
     void boundsTextAndContentCopies();
     void describesSpecialResourcesWithoutReadingThem_data();
     void describesSpecialResourcesWithoutReadingThem();
+    void folderSizeUsesResolvedRemotePath_data();
+    void folderSizeUsesResolvedRemotePath();
     void reportsAccessFailure_data();
     void reportsAccessFailure();
     void missingLocalFileIsAnAsynchronousError();
@@ -322,9 +324,41 @@ void ResourceTest::describesSpecialResourcesWithoutReadingThem()
         const auto resource = prepare((remoteBase_ + QStringLiteral("object")));
         QVERIFY(resource.informationOnly);
         QVERIFY(resource.backingPath.isEmpty());
+        if (path == directory_.path()) {
+            QCOMPARE(resource.metadata.value(QStringLiteral("directoryPath")).toString(), path);
+            QCOMPARE(resource.metadata.value(QStringLiteral("size")).toInt(), -1);
+        }
         QVERIFY(!resource.metadata.value(QStringLiteral("message")).toString().isEmpty());
     }
 }
+void ResourceTest::folderSizeUsesResolvedRemotePath_data()
+{
+    describesSpecialResourcesWithoutReadingThem_data();
+}
+void ResourceTest::folderSizeUsesResolvedRemotePath()
+{
+    QFETCH(QString, base);
+    if (!folderSizeBackend()) QSKIP("Optional desktop calculator was not built.");
+    QString error;
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), error));
+    QTemporaryDir folder;
+    QFile file(folder.filePath(QStringLiteral("payload")));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(QByteArray(37, 'x')), 37);
+    file.close();
+    fuse_.path = folder.path();
+    const auto url = base + QStringLiteral("folder");
+    PreviewController controller;
+    QVERIFY(controller.show(url, error));
+    QTRY_VERIFY_WITH_TIMEOUT(controller.window()->findChild<QLabel *>(QStringLiteral("folderSize")), 5000);
+    auto *size = controller.window()->findChild<QLabel *>(QStringLiteral("folderSize"));
+    QTRY_VERIFY_WITH_TIMEOUT(size->text().contains(QStringLiteral("37 bytes"))
+        && !size->text().contains(QStringLiteral("calculating")), 5000);
+    QCOMPARE(controller.fileUrl(), url);
+    QCOMPARE(fuse_.lastUrl, url);
+    controller.hide();
+}
+
 void ResourceTest::reportsAccessFailure_data()
 {
     QTest::addColumn<QString>("base");

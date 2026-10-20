@@ -1327,3 +1327,142 @@ Before the stable checkpoint commit, the seven focused chooser, fallback,
 D-Bus, Settings, CLI, compatibility and install suites passed again (12.94 s).
 They ran outside the restricted filesystem sandbox so isolated D-Bus sessions
 could create their local sockets.
+
+## Desktop-backed folder contents size
+
+Recorded 2026-10-20 on Fedora 44, Qt 6.11.2 and KIO 6.31.0. The full Debug build
+with the optional KIO calculator passed all 28 CTest suites (69.62 s). After final
+folder layout, navigation and lifecycle refinements, the seven focused folder,
+fallback, resource, preview, interaction, compatibility and install suites passed
+(28.64 s). The baseline with all optional adapters disabled passed all 21 suites
+(50.57 s); real-KIO cases explicitly skip there.
+
+Generated fixtures check nested and empty folders, hidden files, sparse logical
+sizes, hard-link deduplication, exclusion of symlink targets, special objects and
+backend-reported errors. Controlled callbacks check progress, incomplete results,
+Stop, dismissal/replacement/destruction, stale notifications and information-popup
+updates. Runtime-fault cases cover missing/corrupt modules, incompatible interface
+and missing KIO dependency; folder metadata remains usable with size unavailable.
+SMB/SFTP tests use a fake existing resolver followed by a real KIO calculation on
+a generated local folder; they do not establish network/server compatibility.
+
+A native KDE Wayland check displayed the expected generated-fixture contents
+size and counts through the normal preparation/controller path. The window was
+visually inspected after folder navigation and plural wording corrections.
+This was an isolated test process/session bus, not installation into the user's
+normal session or a physical-keyboard/file-manager acceptance test. See
+[folder behavior and build requirements](folder-previews.md).
+
+Real-share performance, disconnection/cancellation, authentication and other
+desktop/backend versions remain targeted acceptance checks. No personal folders
+were recursively scanned. RPM parsing, shell syntax, local documentation links,
+staged installation and whitespace checks passed; release packages were not built.
+The final folder/fallback rerun, including cancellation immediately after job
+startup, passed both suites (1.35 s). The normal folder suite reported 11 passes
+and one intentional unavailable-adapter skip; the separate fallback suite
+exercised that case under four runtime faults.
+
+## Folder-size VM investigation
+
+On 2026-10-20, the Ubuntu GNOME development helper rebuilt and installed the
+current app after all 25 registered suites passed (53.03 s). The installed binary
+matched the tested build by SHA-256. No KIO runtime/SDK was installed system-wide,
+so real-KIO cases were skipped there and folder size correctly remained
+unavailable. Native Files Space opened the exact generated folder URL and Escape
+dismissed it; a generated text-file Space/Escape regression also passed.
+
+A separate isolated Ubuntu KIO 6.24 build exposed a counting incompatibility:
+the 19-byte nested/hidden-file fixture reported 179 bytes because directory
+metadata was included. Native Wayland rendering confirmed the same incorrect
+contents-only label. Folder exact-total and resolved-remote-path checks failed
+for that reason; this is a known compatibility gap, not passed GNOME sizing.
+The already-present GIO API measured the same fixture as 19 bytes.
+
+Arch XFCE, Qt 6.12.0 and an isolated KIO 6.31 runtime passed folder sizing,
+runtime-fault fallback and native X11 rendering. Its initial 25-suite run passed
+24 suites and exposed a separate media-source fixture defect: SFTP opt-in was
+implicitly inherited from the developer's settings. The fixture now uses a
+temporary config and explicitly sets the opt-in; its Arch rerun passed (6.45 s),
+and the local Fedora rerun passed (7.14 s). No playback implementation changed.
+
+After unlocking Arch's desktop, isolated native Thunar tests passed file Space,
+context menu, dismissal and multi-selection rejection. Folder selection was
+confirmed excluded by the existing custom-action selector. The first locked-
+desktop attempt is not counted as an integration failure. See
+[folder compatibility gaps](folder-previews.md#cross-desktop-validation-and-known-gaps).
+
+The final Arch package build passed all 28 suites (48.06 s). A fresh runtime
+container also passed baseline/reader recovery and missing-KIO folder fallback
+checks without installing the optional desktop libraries. After the user
+authenticated installation in the VM, pacman reported version 0.8.0-1 with all
+55 files present; the installed executable matched the tested package by SHA-256.
+Native X11 folder/text previews and dismissal passed against `/usr/bin/dzurkel`.
+The folder screenshot correctly shows contents size unavailable because KIO is
+absent from this standard XFCE installation.
+
+The media fixture correction also passed on isolated Ubuntu (6.22 s). GIO's
+existing contents-measurement API returned the expected 19 bytes on both standard
+VMs; this validates a candidate desktop API, not an implemented Dzurkel backend.
+Firefox upload dialogs were not retested in this run: host VM-control access
+failed before browser launch. No real network-share counting was validated.
+
+## GIO folder-size implementation
+
+The follow-up implementation adds an optional GIO >= 2.78 calculator, preferred
+outside KDE, and restricts the KIO calculator to the contents-only 6.30 ABI.
+The interface version rejects older Dzurkel modules. Configuration against the
+isolated Ubuntu KIO 6.24 SDK selects only the GIO folder adapter.
+
+Ubuntu's development helper passed all 27 suites and installed the update.
+The executable and GIO module each match their tested build by SHA-256. A native
+Wayland probe using the installed module displayed 19 bytes, 3 files and
+1 subfolder for the generated fixture. The corresponding native Arch X11 probe
+also displayed that exact result without a KIO runtime.
+
+The local all-adapters run passed 29 of 30 suites; its image cold-start geometry
+assertion failed during concurrent builds, then the entire preview suite passed
+unchanged on rerun (19.31 s). Both calculator suites and runtime-fault suites,
+resources, settings, install and Thunar migration passed. The optional-adapters-off
+baseline passed all 21 suites (60.02 s).
+
+Generated-fixture checks include empty/hidden/nested contents, a selected folder
+symlink, hard links, symlink entries, sparse files, errors, rejected unresolved
+remote URLs and silent cancellation. GIO's distinct link/count semantics are
+asserted explicitly. Thunar's upgrade test verifies idempotence, the original
+shortcut restore and preservation of unrelated actions added after setup.
+
+After the user unlocked Arch, real Thunar file Space/context-menu dispatch,
+folder Space, Escape/Space dismissal and multi-selection rejection passed with
+temporary configuration. Visual inspection confirmed the selected generated
+folder displayed 9 bytes. Its temporary quoted launcher was given access to
+the matching test plugins; the earlier missing-plugin and locked-desktop attempts
+are not counted as successful sizing checks.
+
+The follow-up Arch package passed all 30 suites (62.30 s). A fresh runtime
+container without KIO/CoreAddons passed real GIO nested-folder and error/cancel
+checks, baseline reader recovery, and folder-unavailable fallback with the GIO
+module temporarily hidden. No KDE packages were added to the runtime VM.
+An isolated Ubuntu probe also verified that a stale original KIO module does
+not override the new GIO contents total under KDE desktop preference.
+
+After user authentication, the installed Arch executable and GIO module matched
+the tested package by SHA-256; pacman reported 56 files with none missing.
+Installed `/usr/bin/dzurkel` passed native folder/text show/hide checks and the
+19-byte folder total was visually confirmed. The existing managed Thunar action
+was upgraded after normally stopping its idle background daemon, then that daemon
+was restored. The original backup fields and shortcut bytes remained unchanged.
+Finally, actual Space/Escape through the normal upgraded Thunar setup and
+installed application passed; the generated folder visibly showed 9 bytes.
+After final whitespace cleanup, the five local calculator/fallback/Thunar suites
+passed again (6.52 s).
+
+## 0.9.0 source preparation
+
+After synchronizing the CMake/RPM/Debian/Arch version fields and the release-specific
+desktop adapter ID to 0.9.0, the local all-adapters build passed all 30 suites
+(75.66 s); the optional-adapters-off baseline passed all 21 (47.98 s). Both
+executables report 0.9.0. Version consistency, workflow YAML, RPM spec parsing,
+shell syntax, documentation links and whitespace checks passed. The release
+workflow now installs the folder/dialog SDK dependencies in its builders.
+This is source validation; no 0.9.0 GitHub release or release installers have
+been published by this preparation step.

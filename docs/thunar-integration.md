@@ -8,7 +8,7 @@ On the validated XFCE/X11 session, Settings regains focus once the reopened
 Thunar window has taken focus. This is a single request; closing or minimizing
 Settings cancels it, and it expires after ten seconds if no ready window appears.
 
-Select one local file and press Space. Escape or Space closes the preview;
+Select one local file or folder and press Space. Escape or Space closes the preview;
 navigation inside Dzurkel uses its existing folder navigation. This does not
 synchronize Thunar's selection as Nautilus's preview service does. Multiple
 selection, folder-background actions and direct remote URLs are not enabled by
@@ -18,6 +18,11 @@ Setup uses Thunar's shipped Custom Actions and accelerator support. It requires
 no additional Thunar plugin, global shortcut or window-control utility. Thunar's
 GUI shortcut picker rejects bare Space, but its action dispatcher accepts a
 configured Space accelerator. The context action has a Z mnemonic.
+
+Existing managed setups that only covered files show **Update folder previews…**
+in Settings. Applying it adds folders while preserving the original restore
+backup, executable command, shortcuts and unrelated custom actions. Thunar must
+close or restart as for initial setup. Edited managed actions are left for review.
 
 New setups use the installed Dzurkel application icon for the context action.
 If setup predates the custom icon, use **Restore previous shortcuts…**, then

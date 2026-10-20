@@ -11,6 +11,10 @@ For future releases, publishing a prerelease starts the package and validation
 pipeline; promote it only after all gates pass and assets are attached. Pushes
 and tags alone do not start package builds.
 
+The current source prepares **0.9.0**, adding folder contents sizing and KDE
+dialog integration. Its [preparation notes](releases/v0.9.0.md) distinguish local
+and VM validation from the release pipeline, which has not run for 0.9.0 yet.
+
 ## Release builds and validation
 
 `.github/workflows/ci.yml` runs only when a GitHub release or prerelease is
@@ -30,7 +34,8 @@ The Debian 12 baseline job also builds without optional SDKs and runs CTest;
 the asset-upload job waits for it. This is a source/runtime-baseline check,
 separate from the Debian 13 release package target.
 
-Normal packages ship audio/video, highlighting and desktop activation adapters, while
+Normal packages ship audio/video, highlighting, desktop activation and available
+folder-size/dialog adapters, while
 their backend libraries remain optional runtime dependencies. Build dependencies
 are needed in the builder only. Recommendations may be installed by DNF/APT;
 Arch optional dependencies are not automatically installed. Validate missing
@@ -75,7 +80,7 @@ bash packaging/arch/build-arch.sh
 ```
 
 Debian uses debhelper 13, CMake, Qt6 base/PDF/Multimedia, KF6 WindowSystem,
-KSyntaxHighlighting, libzip, and
+KSyntaxHighlighting, GIO, libzip, and
 standard `dpkg-buildpackage` tooling. Arch uses `makepkg` and the PKGBUILD under
 `packaging/arch/`. Both run every CTest suite before packaging and archive HEAD,
 excluding ignored/private files. Output directories are `build-deb/artifacts/`

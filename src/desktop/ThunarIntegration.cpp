@@ -68,10 +68,10 @@ QByteArray action(const QString &executable)
     element("name", QStringLiteral("Preview with D_zurkel"));
     element("unique-id", actionId);
     element("command", quote(executable) + QStringLiteral(" --show -- %f"));
-    element("description", QStringLiteral("Preview the selected file"));
+    element("description", QStringLiteral("Preview the selected file or folder"));
     element("patterns", QStringLiteral("*"));
     element("range", QStringLiteral("1-1"));
-    for (const auto *name : {"startup-notify", "text-files", "image-files", "audio-files", "video-files", "other-files"})
+    for (const auto *name : {"startup-notify", "directories", "text-files", "image-files", "audio-files", "video-files", "other-files"})
         xml.writeEmptyElement(QString::fromLatin1(name));
     xml.writeEndElement();
     return bytes;
@@ -250,6 +250,14 @@ bool ThunarIntegration::enabled() const
     } catch (const std::exception &) { return false; }
 }
 bool ThunarIntegration::enable(QString &error) { return change(false, error); }
+bool ThunarIntegration::needsUpdate() const
+{
+    if (!enabled()) return false;
+    try {
+        const auto fields = QJsonDocument::fromJson(transform(read(actionsFile())).managed).object();
+        return !fields.contains("directories");
+    } catch (const std::exception &) { return false; }
+}
 bool ThunarIntegration::restore(QString &error) { return change(true, error); }
 bool ThunarIntegration::change(bool restore, QString &error)
 {
@@ -261,6 +269,34 @@ bool ThunarIntegration::change(bool restore, QString &error)
         check(lock.tryLock(0), QStringLiteral("Another Thunar setup is in progress."));
         if (!restore && hasBackup()) {
             check(enabled(), QStringLiteral("Thunar preview settings changed after setup. Review them before enabling again."));
+            if (needsUpdate()) {
+                const auto before = snapshot(actionsFile());
+                const auto backup = read(backupFile(), 16 * 1024 * 1024);
+                auto saved = manifest(backupFile());
+                auto fields = QJsonDocument::fromJson(transform(original(before)).managed).object();
+                fields.insert("directories", QString());
+                if (fields.value("description") == QLatin1String("Preview the selected file"))
+                    fields.insert("description", QStringLiteral("Preview the selected file or folder"));
+                QByteArray replacement;
+                QXmlStreamWriter xml(&replacement);
+                xml.writeStartElement(QStringLiteral("action"));
+                for (auto it = fields.begin(); it != fields.end(); ++it) xml.writeTextElement(it.key(), it.value().toString());
+                xml.writeEndElement();
+                const auto next = transform(transform(original(before), {}, true).document, replacement).document;
+                // Preserve the installation baseline separately from user edits.
+                const auto installed = QByteArray::fromBase64(saved.value("installedActions").toString().toLatin1());
+                const auto upgradedInstalled = transform(transform(installed, {}, true).document, replacement).document;
+                saved.insert("installedActions", QString::fromLatin1(upgradedInstalled.toBase64()));
+                saved.insert("managed", QString::fromLatin1(transform(next).managed.toBase64()));
+                check(!running(), QStringLiteral("Thunar started again; configuration was not changed."));
+                write(backupFile(), QJsonDocument(saved).toJson(), QFile::ReadOwner | QFile::WriteOwner);
+                try {
+                    write(actionsFile(), next, QFile::Permissions(before.value("permissions").toInt()));
+                } catch (...) {
+                    write(backupFile(), backup, QFile::ReadOwner | QFile::WriteOwner);
+                    throw;
+                }
+            }
             return true;
         }
         const auto beforeActions = snapshot(actionsFile()), beforeKeys = snapshot(shortcutsFile());

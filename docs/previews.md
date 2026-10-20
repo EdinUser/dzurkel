@@ -383,6 +383,13 @@ more than 150 ms, a normal-sized loading window appears; it may shrink when an
 information result arrives. File replacement keeps the current loading view
 size, with normal preview dimensions restored when reopening a compact window.
 
+## Folder contents size
+
+Folder entry metadata is not a contents total. The current source uses an
+optional KDE calculator for asynchronous contents size and counts, with explicit
+partial/stopped/unavailable states. See [folder previews](folder-previews.md)
+for behavior, dependencies and counting semantics.
+
 ## Examples
 
 ```bash

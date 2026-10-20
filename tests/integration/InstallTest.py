@@ -122,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
         expected.add(root / plugin.lstrip("/"))
     if plugin := os.environ.get("DZURKEL_TEST_CHOOSER_PLUGIN"):
         expected.add(root / plugin.lstrip("/"))
-    for adapter in ("dzurkel_audio", "dzurkel_desktop"):
+    for adapter in ("dzurkel_audio", "dzurkel_desktop", "dzurkel_folder_size", "dzurkel_folder_size_gio"):
         if plugin := os.environ.get("DZURKEL_TEST_" + adapter):
             expected.add(root / plugin.lstrip("/"))
     assert actual == expected, f"Unexpected installation contents: {actual}"
@@ -140,6 +140,10 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
         assert "@DZURKEL_EXEC@" not in text
         assert "StartupNotify=true" in text
         assert "helpers/" not in text
+    # Space invokes this service action only for MIME types it accepts.
+    menu_types = next(line.partition("=")[2].split(";") for line in menu.read_text().splitlines()
+                      if line.startswith("MimeType="))
+    assert {"application/octet-stream", "inode/directory"} <= set(menu_types)
     assert "Actions=dzurkel;" in menu.read_text()
     assert "X-KDE-Protocols=file,smb,sftp" in menu.read_text()
     assert "[Desktop Action dzurkel]" in menu.read_text()

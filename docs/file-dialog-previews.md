@@ -48,8 +48,8 @@ that cannot be loaded; an existing opt-in can still be disabled.
   it cannot browse outside the chooser's order or filters.
 
 Existing resource policies apply, including supported local/mounted/SMB paths,
-SFTP opt-in, cancellation and format limits. Folder previews still show basic
-information; recursive contents size is separate future work.
+SFTP opt-in, cancellation and format limits. Folder previews show basic
+information and optional [desktop-backed contents size](folder-previews.md).
 
 This is an opt-in module inside compatible Qt application processes, scoped to
 KDE file chooser widgets. GTK-only/custom pickers and incompatible Qt versions

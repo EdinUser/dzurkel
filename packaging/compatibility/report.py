@@ -109,7 +109,7 @@ def main():
     if catalog['schema_version'] != 1:
         raise ValueError('Unsupported compatibility catalog schema')
     artifact = inspect_elf(args.binary, args.readelf)
-    optional = ('Qt6Multimedia', 'KF6SyntaxHighlighting', 'KF6WindowSystem', 'KF6KIO')
+    optional = ('Qt6Multimedia', 'KF6SyntaxHighlighting', 'KF6WindowSystem', 'KF6KIO', 'KF6CoreAddons', 'libgio-2.0')
     leaked = [name for name in artifact['needed_sonames'] if any(library in name for library in optional)]
     if leaked:
         raise ValueError(f'Optional dependencies leaked into the baseline executable: {leaked}')

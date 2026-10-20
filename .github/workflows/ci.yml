@@ -26,7 +26,7 @@ jobs:
           dnf install -y git tar gzip gcc-c++ cmake cmake-rpm-macros make ninja-build
           rpm-build redhat-rpm-config pkgconf-pkg-config libzip-devel shadow-utils util-linux
           qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel
-          qt6-qtwayland dbus-daemon python3 desktop-file-utils
+          glib2-devel kf6-kio-devel kf6-kcoreaddons-devel qt6-qtwayland dbus-daemon python3 desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -101,7 +101,7 @@ jobs:
           done
           test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel.svg
           test ! -e /usr/share/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
-          for adapter in audio highlighting desktop; do
+          for adapter in audio highlighting desktop folder_size folder_size_gio; do
             test ! -e "/usr/lib64/dzurkel/plugins/libdzurkel_$adapter.so"
           done
 
@@ -118,7 +118,7 @@ jobs:
         run: >-
           dnf install -y git tar gzip clang cmake make pkgconf-pkg-config
           libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel
-          dbus-daemon python3 desktop-file-utils shadow-utils util-linux
+          glib2-devel kf6-kio-devel kf6-kcoreaddons-devel dbus-daemon python3 desktop-file-utils shadow-utils util-linux
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -151,7 +151,7 @@ jobs:
         run: >-
           dnf install -y git gcc-c++ cmake make pkgconf-pkg-config shadow-utils
           libzip-devel qt6-qtbase-devel qt6-qtpdf-devel qt6-qtmultimedia-devel kf6-kwindowsystem-devel kf6-syntax-highlighting-devel
-          qt6-qtwayland dbus-daemon python3 python3-gobject python3-pillow
+          glib2-devel kf6-kio-devel kf6-kcoreaddons-devel qt6-qtwayland dbus-daemon python3 python3-gobject python3-pillow
           gnome-shell nautilus mesa-dri-drivers mesa-libEGL dejavu-sans-fonts
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -182,7 +182,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper cmake pkgconf qt6-base-dev qt6-pdf-dev qt6-multimedia-dev libkf6windowsystem-dev libkf6syntaxhighlighting-dev libzip-dev dbus-daemon python3 desktop-file-utils
+          apt-get install -y --no-install-recommends git ca-certificates build-essential debhelper cmake pkgconf qt6-base-dev qt6-pdf-dev qt6-multimedia-dev libkf6windowsystem-dev libkf6syntaxhighlighting-dev libglib2.0-dev libzip-dev dbus-daemon python3 desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -237,7 +237,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm --needed git cmake qt6-base qt6-webengine qt6-multimedia qt6-multimedia-ffmpeg qt6-wayland kwindowsystem syntax-highlighting libzip dbus python desktop-file-utils
+        run: pacman -Syu --noconfirm --needed git cmake pkgconf glib2 kio qt6-base qt6-webengine qt6-multimedia qt6-multimedia-ffmpeg qt6-wayland kwindowsystem syntax-highlighting libzip dbus python desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

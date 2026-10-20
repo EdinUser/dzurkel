@@ -1,5 +1,6 @@
 #pragma once
 #include "resources/FileResource.h"
+#include "desktop/FolderSizeBackend.h"
 #include <QDateTime>
 #include <QImage>
 #include <QMimeType>
@@ -23,6 +24,7 @@ struct PreviewData {
     QString mimeType;
     QString description;
     qint64 size = 0;
+    FolderSize folderSize;
     QDateTime modified;
     QString linkTarget;
     QString message;

@@ -174,6 +174,8 @@ void PreviewWindow::setResource(const FileResource &resource)
         "<tr><td valign='top'><small>Name</small></td><td>%1</td></tr>"
         "<tr><td valign='top'><small>Location</small></td><td>%2</td></tr></table></qt>")
         .arg(name.toHtmlEscaped(), location_.toHtmlEscaped());
+    if (informationDialog_)
+        informationDialog_->findChild<QLabel *>(QStringLiteral("fileInformationText"))->setText(fileInformation_);
     fileInfoButton_->setToolTip(fileInformation_);
     fileInfoButton_->setAccessibleDescription(location_);
     summary_->clear();
@@ -356,7 +358,13 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     add(QStringLiteral("Name"), windowTitle());
     add(QStringLiteral("Location"), location_);
     add(QStringLiteral("Type"), data.description.isEmpty() ? data.mimeType : data.description);
-    add(QStringLiteral("Size"), QStringLiteral("%1 (%2 bytes)").arg(QLocale().formattedDataSize(data.size)).arg(data.size));
+    if (data.mimeType == QStringLiteral("inode/directory")) {
+        add(QStringLiteral("Contents size"), folderSizeText(data.folderSize));
+        add(QStringLiteral("Contains"), folderCountText(data.folderSize));
+        add(QStringLiteral("Calculation"), data.folderSize.explanation);
+    } else {
+        add(QStringLiteral("Size"), QStringLiteral("%1 (%2 bytes)").arg(QLocale().formattedDataSize(data.size)).arg(data.size));
+    }
     if (!data.imageSize.isEmpty()) add(QStringLiteral("Dimensions"), QStringLiteral("%1 × %2 pixels").arg(data.imageSize.width()).arg(data.imageSize.height()));
     if (data.modified.isValid()) add(QStringLiteral("Modified"), QLocale().toString(data.modified, QLocale::ShortFormat));
     add(QStringLiteral("Target"), data.linkTarget);
@@ -370,6 +378,8 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     }
     add(QStringLiteral("Notice"), data.message);
     fileInformation_ = QStringLiteral("<qt><table cellspacing='0' cellpadding='3'>%1</table></qt>").arg(rows);
+    if (informationDialog_)
+        informationDialog_->findChild<QLabel *>(QStringLiteral("fileInformationText"))->setText(fileInformation_);
     fileInfoButton_->setToolTip(fileInformation_);
     fileInfoButton_->setAccessibleDescription(plain.join(QChar('\n')));
     if (data.kind == PreviewKind::Image) {

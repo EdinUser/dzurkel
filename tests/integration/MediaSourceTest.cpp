@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -37,7 +38,17 @@ public slots:
 };
 class MediaSourceTest : public QObject {
     Q_OBJECT
+private:
+    QTemporaryDir configuration_;
+    void setSftpPreference(bool enabled) {
+        QSettings settings(QSettings::IniFormat, QSettings::UserScope,
+            QStringLiteral("dzurkel"), QStringLiteral("dzurkel"));
+        settings.setValue(QStringLiteral("resources/experimentalSftp"), enabled);
+        settings.sync();
+        QCOMPARE(settings.status(), QSettings::NoError);
+    }
 private slots:
+    void initTestCase();
     void cleanup();
     void readsArbitraryRangesWithoutCopyingWholeSource();
     void cancellationWakesBlockedReadWithoutFreezingEventLoop();
@@ -55,9 +66,16 @@ private slots:
     void emptyFileHasTrueEof();
     void missingHelperReportsFailure();
 };
+void MediaSourceTest::initTestCase()
+{
+    QVERIFY(configuration_.isValid());
+    qputenv("XDG_CONFIG_HOME", configuration_.path().toUtf8());
+    setSftpPreference(false);
+}
 void MediaSourceTest::cleanup()
 {
     QTRY_COMPARE_WITH_TIMEOUT(StreamingMediaSource::activeHelpers(), 0, 3000);
+    setSftpPreference(false);
 }
 void MediaSourceTest::readsArbitraryRangesWithoutCopyingWholeSource()
 {
@@ -318,6 +336,7 @@ void MediaSourceTest::resolvesRemoteThroughExistingDesktopAdapter_data()
 void MediaSourceTest::resolvesRemoteThroughExistingDesktopAdapter()
 {
     QFETCH(QString, url);
+    setSftpPreference(url.startsWith(QStringLiteral("sftp:")));
     QTemporaryDir directory;
     QFile file(directory.filePath(QStringLiteral("remote.mp3")));
     QVERIFY(file.open(QIODevice::WriteOnly));

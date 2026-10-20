@@ -123,3 +123,12 @@ dependencies out of the runtime VM, rather than omitting adapters from the produ
 module dependencies; the executable does not link them. The adapter requires
 KF6 WindowSystem 6.19+ and KIO/CoreAddons headers, without changing the core
 Qt 6.4 baseline. The baseline preset sets this option OFF.
+
+## Optional folder contents size
+
+DZURKEL_FOLDER_SIZE=AUTO|ON|OFF selects optional KIOCore/CoreAddons >= 6.30 and
+GIO >= 2.78 adapters
+for [folder contents size](folder-previews.md). The baseline preset sets OFF.
+Missing/broken/incompatible modules leave basic folder information usable and
+show contents size as unavailable. KDE/GIO dependencies remain outside the core
+executable. This is separate from the KDE file-dialog session opt-in.

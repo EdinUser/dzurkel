@@ -25,6 +25,7 @@ an available access route or dependency candidate is not a desktop support claim
 
 - [Architecture](architecture.md) — modules, request lifecycle, ownership and desktop boundaries.
 - [Preview library and reader boundaries](preview-library.md) — selection, source policies and document/table reader limits.
+- [Folder previews](folder-previews.md) — desktop-backed contents size, cancellation and optional KIO/GIO support.
 - [Video previews](video-preview.md) — shared audio/video behavior, streaming deadlines, buffering and teardown.
 - [Media streaming experiment](media-streaming-experiment.md) — opt-in source probes, historical measurements and remaining validation.
 - [D-Bus API](dbus-api.md) — methods, properties, errors and the separate Nautilus contract.
@@ -36,6 +37,7 @@ an available access route or dependency candidate is not a desktop support claim
 - [Testing evidence](testing.md) — recorded automated/native results and unresolved checks.
 - [Arch VM library workflow](arch-vm-testing.md) — separate builder/runtime environments and optional-library recovery.
 - [Packaging and release process](releasing.md) — validation gates, assets and prerelease-to-stable promotion.
+- [0.9.0 preparation notes](releases/v0.9.0.md) — folder contents sizing, Thunar folders and opt-in KDE dialog previews; packages are not published yet.
 - [0.8.0 release notes](releases/v0.8.0.md) — video, shared media controls, downloads and known limits. Validation and stable promotion are complete; check the [GitHub release](https://github.com/EdinUser/dzurkel/releases/tag/v0.8.0) for current status.
 
 ## Historical release notes
@@ -46,4 +48,4 @@ an available access route or dependency candidate is not a desktop support claim
 - [Legacy 0.7.1 notes location](release-notes-0.7.1.md) — redirect retained for existing links.
 
 Historical notes and test measurements retain the version and environment they
-describe. They do not automatically establish support or performance for 0.8.0.
+describe. They do not automatically establish support or performance for 0.9.0.

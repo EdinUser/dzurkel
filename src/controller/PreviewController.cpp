@@ -7,6 +7,7 @@
 #include "resources/FolderNavigation.h"
 #include <QImageReader>
 #include <QLabel>
+#include <QPushButton>
 #include <QLayout>
 #include <QPdfDocument>
 #include <QTimer>
@@ -14,8 +15,8 @@
 #include <QtConcurrentRun>
 
 namespace dzurkel {
-PreviewController::PreviewController(bool diagnostics, Loader loader)
-    : window_(diagnostics), loader_(std::move(loader))
+PreviewController::PreviewController(bool diagnostics, Loader loader, FolderSizeBackend *statistics)
+    : window_(diagnostics), statisticsBackend_(statistics), loader_(std::move(loader))
 {
     navigation_ = new FolderNavigation(this);
     connect(navigation_, &FolderNavigation::ready, this,
@@ -65,6 +66,7 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
 }
 PreviewController::~PreviewController()
 {
+    delete folderSizeJob_.data();
     window_.stopMedia();
     navigation_->cancel();
     if (preparation_) delete preparation_;
@@ -77,6 +79,7 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
 {
     FileResource resource;
     if (!parseFileResource(url, resource, error, failure)) return false;
+    delete folderSizeJob_.data();
     window_.stopMedia();
     chooserOwner_ = chooserOwner;
     externalNavigation_ = externalNavigation;
@@ -202,6 +205,15 @@ void PreviewController::commitReadyPreview()
             data.detail = availability.explanation;
         }
     }
+    const bool folder = data.mimeType == QStringLiteral("inode/directory");
+    auto *statistics = folder ? (statisticsBackend_ ? statisticsBackend_ : folderSizeBackend()) : nullptr;
+    if (folder) {
+        navigation_->cancel();
+        window_.setNavigation(false, false, QStringLiteral("Folder"));
+        data.folderSize.state = statistics ? FolderSizeState::Calculating : FolderSizeState::Unavailable;
+        if (!statistics)
+            data.folderSize.explanation = QStringLiteral("A compatible desktop folder-size adapter or its libraries are unavailable.");
+    }
     kind_ = data.kind;
     loading_ = false;
     // Retain only PDFium's runtime; provider widgets own actual documents.
@@ -248,18 +260,65 @@ void PreviewController::commitReadyPreview()
             });
     }
     window_.setPreviewData(data);
-    window_.setArrowNavigation(chooserOwner_.isEmpty() && (data.kind == PreviewKind::Image || data.kind == PreviewKind::Information
+    window_.setArrowNavigation(!folder && chooserOwner_.isEmpty() && (data.kind == PreviewKind::Image || data.kind == PreviewKind::Information
         || data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video));
     window_.endPreviewUpdate();
     if (presentationPending_) {
         presentationPending_ = false;
         window_.present(ready.job.activationToken);
     }
+    if (folder && statistics) {
+        const auto generation = generation_;
+        auto folderData = std::make_shared<PreviewData>(data);
+        const auto update = [this, guard = QPointer<PreviewController>(this), generation, folderData](const FolderSize &size) {
+            if (!guard || generation != generation_ || !isVisible()) return;
+            folderData->folderSize = size;
+            if (auto *label = window_.findChild<QLabel *>(QStringLiteral("folderSize")))
+                label->setText(QStringLiteral("Contents size: ") + folderSizeText(size));
+            if (auto *label = window_.findChild<QLabel *>(QStringLiteral("folderCounts"))) {
+                label->setText(folderCountText(size));
+                label->setVisible(!label->text().isEmpty());
+            }
+            if (auto *label = window_.findChild<QLabel *>(QStringLiteral("folderSizeNotice"))) {
+                label->setText(size.explanation);
+                label->setVisible(!size.explanation.isEmpty());
+            }
+            if (auto *stop = window_.findChild<QPushButton *>(QStringLiteral("stopFolderSize")))
+                stop->setVisible(size.state == FolderSizeState::Calculating);
+            window_.setPreviewData(*folderData, false);
+        };
+        const auto path = data.resource.metadata.value(QStringLiteral("directoryPath"))
+            .toString(data.resource.url.isLocalFile() ? data.resource.path : QString());
+        auto active = std::make_shared<bool>(true);
+        folderSizeJob_ = statistics->start(path.isEmpty() ? QUrl() : QUrl::fromLocalFile(path),
+            [active, update](const FolderSize &size) {
+                if (!*active) return;
+                update(size);
+                if (size.state != FolderSizeState::Calculating) *active = false;
+            });
+        if (!folderSizeJob_) {
+            FolderSize unavailable;
+            unavailable.explanation = QStringLiteral("The desktop calculator could not start.");
+            update(unavailable);
+        }
+        if (auto *stop = window_.findChild<QPushButton *>(QStringLiteral("stopFolderSize"))) {
+            connect(stop, &QPushButton::clicked, this, [this, generation, folderData, active, update] {
+                if (generation != generation_) return;
+                *active = false;
+                delete folderSizeJob_.data();
+                auto size = folderData->folderSize;
+                size.state = FolderSizeState::Stopped;
+                size.explanation = QStringLiteral("Calculation stopped; the total is incomplete.");
+                update(size);
+            });
+        }
+    }
     emit stateChanged();
 }
 void PreviewController::cancelAndClear()
 {
     chooserOwner_.clear();
+    delete folderSizeJob_.data();
     window_.stopMedia();
     navigation_->cancel();
     navigationUrls_.clear();

@@ -33,6 +33,7 @@ your Qt theme. [Recording details](docs/video/README.md).*
 - Zoom images and PDFs, navigate PDF pages and switch spreadsheet sheets.
 - Play audio and video, seek where supported, and share mute/volume choices.
 - Read source code with optional syntax highlighting and remembered text wrapping.
+- Inspect folders with asynchronous desktop-backed contents size and file counts.
 - Preview local files and mounted shares, with incremental media reads for slow sources.
 - Follow your desktop's Qt theme, with Wayland and X11 integration.
 
@@ -52,11 +53,12 @@ autoplay with sound unless muted. Dzurkel stays resident for reopening;
 | Text and source code | Plain text, wrapping and optional syntax highlighting |
 | Audio | Playback, seeking, volume/mute and available track metadata |
 | Video | MP4/M4V, MKV, WebM, MOV, AVI, MPG/MPEG, OGV and WMV; aspect-preserving playback |
-| Other files | File information for unsupported formats, folders and symbolic links |
+| Folders | Folder information, optional contents size and file/subfolder counts |
+| Other files | File information for unsupported formats and symbolic links |
 
 Media support depends on installed Qt backends and codecs. Audio-only containers
 use the music view. See [supported formats and preview limits](docs/previews.md)
-and [what's new in 0.8.0](docs/releases/v0.8.0.md).
+and [what's new in the upcoming 0.9.0](docs/releases/v0.9.0.md).
 
 ## Installation
 
@@ -90,7 +92,7 @@ leaves shortcuts unchanged; Settings provides reversible setup.
 | --- | --- |
 | **Dolphin** | Space setup needs **26.04+**; local and authenticated remote locations. A context-menu action is also available. [Setup and troubleshooting](docs/dolphin-integration.md) |
 | **Nautilus (GNOME Files)** | Opt-in Space previews for local files; navigation follows the Files selection. [Setup, provider conflicts and validation](docs/gnome-testing.md) |
-| **Thunar** | Space and **Preview with Dzurkel** for one local file; mounted paths work as local paths. [Setup and restoration](docs/thunar-integration.md) |
+| **Thunar** | Space and **Preview with Dzurkel** for one local file or folder; mounted paths work as local paths. [Setup and restoration](docs/thunar-integration.md) |
 
 Finish file operations before accepting a file-manager restart. Desktop focus
 policies and validation differ; see compatibility below.
@@ -100,6 +102,11 @@ upload dialogs**, separate from Dolphin's shortcut. Enable **Space previews in
 KDE file dialogs** in Settings and sign out/in to load it into compatible Qt
 applications. This requires a build containing the adapter; it is not part of
 the published 0.8.0 installers. See [setup, scope and validation](docs/file-dialog-previews.md).
+
+The 0.9.0 source adds [folder contents sizing](docs/folder-previews.md) through
+optional desktop libraries. Existing Thunar setups offer **Update folder previews…**
+in Settings. See the [0.9.0 preparation notes](docs/releases/v0.9.0.md); release
+packages have not been published yet.
 
 ## Lightweight by design
 
