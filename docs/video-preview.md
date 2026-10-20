@@ -62,8 +62,12 @@ actual-frame seeking, audio-only MP4, front/tail MP4 indexes, MKV/WebM,
 replacement, stale failures and invalid-media fallback. Playback fixtures need
 FFmpeg with MPEG4, AAC and VP8 encoders; unavailable fixture tools are explicitly
 skipped. Source/playback suites cover delayed reads, bounded read-ahead,
-cancellation, truncation, helper limits and repeated teardown. Optional-adapter
-tests cover absent/broken Multimedia and Multimedia Widgets runtimes.
+cancellation, truncation, helper limits and repeated teardown. Abrupt helper
+loss during a blocked read must fail promptly, retire that source and permit
+explicit reopening through a new source. Timeout tests verify the expired
+source cannot resume. Fake KIO-FUSE tests exercise both SMB and SFTP resolution;
+they do not reproduce real authentication or network disconnection.
+Optional-adapter tests cover absent/broken Multimedia and Multimedia Widgets runtimes.
 
 Read-only personal-file cases are opt-in through `DZURKEL_TEST_VIDEO_LOCAL` and
 `DZURKEL_TEST_VIDEO_REMOTE`. Native KDE captures can use

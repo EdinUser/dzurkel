@@ -5,6 +5,7 @@
 #include <QDBusMessage>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -41,13 +42,15 @@ private slots:
     void readsArbitraryRangesWithoutCopyingWholeSource();
     void cancellationWakesBlockedReadWithoutFreezingEventLoop();
     void stalledReadHasDeadline();
+    void helperDeathWakesBlockedReadAndAllowsReopening();
     void adjacentReadsReuseBoundedReadAhead();
     void rejectsMissingAndSpecialFiles_data();
     void rejectsMissingAndSpecialFiles();
     void keepsOpenedIdentityAndDetectsTruncation();
     void repeatedReplacementReapsHelpers();
     void limitsHelpersDuringRapidReplacement();
-    void resolvesSmbThroughExistingDesktopAdapter();
+    void resolvesRemoteThroughExistingDesktopAdapter_data();
+    void resolvesRemoteThroughExistingDesktopAdapter();
     void cancelsWhileRemoteResolutionIsPending();
     void emptyFileHasTrueEof();
     void missingHelperReportsFailure();
@@ -139,7 +142,60 @@ void MediaSourceTest::stalledReadHasDeadline()
     QVERIFY(elapsed.elapsed() >= 100);
     QVERIFY(elapsed.elapsed() < 1000);
     QVERIFY(source.errorString().contains(QStringLiteral("timed out")));
+    QTRY_COMPARE_WITH_TIMEOUT(StreamingMediaSource::activeHelpers(), 0, 1000);
+    // The timed-out protocol session is terminal: never consume late replies.
+    auto retry = QtConcurrent::run([&] {
+        char bytes[4];
+        return !source.seek(0) && source.read(bytes, 4) == -1;
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(retry.isFinished(), 1000);
+    QVERIFY(retry.result());
+    QCOMPARE(source.readRequests(), 1);
     source.cancel();
+}
+void MediaSourceTest::helperDeathWakesBlockedReadAndAllowsReopening()
+{
+    QTemporaryDir directory;
+    QFile file(directory.filePath(QStringLiteral("source")));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write("data", 4), 4);
+    file.close();
+    StreamingMediaSource source(nullptr, 10000);
+    QSignalSpy ready(&source, &StreamingMediaSource::ready);
+    QSignalSpy failed(&source, &StreamingMediaSource::failed);
+    source.start(QString::fromUtf8(DZURKEL_MEDIA_HELPER), file.fileName(), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 3000);
+    auto future = QtConcurrent::run([&] { char bytes[4]; return source.read(bytes, 4); });
+    QTRY_COMPARE_WITH_TIMEOUT(source.readRequests(), 1, 1000);
+    // Kill only the helper owned by this isolated test process. This models
+    // abrupt source-channel loss, not an actual SMB/SFTP disconnection.
+    QProcess *helper = nullptr;
+    for (auto *process : QCoreApplication::instance()->findChildren<QProcess *>()) {
+        if (process->program() == QString::fromUtf8(DZURKEL_MEDIA_HELPER)
+            && process->state() == QProcess::Running) {
+            QVERIFY(!helper);
+            helper = process;
+        }
+    }
+    QVERIFY(helper);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    helper->kill();
+    QTRY_VERIFY_WITH_TIMEOUT(future.isFinished(), 1000);
+    QCOMPARE(future.result(), -1);
+    QVERIFY(elapsed.elapsed() < 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 1000);
+    QVERIFY(!source.seek(0));
+    QTRY_COMPARE_WITH_TIMEOUT(StreamingMediaSource::activeHelpers(), 0, 1000);
+
+    StreamingMediaSource reopened;
+    QSignalSpy reopenedReady(&reopened, &StreamingMediaSource::ready);
+    reopened.start(QString::fromUtf8(DZURKEL_MEDIA_HELPER), file.fileName());
+    QTRY_COMPARE_WITH_TIMEOUT(reopenedReady.size(), 1, 3000);
+    auto read = QtConcurrent::run([&] { return reopened.read(4); });
+    QTRY_VERIFY_WITH_TIMEOUT(read.isFinished(), 1000);
+    QCOMPARE(read.result(), QByteArray("data"));
+    reopened.cancel();
 }
 void MediaSourceTest::adjacentReadsReuseBoundedReadAhead()
 {
@@ -253,8 +309,15 @@ void MediaSourceTest::limitsHelpersDuringRapidReplacement()
     first.cancel();
     second.cancel();
 }
-void MediaSourceTest::resolvesSmbThroughExistingDesktopAdapter()
+void MediaSourceTest::resolvesRemoteThroughExistingDesktopAdapter_data()
 {
+    QTest::addColumn<QString>("url");
+    QTest::newRow("smb") << QStringLiteral("smb://test.invalid/share/remote.mp4");
+    QTest::newRow("sftp") << QStringLiteral("sftp://test.invalid/share/remote.mp4");
+}
+void MediaSourceTest::resolvesRemoteThroughExistingDesktopAdapter()
+{
+    QFETCH(QString, url);
     QTemporaryDir directory;
     QFile file(directory.filePath(QStringLiteral("remote.mp3")));
     QVERIFY(file.open(QIODevice::WriteOnly));
@@ -268,7 +331,6 @@ void MediaSourceTest::resolvesSmbThroughExistingDesktopAdapter()
     StreamingMediaSource source;
     QSignalSpy ready(&source, &StreamingMediaSource::ready);
     QSignalSpy failed(&source, &StreamingMediaSource::failed);
-    const auto url = QStringLiteral("smb://test.invalid/share/remote.mp3");
     source.start(QString::fromUtf8(DZURKEL_MEDIA_HELPER), url);
     QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty() || !failed.isEmpty(), 3000);
     QVERIFY2(failed.isEmpty(), qPrintable(source.errorString()));
