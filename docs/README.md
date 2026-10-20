@@ -37,11 +37,11 @@ an available access route or dependency candidate is not a desktop support claim
 - [Testing evidence](testing.md) — recorded automated/native results and unresolved checks.
 - [Arch VM library workflow](arch-vm-testing.md) — separate builder/runtime environments and optional-library recovery.
 - [Packaging and release process](releasing.md) — validation gates, assets and prerelease-to-stable promotion.
-- [0.9.0 release candidate](releases/v0.9.0.md) — folder contents sizing, Thunar folders and opt-in KDE dialog previews; package validation precedes stable promotion.
-- [0.8.0 release notes](releases/v0.8.0.md) — video, shared media controls, downloads and known limits. Validation and stable promotion are complete; check the [GitHub release](https://github.com/EdinUser/dzurkel/releases/tag/v0.8.0) for current status.
+- [0.9.0 release notes](releases/v0.9.0.md) — folder contents sizing, Thunar folders and opt-in KDE dialog previews; validation passed and runtime installers are attached to the [stable release](https://github.com/EdinUser/dzurkel/releases/tag/v0.9.0).
 
 ## Historical release notes
 
+- [0.8.0](releases/v0.8.0.md) — video previews, shared media controls and the video demonstration.
 - [0.7.1](releases/v0.7.1.md) — optional-library recovery, Settings and icons.
 - [0.7.0](releases/v0.7.0.md) — audio, formatted documents and e-books.
 - [0.6.2](releases/v0.6.2.md) — earlier desktop integration and packaging work.

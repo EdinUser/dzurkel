@@ -2,10 +2,12 @@
 
 Settings offers opt-in, user-local **Space** previews on GNOME with Nautilus
 (Files) installed. Open **Dzurkel Settings**, check the **Nautilus shortcut**
-heading and choose **Enable Space shortcut**. Select a local file in Files and
-press Space. Escape or Space dismisses the preview; Alt+arrows navigate using
+heading and choose **Enable Space shortcut**. Select a local file or folder in
+Files and press Space. Escape or Space dismisses the preview; Alt+arrows navigate file previews using
 Files’ selection, including its current sort/filter order. Ordinary arrows also
 navigate images and file information; document readers retain their normal keys.
+Folder views keep preview-side navigation disabled and can show asynchronous
+[contents size through GIO](folder-previews.md); reopen to refresh the count.
 The preview stays unparented and uses Mutter’s normal placement policy.
 
 This registers `org.gnome.NautilusPreviewer` in
@@ -22,7 +24,7 @@ preview and quit it, then retry Enable. Sushi may take time to exit after closin
 its preview. Restore releases Dzurkel’s provider name without quitting Files.
 
 The adapter implements the Nautilus 50 `org.gnome.NautilusPreviewer2` contract.
-Initial support is for local files; GVfs/network URI integration is not included.
+Initial support is for local files and folders; GVfs/network URI integration is not included.
 KDE Settings retains the Dolphin workflow. Detection uses the current desktop
 and installed supported file managers; an ambiguous unsupported desktop shows
 unavailable controls.

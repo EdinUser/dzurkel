@@ -1473,3 +1473,15 @@ module, including their removal. A fresh Arch runtime container passed that
 updated install/launcher/removal checker using the previously tested development
 package containing all new modules. This preflight did not rebuild a 0.9.0
 release package; the published-release workflow validates those artifacts.
+
+## 0.9.0 published release
+
+The [release workflow](https://github.com/EdinUser/dzurkel/actions/runs/39417990306)
+completed successfully for tag v0.9.0 (commit 55ac10c). Fedora GCC/RPM and Clang,
+Debian and Arch package builds, all three clean install/launch/removal gates,
+the Debian 12 baseline and native GNOME Wayland/Nautilus input/focus/rendered
+placement passed. The final job attached the three runtime installers and a
+combined SHA256SUMS manifest. All installers were downloaded and checksum-verified
+before promoting that same prerelease to latest stable. The release API confirms
+v0.9.0 is neither draft nor prerelease. Package validation retains the real-share,
+KDE chooser application matrix and hardware/backend limits recorded above.

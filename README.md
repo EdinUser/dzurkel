@@ -64,9 +64,9 @@ and [what's new in 0.9.0](docs/releases/v0.9.0.md).
 
 Download the installer matching your system from
 [Releases](https://github.com/EdinUser/dzurkel/releases). Packages are attached
-after release validation succeeds. **0.8.0 is the latest stable release**;
+after release validation succeeds. **0.9.0 is the latest stable release**;
 validation passed, installers are attached and promotion is complete. See
-the [release page](https://github.com/EdinUser/dzurkel/releases/tag/v0.8.0) for current status.
+the [release page](https://github.com/EdinUser/dzurkel/releases/tag/v0.9.0) for current status.
 
 | System | Package | Install the downloaded file |
 | --- | --- | --- |
@@ -91,22 +91,22 @@ leaves shortcuts unchanged; Settings provides reversible setup.
 | File manager | Setup and scope |
 | --- | --- |
 | **Dolphin** | Space setup needs **26.04+**; local and authenticated remote locations. A context-menu action is also available. [Setup and troubleshooting](docs/dolphin-integration.md) |
-| **Nautilus (GNOME Files)** | Opt-in Space previews for local files; navigation follows the Files selection. [Setup, provider conflicts and validation](docs/gnome-testing.md) |
+| **Nautilus (GNOME Files)** | Opt-in Space previews for local files and folders; file navigation follows the Files selection. [Setup, provider conflicts and validation](docs/gnome-testing.md) |
 | **Thunar** | Space and **Preview with Dzurkel** for one local file or folder; mounted paths work as local paths. [Setup and restoration](docs/thunar-integration.md) |
 
 Finish file operations before accepting a file-manager restart. Desktop focus
 policies and validation differ; see compatibility below.
 
-The current source also includes an optional adapter for **KDE file-open and
+Version 0.9.0 also includes an optional adapter for **KDE file-open and
 upload dialogs**, separate from Dolphin's shortcut. Enable **Space previews in
 KDE file dialogs** in Settings and sign out/in to load it into compatible Qt
-applications. This requires a build containing the adapter; it is not part of
-the published 0.8.0 installers. See [setup, scope and validation](docs/file-dialog-previews.md).
+applications. This requires a build containing a compatible adapter.
+See [setup, scope and validation](docs/file-dialog-previews.md).
 
-The 0.9.0 source adds [folder contents sizing](docs/folder-previews.md) through
+Version 0.9.0 adds [folder contents sizing](docs/folder-previews.md) through
 optional desktop libraries. Existing Thunar setups offer **Update folder previews…**
-in Settings. The [0.9.0 release candidate](docs/releases/v0.9.0.md) must pass
-package validation before installers are attached and stable promotion completes.
+in Settings. See the [0.9.0 release notes](docs/releases/v0.9.0.md) for changes,
+validation and known limits.
 
 ## Lightweight by design
 
@@ -147,7 +147,7 @@ See [runtime requirements and OS compatibility](docs/runtime-baseline.md) for de
 | --- | --- |
 | Fedora 44, KDE Plasma 6, Wayland | Primary development and desktop validation environment |
 | Dolphin 26.04+ | Target for Space shortcut integration |
-| Ubuntu 26.04.1, GNOME 50, Nautilus 50.2.2, Wayland | VM validation; opt-in Space previews for local files |
+| Ubuntu 26.04.1, GNOME 50, Nautilus 50.2.2, Wayland | VM validation; opt-in Space previews for local files and folders |
 | Arch Linux, XFCE 4.20, Thunar 4.20.10, X11 | VM validation; opt-in Space and context-menu previews for one local file or folder |
 | Other distributions or desktops | Not yet validated; source builds may work |
 | Local files and mounted shares | Supported |

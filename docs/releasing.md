@@ -4,16 +4,16 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
-The latest stable release is **0.8.0**. Its [validation workflow](https://github.com/EdinUser/dzurkel/actions/runs/39302524634)
+The latest stable release is **0.9.0**. Its [validation workflow](https://github.com/EdinUser/dzurkel/actions/runs/39417990306)
 passed and runtime installers/checksums were attached before promotion from
-prerelease. See the [release notes](releases/v0.8.0.md) for changes since 0.7.1.
+prerelease. See the [release notes](releases/v0.9.0.md) for changes since 0.8.0.
 For future releases, publishing a prerelease starts the package and validation
 pipeline; promote it only after all gates pass and assets are attached. Pushes
 and tags alone do not start package builds.
 
-The **0.9.0 release candidate** adds folder contents sizing and KDE dialog
+The **0.9.0 release** adds folder contents sizing and KDE dialog
 integration. Its [release notes](releases/v0.9.0.md) distinguish local/VM checks
-from the release pipeline; all required gates and asset upload must pass before
+from the release pipeline. All required gates and asset upload passed before
 stable promotion.
 
 ## Release builds and validation
