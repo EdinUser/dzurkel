@@ -28,6 +28,13 @@ for your user. RPM installation does not open a GUI or change shortcut files.
 The package uses system Qt/KDE libraries; optional KIO services enable direct
 network URLs as described below.
 
+The current source includes an optional KDE file-dialog adapter, separate from
+Dolphin shortcut setup. It is not included in the published 0.8.0 installers.
+With a build containing the adapter, enable **Space previews in KDE file
+dialogs** in Settings and sign out/in. Disable it and sign out/in before
+uninstalling to clean up the managed session environment. See
+[KDE file-dialog setup and build requirements](file-dialog-previews.md).
+
 Before migrating from a source installation, run `~/.local/bin/dzurkel --quit`
 and remove its managed files listed below, including any built adapters.
 User-local executables and

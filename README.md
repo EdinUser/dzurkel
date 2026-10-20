@@ -95,6 +95,12 @@ leaves shortcuts unchanged; Settings provides reversible setup.
 Finish file operations before accepting a file-manager restart. Desktop focus
 policies and validation differ; see compatibility below.
 
+The current source also includes an optional adapter for **KDE file-open and
+upload dialogs**, separate from Dolphin's shortcut. Enable **Space previews in
+KDE file dialogs** in Settings and sign out/in to load it into compatible Qt
+applications. This requires a build containing the adapter; it is not part of
+the published 0.8.0 installers. See [setup, scope and validation](docs/file-dialog-previews.md).
+
 ## Lightweight by design
 
 Dzurkel focuses on inspecting files in a reusable window. File contents are never

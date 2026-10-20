@@ -115,3 +115,11 @@ native package/desktop validation remains separate from a supported OS claim.
 To test expansion from missing libraries, use the
 [Arch VM package workflow](arch-vm-testing.md). It ships adapters and keeps build
 dependencies out of the runtime VM, rather than omitting adapters from the product.
+
+## Optional KDE chooser adapter
+
+`DZURKEL_KDE_CHOOSER=AUTO|ON|OFF` controls the optional Qt generic plugin for
+[KDE file dialogs](file-dialog-previews.md). KIO and KF6 WindowSystem remain
+module dependencies; the executable does not link them. The adapter requires
+KF6 WindowSystem 6.19+ and KIO/CoreAddons headers, without changing the core
+Qt 6.4 baseline. The baseline preset sets this option OFF.

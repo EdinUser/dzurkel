@@ -20,7 +20,7 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
     navigation_ = new FolderNavigation(this);
     connect(navigation_, &FolderNavigation::ready, this,
         [this](const QStringList &urls, int index, const QString &message, const QString &selected) {
-            if (!isVisible() || externalNavigation_) return;
+            if (!isVisible() || externalNavigation_ || !chooserOwner_.isEmpty()) return;
             if (index < 0) {
                 window_.setNavigation(false, false, message);
                 return;
@@ -43,6 +43,7 @@ PreviewController::PreviewController(bool diagnostics, Loader loader)
             }
         });
     connect(&window_, &PreviewWindow::navigateRequested, this, [this](int direction) {
+        if (!chooserOwner_.isEmpty()) return;
         if (externalNavigation_) {
             if (isVisible()) emit externalNavigationRequested(direction < 0 ? 4u : 5u);
             return;
@@ -72,11 +73,12 @@ PreviewController::~PreviewController()
     pool_.waitForDone();
 }
 bool PreviewController::show(const QString &url, QString &error, ResourceError *failure,
-                             const QString &activationToken, bool requestActivation, bool externalNavigation)
+                             const QString &activationToken, bool requestActivation, bool externalNavigation, const QString &chooserOwner)
 {
     FileResource resource;
     if (!parseFileResource(url, resource, error, failure)) return false;
     window_.stopMedia();
+    chooserOwner_ = chooserOwner;
     externalNavigation_ = externalNavigation;
     window_.setExternalNavigation(externalNavigation);
     if (preparation_) {
@@ -93,7 +95,8 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     navigation_->cancel();
     window_.setArrowNavigation(false);
     window_.setNavigation(externalNavigation, externalNavigation,
-        externalNavigation ? QStringLiteral("Files") : QStringLiteral("Checking folder…"));
+        !chooserOwner_.isEmpty() ? QStringLiteral("File chooser")
+        : externalNavigation ? QStringLiteral("Files") : QStringLiteral("Checking folder…"));
     ++generation_;
     ready_.reset();
     fileUrl_ = resource.url.toString(QUrl::FullyEncoded);
@@ -128,7 +131,7 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
         });
     }
     if (!watcher_) startPending();
-    if (!loader_ && !externalNavigation_) navigation_->start(resource);
+    if (!loader_ && !externalNavigation_ && chooserOwner_.isEmpty()) navigation_->start(resource);
     emit stateChanged();
     return true;
 }
@@ -245,8 +248,8 @@ void PreviewController::commitReadyPreview()
             });
     }
     window_.setPreviewData(data);
-    window_.setArrowNavigation(data.kind == PreviewKind::Image || data.kind == PreviewKind::Information
-        || data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video);
+    window_.setArrowNavigation(chooserOwner_.isEmpty() && (data.kind == PreviewKind::Image || data.kind == PreviewKind::Information
+        || data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video));
     window_.endPreviewUpdate();
     if (presentationPending_) {
         presentationPending_ = false;
@@ -256,6 +259,7 @@ void PreviewController::commitReadyPreview()
 }
 void PreviewController::cancelAndClear()
 {
+    chooserOwner_.clear();
     window_.stopMedia();
     navigation_->cancel();
     navigationUrls_.clear();

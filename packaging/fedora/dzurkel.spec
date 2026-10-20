@@ -9,7 +9,7 @@ Source0:        %{url}/archive/refs/tags/v%{version}/%{name}-%{version}.tar.gz
 
 # Adapters are loaded only when available; do not turn their libraries into a
 # mandatory dependency through the ELF dependency generator.
-%global __requires_exclude ^(libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia(Widgets)?\\.so\\.6|libKF6WindowSystem\\.so\\.6).*$
+%global __requires_exclude ^(libKF6SyntaxHighlighting\\.so\\.6|libQt6Multimedia(Widgets)?\\.so\\.6|libKF6WindowSystem\\.so\\.6|libKF6KIO(Core|FileWidgets)\\.so\\.6).*$
 
 BuildRequires:  gcc-c++
 BuildRequires:  cmake >= 3.22
@@ -20,6 +20,8 @@ BuildRequires:  pkgconfig(libzip) >= 1.7
 BuildRequires:  qt6-qtbase-devel >= 6.4
 BuildRequires:  qt6-qtpdf-devel
 BuildRequires:  qt6-qtmultimedia-devel
+BuildRequires:  kf6-kio-devel
+BuildRequires:  kf6-kcoreaddons-devel
 BuildRequires:  kf6-kwindowsystem-devel
 BuildRequires:  kf6-syntax-highlighting-devel >= 6.0
 BuildRequires:  dbus-daemon
@@ -29,6 +31,7 @@ Requires:       qt6-qtwayland
 Recommends:     qt6-qtimageformats
 Recommends:     kf6-syntax-highlighting >= 6.0
 Suggests:       qt6-qtmultimedia
+Suggests:       kf6-kio-file-widgets
 Suggests:       kf6-kwindowsystem
 Suggests:       antiword
 Suggests:       dolphin >= 26.04

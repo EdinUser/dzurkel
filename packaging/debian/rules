@@ -8,7 +8,7 @@ override_dh_auto_configure:
 
 # Optional adapters carry their own backend dependencies.
 override_dh_shlibdeps:
-	dh_shlibdeps -Xlibdzurkel_highlighting.so -Xlibdzurkel_audio.so -Xlibdzurkel_desktop.so
+	dh_shlibdeps -Xlibdzurkel_highlighting.so -Xlibdzurkel_audio.so -Xlibdzurkel_desktop.so -Xlibdzurkel_chooser.so
 
 override_dh_auto_test:
 	QT_QPA_PLATFORM=offscreen dh_auto_test -- ARGS=--output-on-failure

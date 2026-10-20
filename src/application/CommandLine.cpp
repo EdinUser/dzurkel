@@ -15,6 +15,7 @@ void configure(QCommandLineParser &parser)
     parser.addOption({QStringLiteral("hide"), QStringLiteral("Hide the preview; keep the service running.")});
     parser.addOption({QStringLiteral("toggle"), QStringLiteral("Hide a visible preview, or show the supplied file.")});
     parser.addOption({QStringLiteral("quit"), QStringLiteral("Stop the running service.")});
+    parser.addOption({QStringLiteral("serve"), QStringLiteral("Start the preview service without opening a window.")});
     parser.addOption({QStringLiteral("settings"), QStringLiteral("Open Settings to configure the file manager's Space shortcut.")});
     parser.addOption({QStringLiteral("nautilus-preview-service"), QStringLiteral("Start the enabled Nautilus preview service without opening a window.")});
     parser.addOption({QStringLiteral("diagnostics"), QStringLiteral("Log startup and focus information for a new primary instance.")});
@@ -33,7 +34,7 @@ bool parseCommandLine(const QStringList &arguments, Request &request, QString &e
         return false;
     }
     int commands = 0;
-    for (const auto &name : {"show", "hide", "toggle", "quit", "settings", "nautilus-preview-service", "help", "version"}) {
+    for (const auto &name : {"show", "hide", "toggle", "quit", "settings", "serve", "nautilus-preview-service", "help", "version"}) {
         if (parser.isSet(QString::fromLatin1(name))) {
             ++commands;
         }
@@ -47,6 +48,7 @@ bool parseCommandLine(const QStringList &arguments, Request &request, QString &e
     else if (parser.isSet(QStringLiteral("hide"))) request.command = Command::Hide;
     else if (parser.isSet(QStringLiteral("toggle"))) request.command = Command::Toggle;
     else if (parser.isSet(QStringLiteral("quit"))) request.command = Command::Quit;
+    else if (parser.isSet(QStringLiteral("serve"))) request.command = Command::Serve;
     else if (parser.isSet(QStringLiteral("settings"))) request.command = Command::Settings;
     else if (parser.isSet(QStringLiteral("nautilus-preview-service"))) request.command = Command::NautilusPreviewService;
     request.diagnostics = parser.isSet(QStringLiteral("diagnostics"));

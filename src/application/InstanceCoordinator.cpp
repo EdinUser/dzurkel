@@ -31,6 +31,7 @@ InstanceCoordinator::ForwardResult InstanceCoordinator::forward(const Request &r
         error = owner.error().message();
         return ForwardResult::Failed;
     }
+    if (request.command == Command::Serve) return ForwardResult::Delivered;
     QString method;
     switch (request.command) {
     case Command::Show: method = QStringLiteral("Show"); break;
@@ -69,7 +70,7 @@ InstanceCoordinator::ClaimResult InstanceCoordinator::claim(PreviewService &serv
     if (!connected(error)) return ClaimResult::Failed;
     if (!exported_) {
         exported_ = connection_.registerObject(QString::fromLatin1(ObjectPath), &service,
-            QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties);
+            QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSignals);
         if (!exported_) {
             error = connection_.lastError().message();
             return ClaimResult::Failed;

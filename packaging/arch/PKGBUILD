@@ -6,9 +6,10 @@ arch=('x86_64')
 url='https://github.com/EdinUser/dzurkel'
 license=('GPL-3.0-or-later')
 depends=('gcc-libs' 'glibc' 'qt6-base' 'qt6-webengine' 'qt6-wayland' 'libzip')
-makedepends=('cmake' 'syntax-highlighting>=6.0' 'qt6-multimedia' 'kwindowsystem')
+makedepends=('cmake' 'syntax-highlighting>=6.0' 'qt6-multimedia' 'kwindowsystem' 'kio')
 checkdepends=('dbus' 'python' 'desktop-file-utils')
-optdepends=('qt6-multimedia: optional audio and video previews'
+optdepends=('kio: optional KDE file-dialog Space previews'
+            'qt6-multimedia: optional audio and video previews'
             'kwindowsystem: optional KDE activation and Thunar focus support'
             'antiword: legacy Word DOC text extraction'
             'dolphin: file manager integration (26.04+ for Space setup)'

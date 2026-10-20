@@ -117,3 +117,11 @@ quoted/multiline fields, delimiter detection and explicit partial-preview limits
 XLSX uses the same grid with worksheet tabs and stored values only. Formulas are
 never calculated; missing saved results show `[Result unavailable]`. Formatting and charts are
 omitted. See [reader architecture and table behavior](preview-library.md).
+
+## KDE file-open and upload dialogs
+
+Enable **Space previews in KDE file dialogs** on the Integration tab, then sign
+out of Plasma and sign back in. Select one item in a compatible KDE chooser's
+file list and press Space. The chooser stays open; dismissing Dzurkel returns
+focus, and cancelling the chooser closes only its owned preview. Filename
+fields retain ordinary spaces. See [scope and setup](file-dialog-previews.md).

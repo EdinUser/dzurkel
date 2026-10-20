@@ -43,12 +43,14 @@ public:
     void setExternalNavigation(bool enabled) { externalNavigation_ = enabled; }
     void setNautilusService(NautilusPreviewService *service) { nautilusService_ = service; }
 signals:
+    void dismissalStarting();
     void dismissed();
     void navigateRequested(int direction);
     void externalNavigationRequested(uint direction);
     void presentationActivated();
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
     void hideEvent(QHideEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void changeEvent(QEvent *event) override;

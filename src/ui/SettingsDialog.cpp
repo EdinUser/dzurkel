@@ -2,6 +2,7 @@
 #include "application/RuntimeCompatibility.h"
 #include "ipc/NautilusPreviewService.h"
 #include "desktop/DesktopIntegration.h"
+#include "desktop/ChooserIntegration.h"
 #include "resources/ResourceAccessPolicy.h"
 #include "preview/PreviewLibrary.h"
 #include "preview/LibraryAvailability.h"
@@ -191,6 +192,31 @@ SettingsDialog::SettingsDialog(QWidget *parent, DolphinShortcuts shortcuts,
     actions->addWidget(restore_);
     actions->addStretch();
     layout->addLayout(actions);
+    auto *chooser = new QCheckBox(QStringLiteral("Space previews in KDE file dialogs"), this);
+    chooser->setObjectName(QStringLiteral("kdeChooserEnabled"));
+    auto *chooserNotice = label(this, QStringLiteral("Sign out and back in after changing this setting. Applies to compatible Qt 6 applications and KDE portal dialogs."), true);
+    chooserNotice->setObjectName(QStringLiteral("kdeChooserNotice"));
+    chooser->setVisible(dolphin);
+    chooserNotice->setVisible(dolphin);
+    if (dolphin) {
+        ChooserIntegration setup;
+        chooser->setChecked(setup.enabled());
+        QString reason;
+        const bool available = setup.available(reason);
+        chooser->setEnabled(available || setup.enabled());
+        if (!available) chooserNotice->setText(reason);
+        connect(chooser, &QCheckBox::toggled, this, [chooser, chooserNotice](bool enable) {
+            ChooserIntegration setup;
+            QString error;
+            if (!setup.setEnabled(enable, error)) {
+                const QSignalBlocker blocker(chooser);
+                chooser->setChecked(setup.enabled());
+                chooserNotice->setText(error);
+            } else chooserNotice->setText(QStringLiteral("Sign out and back in to apply this change to KDE file dialogs."));
+        });
+    }
+    layout->addWidget(chooser);
+    layout->addWidget(chooserNotice);
     auto *previews = new QVBoxLayout(previewPage);
     previews->addWidget(label(this, QStringLiteral("Supported previews")));
     auto *support = new QGridLayout;

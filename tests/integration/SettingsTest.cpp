@@ -55,6 +55,7 @@ private slots:
     void compatibilityDistinguishesCandidatesFromSupport();
     void compatibilityRejectsInvalidReports();
     void experimentalSftpIsExplicitAndPersistent();
+    void kdeChooserOptionIsSeparateAndReversible();
     void libraryPreferencePersistsAndRechecks();
     void missingLibraryHasGuidanceAndRefreshes();
     void installationCommandsAreReleaseSpecific();
@@ -120,6 +121,25 @@ void SettingsTest::experimentalSftpIsExplicitAndPersistent()
     reopened.show();
     QVERIFY(!reopened.findChild<QCheckBox *>(QStringLiteral("experimentalSftp"))->isChecked());
     QVERIFY(dialog.grab().save(QStringLiteral("settings-sftp.png")));
+}
+void SettingsTest::kdeChooserOptionIsSeparateAndReversible()
+{
+    SettingsDialog dialog(nullptr, shortcuts(), session(), [] { return true; });
+    dialog.show();
+    auto *option = dialog.findChild<QCheckBox *>(QStringLiteral("kdeChooserEnabled"));
+    auto *notice = dialog.findChild<QLabel *>(QStringLiteral("kdeChooserNotice"));
+    QVERIFY(option && notice && option->isVisible());
+    if (!option->isEnabled()) QSKIP("Optional KDE chooser adapter is not built/available.");
+    QVERIFY(!option->isChecked());
+    option->setChecked(true);
+    QVERIFY(option->isChecked());
+    QVERIFY(notice->text().contains(QStringLiteral("Sign out")));
+    SettingsDialog reopened(nullptr, shortcuts(), session(), [] { return true; });
+    QVERIFY(reopened.findChild<QCheckBox *>(QStringLiteral("kdeChooserEnabled"))->isChecked());
+    QVERIFY(dialog.grab().save(QStringLiteral("settings-kde-chooser.png")));
+    option->setChecked(false);
+    QVERIFY(!option->isChecked());
+    QVERIFY(!shortcuts().hasBackup()); // Independent of Dolphin shortcut setup.
 }
 void SettingsTest::cleanup()
 {

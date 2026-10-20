@@ -40,6 +40,7 @@
         "DZURKEL_AUDIO": "OFF",
         "DZURKEL_HIGHLIGHTING": "OFF",
         "DZURKEL_WITH_KDE_ACTIVATION": "OFF",
+        "DZURKEL_KDE_CHOOSER": "OFF",
         "DZURKEL_BUILD_BENCHMARKS": "OFF"
       }
     }

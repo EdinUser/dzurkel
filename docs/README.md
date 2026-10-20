@@ -15,6 +15,7 @@ an available access route or dependency candidate is not a desktop support claim
 ## File manager and location integration
 
 - [Dolphin Space previews](dolphin-integration.md) — setup, restoration and desktop acceptance.
+- [KDE file-dialog previews](file-dialog-previews.md) — session opt-in, controls, ownership and validation.
 - [GNOME and Nautilus](gnome-testing.md) — opt-in setup, provider conflicts, local-file scope and native testing.
 - [Thunar](thunar-integration.md) — Space/context-menu setup, restoration and single-file scope.
 - [Location compatibility and experimental SFTP](compatibility.md) — mounted paths, direct SMB, opt-in SFTP and evidence gaps.

@@ -1291,3 +1291,39 @@ Widgets runtime libraries; their SDKs remain build dependencies. Release
 package builds, clean installation/removal and the native GNOME gate still
 require the release-publication workflow. No tag or GitHub release is created
 by this commit preparation.
+
+## KDE file-dialog adapter implementation
+
+Recorded 2026-10-20 for the current source implementation. Automated/native
+checks used isolated test processes and session buses. The user subsequently
+reported a successful Fedora smoke test and selected this implementation as a
+stable checkpoint. Individual applications and login/logout coverage were not
+specified in that report. The adapter is not in the published 0.8.0 installers.
+
+The opt-in Qt generic plugin is loaded automatically in chooser tests rather
+than explicitly installed by a custom host. The complete Fedora Debug suite
+passed all 26 registered tests (81.15 s), including startup from no resident,
+caller/session ownership, disconnect cleanup, preserved text/multi-selection,
+reversible session environment and staged installation. Runtime fault cases
+cover missing/corrupt module, missing KIO and mismatched plugin interface while
+an ordinary Qt application retains startup and text entry. Native-only cases
+are explicitly skipped in offscreen runs.
+
+The stock Fedora KDE portal backend and stock kdialog each passed an isolated
+Wayland sequence: file list active, Space opens Dzurkel, preview becomes active,
+Escape hides it, focus returns to the chooser, and chooser Escape cancels
+without acceptance. Generated text fixtures and Qt-delivered keys were used;
+this does not claim physical input or all-browser coverage. A native QFileDialog
+component check also passed three QtTest cases including init/cleanup, no skips.
+The test input driver is not installed. See [reproduction and limits](file-dialog-previews.md).
+
+The baseline preset with all optional adapters disabled passed all 20 suites
+(44.62 s). Final focused chooser/fallback/D-Bus/compatibility/install checks
+also passed after stricter session-ID validation and adapter report updates
+(5.04 s). A real session sign-out/in and individual browser acceptance remain
+separate checks.
+
+Before the stable checkpoint commit, the seven focused chooser, fallback,
+D-Bus, Settings, CLI, compatibility and install suites passed again (12.94 s).
+They ran outside the restricted filesystem sandbox so isolated D-Bus sessions
+could create their local sockets.

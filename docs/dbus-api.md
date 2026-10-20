@@ -133,3 +133,30 @@ Space, Escape, and ordinary window close dismiss it without ending the service.
 ownership](https://doc.qt.io/qt-6/qdbusconnectioninterface.html) and [D-Bus
 error replies](https://doc.qt.io/qt-6/qdbuscontext.html) describe the public
 APIs used here.
+
+## Caller-scoped file chooser requests
+
+`ShowFromChooser(string session, string url, dict options)` shows a preview
+owned by the calling connection's unique D-Bus name and the supplied session ID.
+Use a new ID for each preview request to distinguish late closure notifications.
+IDs contain 1–128 ASCII letters, digits, hyphens or underscores. Options accept
+`activation-token` with the same string/length constraints as ShowWithOptions.
+Invalid resources preserve the existing preview and return
+`io.github.EdinUser.Dzurkel.Error.InvalidChooserResource`; invalid session/options
+return `org.freedesktop.DBus.Error.InvalidArgs`.
+
+`HideFromChooser(string session)` hides only that caller's currently owned
+preview. A mismatched/stale session is a successful no-op. Ordinary Show/Toggle
+or another caller's accepted request replaces ownership. Disconnecting the
+owning caller closes its preview; no per-dialog resident services are added.
+Chooser previews disable independent file browsing.
+
+`ChooserClosed(string session, string reason, string activationToken)` is sent
+only to the owning caller. Reasons include `dismissed`, `hidden`, `closed` and
+`superseded`. An activation token is supplied only for dismissal when the same
+preview closed and no replacement took over while focus context was pending.
+The caller must still check that its chooser is alive/visible and the session
+is current before requesting focus. Tokens are never broadcast or logged.
+
+`--serve` starts the normal service without mapping a window and reuses an
+existing owner without changing its current preview.

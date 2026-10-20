@@ -19,7 +19,9 @@ public:
     ~PreviewController() override;
     // Folder navigation suppresses activation when updating a mapped preview.
     bool show(const QString &url, QString &error, ResourceError *failure = nullptr,
-              const QString &activationToken = {}, bool requestActivation = true, bool externalNavigation = false);
+              const QString &activationToken = {}, bool requestActivation = true, bool externalNavigation = false, const QString &chooserOwner = {});
+    QString chooserOwner() const { return chooserOwner_; }
+    quint64 generation() const { return generation_; }
     bool externalNavigation() const { return externalNavigation_; }
     void releaseExternalNavigation();
     void setNautilusService(NautilusPreviewService *service) { window_.setNautilusService(service); }
@@ -47,6 +49,7 @@ private:
     QThreadPool pool_;
     QPointer<QFutureWatcher<PreviewData>> watcher_;
     QPointer<ResourcePreparation> preparation_;
+    QString chooserOwner_;
     Loader loader_;
     Cancellation cancellation_;
     std::optional<Job> pending_;

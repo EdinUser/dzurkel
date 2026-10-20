@@ -120,6 +120,8 @@ with tempfile.TemporaryDirectory(prefix="dzurkel install ") as temporary:
         assert installed_icon.read_bytes() == (source_icons / relative).read_bytes()
     if plugin := os.environ.get("DZURKEL_TEST_HIGHLIGHTING_PLUGIN"):
         expected.add(root / plugin.lstrip("/"))
+    if plugin := os.environ.get("DZURKEL_TEST_CHOOSER_PLUGIN"):
+        expected.add(root / plugin.lstrip("/"))
     for adapter in ("dzurkel_audio", "dzurkel_desktop"):
         if plugin := os.environ.get("DZURKEL_TEST_" + adapter):
             expected.add(root / plugin.lstrip("/"))

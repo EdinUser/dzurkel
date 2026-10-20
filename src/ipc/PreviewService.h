@@ -2,6 +2,8 @@
 #include <QDBusContext>
 #include <QObject>
 #include <QVariantMap>
+#include <QDBusConnection>
+#include <QDBusServiceWatcher>
 
 namespace dzurkel {
 class PreviewController;
@@ -33,8 +35,19 @@ public slots:
     void Quit();
     void ShowSettings(const QVariantMap &options);
     void StartNautilusPreviewer();
+    void ShowFromChooser(const QString &session, const QString &url, const QVariantMap &options);
+    void HideFromChooser(const QString &session);
+signals:
+    // Sent only to the owning caller, never broadcast with activation tokens.
+    void ChooserClosed(const QString &session, const QString &reason, const QString &activationToken);
 private:
     void open(const QString &url, bool toggle, const QVariantMap &options = {});
+    void finishChooser(const QString &reason, bool notify = true);
+    QString chooserKey() const;
+    QDBusServiceWatcher chooserWatcher_;
+    QDBusConnection chooserConnection_{QString()};
+    QString chooserCaller_, chooserSession_;
+    bool changingChooser_ = false, returningFocus_ = false;
     PreviewController &controller_;
     NautilusPreviewService *nautilus_;
 };

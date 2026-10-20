@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
         if (result == dzurkel::InstanceCoordinator::ForwardResult::Failed) return fail(error);
         // Hiding or quitting an absent instance is a successful no-op.
         if (request.command == dzurkel::Command::Hide || request.command == dzurkel::Command::Quit) return 0;
-        if (request.command != dzurkel::Command::Settings && request.command != dzurkel::Command::NautilusPreviewService) {
+        if (request.command != dzurkel::Command::Settings && request.command != dzurkel::Command::Serve && request.command != dzurkel::Command::NautilusPreviewService) {
             dzurkel::FileResource resource;
             if (!dzurkel::parseFileResource(request.url, resource, error)) return fail(error);
         }
@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
                 if (!nautilus.start(startupError)) QTextStream(stderr) << "dzurkel: " << startupError << '\n';
             }
             if (request.command == dzurkel::Command::Settings) controller.showSettings(request.activationToken);
-            else if (request.command != dzurkel::Command::NautilusPreviewService
+            else if (request.command != dzurkel::Command::NautilusPreviewService && request.command != dzurkel::Command::Serve
                 && !controller.show(request.url, error, nullptr, request.activationToken)) return fail(error);
             if (request.diagnostics) {
                 QTextStream(stderr) << "Dzurkel primary PID: " << application.applicationPid()

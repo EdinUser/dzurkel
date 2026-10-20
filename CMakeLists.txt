@@ -53,6 +53,7 @@ add_library(dzurkel_core STATIC
     src/controller/PreviewController.cpp
     src/desktop/DesktopIntegration.cpp
     src/desktop/WindowPlacement.cpp
+    src/desktop/ChooserIntegration.cpp
     src/desktop/DolphinShortcuts.cpp
     src/desktop/DolphinSession.cpp
     src/desktop/NautilusIntegration.cpp
@@ -146,6 +147,44 @@ if(DZURKEL_WITH_KDE_ACTIVATION)
     install(TARGETS dzurkel_desktop LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/dzurkel/plugins)
 endif()
 
+# Opt-in KDE chooser integration, isolated from the executable's dependencies.
+set(DZURKEL_KDE_CHOOSER "AUTO" CACHE STRING "KDE chooser adapter: AUTO, ON or OFF")
+set_property(CACHE DZURKEL_KDE_CHOOSER PROPERTY STRINGS AUTO ON OFF)
+if(NOT DZURKEL_KDE_CHOOSER MATCHES "^(AUTO|ON|OFF)$")
+    message(FATAL_ERROR "DZURKEL_KDE_CHOOSER must be AUTO, ON or OFF")
+endif()
+file(RELATIVE_PATH DZURKEL_CHOOSER_PLUGIN_ROOT "${CMAKE_INSTALL_FULL_BINDIR}"
+    "${CMAKE_INSTALL_FULL_LIBDIR}/dzurkel/qt-plugins")
+target_compile_definitions(dzurkel_core PRIVATE DZURKEL_CHOOSER_PLUGIN_ROOT="${DZURKEL_CHOOSER_PLUGIN_ROOT}")
+if(NOT DZURKEL_KDE_CHOOSER STREQUAL "OFF")
+    # Only the public headers used by the adapter are needed; avoid importing
+    # unused KIO targets and their full SDK dependency graph into baseline builds.
+    find_path(DZURKEL_KIO_WIDGETS_INCLUDE KFileWidget PATH_SUFFIXES KF6/KIOFileWidgets)
+    find_path(DZURKEL_KIO_CORE_INCLUDE KFileItem PATH_SUFFIXES KF6/KIOCore)
+    find_path(DZURKEL_KIO_ENUM_INCLUDE kfile.h PATH_SUFFIXES KF6/KIOWidgets)
+    find_path(DZURKEL_KIO_VERSION_INCLUDE kio_version.h PATH_SUFFIXES KF6/KIO)
+    find_path(DZURKEL_COREADDONS_INCLUDE KJob PATH_SUFFIXES KF6/KCoreAddons)
+    find_library(DZURKEL_KIO_WIDGETS_LIBRARY NAMES KF6KIOFileWidgets libKF6KIOFileWidgets.so.6)
+    find_library(DZURKEL_KIO_CORE_LIBRARY NAMES KF6KIOCore libKF6KIOCore.so.6)
+    if(DZURKEL_KIO_WIDGETS_INCLUDE AND DZURKEL_KIO_CORE_INCLUDE AND DZURKEL_KIO_ENUM_INCLUDE
+        AND DZURKEL_KIO_VERSION_INCLUDE AND DZURKEL_COREADDONS_INCLUDE
+        AND DZURKEL_KIO_WIDGETS_LIBRARY AND DZURKEL_KIO_CORE_LIBRARY
+        AND TARGET KF6::WindowSystem AND KF6WindowSystem_VERSION VERSION_GREATER_EQUAL 6.19)
+        add_library(dzurkel_chooser MODULE src/integrations/kde/KdeChooserPlugin.cpp)
+        target_include_directories(dzurkel_chooser SYSTEM PRIVATE ${DZURKEL_KIO_WIDGETS_INCLUDE}
+            ${DZURKEL_KIO_CORE_INCLUDE} ${DZURKEL_KIO_ENUM_INCLUDE} ${DZURKEL_KIO_VERSION_INCLUDE} ${DZURKEL_COREADDONS_INCLUDE})
+        target_link_libraries(dzurkel_chooser PRIVATE Qt6::Widgets Qt6::DBus KF6::WindowSystem
+            ${DZURKEL_KIO_WIDGETS_LIBRARY} ${DZURKEL_KIO_CORE_LIBRARY})
+        target_compile_definitions(dzurkel_chooser PRIVATE DZURKEL_CHOOSER_EXECUTABLE="${CMAKE_INSTALL_FULL_BINDIR}/dzurkel")
+        set_target_properties(dzurkel_chooser PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-qt-plugins/generic")
+        install(TARGETS dzurkel_chooser LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/dzurkel/qt-plugins/generic)
+    elseif(DZURKEL_KDE_CHOOSER STREQUAL "ON")
+        message(FATAL_ERROR "KDE chooser adapter needs KIO/CoreAddons headers and runtimes, and KF6 WindowSystem >= 6.19")
+    else()
+        message(STATUS "KDE chooser adapter not built; normal previews remain available")
+    endif()
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(dzurkel_core PUBLIC -Wall -Wextra -Wpedantic)
     target_compile_options(dzurkel_media_source PUBLIC -Wall -Wextra -Wpedantic)
@@ -155,7 +194,7 @@ add_executable(dzurkel src/main.cpp src/resources/icons/icons.qrc)
 set_target_properties(dzurkel PROPERTIES AUTORCC ON)
 target_link_libraries(dzurkel PRIVATE dzurkel_core)
 target_compile_definitions(dzurkel PRIVATE DZURKEL_VERSION="${PROJECT_VERSION}")
-foreach(adapter dzurkel_highlighting dzurkel_audio dzurkel_desktop)
+foreach(adapter dzurkel_highlighting dzurkel_audio dzurkel_desktop dzurkel_chooser)
     if(TARGET ${adapter})
         add_dependencies(dzurkel ${adapter})
         set_property(TARGET dzurkel APPEND PROPERTY LINK_DEPENDS $<TARGET_FILE:${adapter}>)
@@ -171,7 +210,7 @@ if(NOT CMAKE_READELF)
     find_program(CMAKE_READELF readelf REQUIRED)
 endif()
 set(compatibility_adapter_args)
-foreach(adapter dzurkel_highlighting dzurkel_audio dzurkel_desktop)
+foreach(adapter dzurkel_highlighting dzurkel_audio dzurkel_desktop dzurkel_chooser)
     if(TARGET ${adapter})
         list(APPEND compatibility_adapter_args --adapter $<TARGET_FILE:${adapter}>)
     endif()
@@ -286,6 +325,29 @@ endif()
 if(BUILD_TESTING)
     find_package(Qt6 REQUIRED COMPONENTS Test)
     find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
+    if(TARGET dzurkel_chooser)
+        add_executable(dzurkel_chooser_smoke tests/support/QtChooserSmoke.cpp)
+        target_link_libraries(dzurkel_chooser_smoke PRIVATE Qt6::Widgets Qt6::Test)
+        add_test(NAME dzurkel_chooser_fallback COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/KdeChooserFallbackTest.py
+            $<TARGET_FILE:dzurkel_chooser_smoke> $<TARGET_FILE:dzurkel_chooser>)
+        set_tests_properties(dzurkel_chooser_fallback PROPERTIES TIMEOUT 30)
+        add_library(dzurkel_chooser_testdriver MODULE tests/support/KdeChooserDriver.cpp)
+        target_include_directories(dzurkel_chooser_testdriver SYSTEM PRIVATE ${DZURKEL_KIO_WIDGETS_INCLUDE}
+            ${DZURKEL_KIO_CORE_INCLUDE} ${DZURKEL_KIO_ENUM_INCLUDE} ${DZURKEL_KIO_VERSION_INCLUDE} ${DZURKEL_COREADDONS_INCLUDE})
+        target_link_libraries(dzurkel_chooser_testdriver PRIVATE Qt6::Widgets Qt6::Test ${DZURKEL_KIO_WIDGETS_LIBRARY} ${DZURKEL_KIO_CORE_LIBRARY})
+        set_target_properties(dzurkel_chooser_testdriver PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/dzurkel-qt-plugins/generic")
+        add_executable(dzurkel_chooser_tests tests/integration/KdeChooserTest.cpp)
+        target_include_directories(dzurkel_chooser_tests SYSTEM PRIVATE ${DZURKEL_KIO_WIDGETS_INCLUDE}
+            ${DZURKEL_KIO_CORE_INCLUDE} ${DZURKEL_KIO_ENUM_INCLUDE} ${DZURKEL_KIO_VERSION_INCLUDE} ${DZURKEL_COREADDONS_INCLUDE})
+        target_link_libraries(dzurkel_chooser_tests PRIVATE dzurkel_core Qt6::Test ${DZURKEL_KIO_WIDGETS_LIBRARY} ${DZURKEL_KIO_CORE_LIBRARY})
+        target_compile_definitions(dzurkel_chooser_tests PRIVATE DZURKEL_EXECUTABLE="$<TARGET_FILE:dzurkel>"
+            CHOOSER_PLUGIN_ROOT="${CMAKE_CURRENT_BINARY_DIR}/dzurkel-qt-plugins")
+        add_dependencies(dzurkel_chooser_tests dzurkel)
+        add_test(NAME dzurkel_chooser COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_chooser_tests>)
+        set_tests_properties(dzurkel_chooser PROPERTIES TIMEOUT 60 ENVIRONMENT
+            "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${CMAKE_CURRENT_BINARY_DIR}/dzurkel-qt-plugins;QT_QPA_GENERIC_PLUGINS=dzurkelchooser:$<TARGET_FILE:dzurkel>")
+    endif()
     add_executable(dzurkel_highlighting_tests tests/unit/TextHighlightingTest.cpp)
     target_link_libraries(dzurkel_highlighting_tests PRIVATE dzurkel_core Qt6::Test)
     if(TARGET dzurkel_highlighting)
@@ -441,5 +503,9 @@ if(BUILD_TESTING)
             endif()
         endforeach()
     endforeach()
+    if(TARGET dzurkel_chooser)
+        set_property(TEST dzurkel_install APPEND PROPERTY ENVIRONMENT
+            "DZURKEL_TEST_CHOOSER_PLUGIN=${CMAKE_INSTALL_FULL_LIBDIR}/dzurkel/qt-plugins/generic/libdzurkel_chooser.so")
+    endif()
     set_tests_properties(dzurkel_install PROPERTIES TIMEOUT 60)
 endif()

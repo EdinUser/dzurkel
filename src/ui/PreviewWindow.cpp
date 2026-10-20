@@ -819,6 +819,11 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
     }
     return QWidget::eventFilter(watched, event);
 }
+void PreviewWindow::closeEvent(QCloseEvent *event)
+{
+    emit dismissalStarting();
+    QWidget::closeEvent(event);
+}
 void PreviewWindow::hideEvent(QHideEvent *event)
 {
     if (!remapMaximum_.isEmpty()) {

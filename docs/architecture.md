@@ -3,6 +3,8 @@
 Dzurkel is one resident Qt 6 Widgets process with a reusable preview window.
 CLI and session D-Bus are its entry points. Dolphin, Nautilus and Thunar have
 separate integration paths; rendering does not depend on file-manager internals.
+An optional KDE chooser adapter runs inside compatible Qt application processes
+and forwards requests to the same resident service.
 
 ## Modules
 
@@ -16,6 +18,7 @@ separate integration paths; rendering does not depend on file-manager internals.
 | `src/preview/` | MIME/reader selection, bounded decoding, metadata and GUI-widget construction. |
 | `src/ui/` | Preview geometry, dismissal, file information and Settings dialogs. |
 | `src/desktop/` | Activation support, Dolphin shortcut backup/restore and explicit restart lifecycle. |
+| `src/integrations/kde/` | Optional Qt generic plugin: KDE chooser input, selection, scoped requests and focus return. |
 | `integrations/` | Desktop templates and file-manager integration scripts. |
 
 There is no separate application facade class or D-Bus adaptor layer: startup
@@ -152,6 +155,33 @@ flag, retry loop for activation, or resident file-manager monitor is added.
 
 Additional managers need their own verified detection, shortcut, restart and
 readiness semantics. They may reuse CLI/D-Bus and the desktop activation layer.
+
+## KDE file-dialog boundary
+
+`ChooserIntegration` manages the explicit, default-off Plasma session opt-in.
+Its per-user login script preserves other Qt plugin entries and loads
+`dzurkelchooser` through Qt's generic-plugin mechanism. Enable/disable takes
+effect after sign-out/in; Settings does not restart applications or the portal.
+The plugin contains the KIO/WindowSystem dependencies, so the core can start
+without them. A missing or incompatible plugin also leaves ordinary Qt host
+startup available. See [build and setup](file-dialog-previews.md).
+
+Inside a visible opening-mode `KFileWidget`, the adapter intercepts unmodified
+Space only in the file view with one selected item. It obtains an activation
+token asynchronously and rechecks selection, visibility and request generation
+before forwarding the original URL. It starts `dzurkel --serve` if necessary;
+this uses normal single-instance ownership without opening a preview window.
+
+Each request has a fresh session ID scoped to the caller's unique D-Bus name.
+Chooser cancellation or caller disconnect can hide only its owned preview;
+replacement by another caller or an ordinary Show/Toggle request transfers
+ownership. Chooser previews disable independent file navigation, leaving order
+and filtering with the chooser. A targeted close notification returns an
+activation token to the originating adapter for focus restoration. Generation
+checks prevent delayed notifications from activating an obsolete chooser after
+preview replacement. The compositor still controls activation. See
+[the caller-scoped D-Bus contract](dbus-api.md#caller-scoped-file-chooser-requests)
+and [validation evidence](testing.md).
 
 ## Preview library foundation
 

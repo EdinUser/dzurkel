@@ -50,6 +50,8 @@ private slots:
     void handlesStartupRacesAndCrashRecovery();
     void forwardsActivationTokensWithoutGui();
     void validatesActivationOptions();
+    void chooserLeasesAreBoundToCallerAndSurviveReplacement();
+    void serveStartsWithoutWindowAndReusesOwner();
     void experimentalSftpPolicyAppliesToResidentService();
 private:
     bool registered() const;
@@ -63,6 +65,63 @@ private:
     QString second_;
     QProcess primary_;
 };
+
+void DBusTest::serveStartsWithoutWindowAndReusesOwner()
+{
+    auto environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    primary_.setProcessEnvironment(environment);
+    primary_.start(QStringLiteral(DZURKEL_EXECUTABLE), {QStringLiteral("--serve")});
+    QVERIFY(primary_.waitForStarted());
+    QTRY_VERIFY_WITH_TIMEOUT(registered(), 5000);
+    QVERIFY(!property(QStringLiteral("Visible")).toBool());
+    const auto pid = ownerPid();
+    QCOMPARE(cli({QStringLiteral("--serve")}), 0);
+    QCOMPARE(ownerPid(), pid);
+    QVERIFY(!property(QStringLiteral("Visible")).toBool());
+}
+void DBusTest::chooserLeasesAreBoundToCallerAndSurviveReplacement()
+{
+    startPrimary();
+    const auto url = QUrl::fromLocalFile(second_).toString(QUrl::FullyEncoded);
+    const auto requester = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("chooser-owner"));
+    const auto remove = qScopeGuard([] { QDBusConnection::disconnectFromBus(QStringLiteral("chooser-owner")); });
+    const auto fromOwner = [&](const QString &method, const QVariantList &arguments) {
+        auto request = QDBusMessage::createMethodCall(service, path, interface, method);
+        request.setArguments(arguments);
+        return requester.call(request, QDBus::Block, 3000);
+    };
+    QCOMPARE(fromOwner(QStringLiteral("ShowFromChooser"), {QStringLiteral("one"), url, QVariantMap{}}).type(), QDBusMessage::ReplyMessage);
+    QTRY_VERIFY(property(QStringLiteral("Visible")).toBool());
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), url);
+    // Knowing the session ID does not grant a different bus caller its lease.
+    QCOMPARE(call(QStringLiteral("HideFromChooser"), {QStringLiteral("one")}).type(), QDBusMessage::ReplyMessage);
+    QVERIFY(property(QStringLiteral("Visible")).toBool());
+    const auto original = QUrl::fromLocalFile(first_).toString(QUrl::FullyEncoded);
+    QCOMPARE(call(QStringLiteral("Show"), {original}).type(), QDBusMessage::ReplyMessage);
+    QCOMPARE(fromOwner(QStringLiteral("HideFromChooser"), {QStringLiteral("one")}).type(), QDBusMessage::ReplyMessage);
+    QVERIFY(property(QStringLiteral("Visible")).toBool());
+    QCOMPARE(property(QStringLiteral("FileUrl")).toString(), original);
+    QCOMPARE(fromOwner(QStringLiteral("ShowFromChooser"), {QStringLiteral("two"), url, QVariantMap{}}).type(), QDBusMessage::ReplyMessage);
+    QCOMPARE(fromOwner(QStringLiteral("HideFromChooser"), {QStringLiteral("one")}).type(), QDBusMessage::ReplyMessage);
+    QVERIFY(property(QStringLiteral("Visible")).toBool());
+    for (const auto &session : {QString(129, 'x'), QStringLiteral("one\n"), QStringLiteral("a/b"), QString()}) {
+        const auto invalid = fromOwner(QStringLiteral("ShowFromChooser"), {session, original, QVariantMap{}});
+        QCOMPARE(invalid.type(), QDBusMessage::ErrorMessage);
+        QCOMPARE(property(QStringLiteral("FileUrl")).toString(), url);
+    }
+    QCOMPARE(fromOwner(QStringLiteral("HideFromChooser"), {QStringLiteral("two")}).type(), QDBusMessage::ReplyMessage);
+    QTRY_VERIFY(!property(QStringLiteral("Visible")).toBool());
+    {
+        const auto disconnecting = QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("chooser-disconnect"));
+        auto request = QDBusMessage::createMethodCall(service, path, interface, QStringLiteral("ShowFromChooser"));
+        request << QStringLiteral("disconnect") << url << QVariantMap{};
+        QCOMPARE(disconnecting.call(request).type(), QDBusMessage::ReplyMessage);
+        QVERIFY(property(QStringLiteral("Visible")).toBool());
+    }
+    QDBusConnection::disconnectFromBus(QStringLiteral("chooser-disconnect"));
+    QTRY_VERIFY_WITH_TIMEOUT(!property(QStringLiteral("Visible")).toBool(), 3000);
+}
 
 void DBusTest::forwardsActivationTokensWithoutGui()
 {

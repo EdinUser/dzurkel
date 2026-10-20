@@ -6,6 +6,10 @@ allow Dolphin to restart if prompted. Installation does not assign shortcuts.
 You can also right-click a file, choose **Dzurkel**, and open Settings from the
 preview. This targets Dolphin 26.04 or newer on KDE Plasma.
 
+Application Open/Upload dialogs use separate integration. Dolphin's shortcut
+does not configure them; see [KDE file-dialog previews](file-dialog-previews.md)
+for the optional session-wide adapter and its sign-out/in requirement.
+
 ## Setup
 
 Build and install using the README. Select exactly one local or authenticated SMB file in
