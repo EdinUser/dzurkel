@@ -13,6 +13,7 @@
 #include <QImageIOHandler>
 #include <QJsonDocument>
 #include <QMimeDatabase>
+#include <QPointer>
 #include <QTextStream>
 
 namespace dzurkel {
@@ -73,6 +74,17 @@ void ResourcePreparation::start(const FileResource &resource)
         return;
     }
     process_ = new QProcess(this);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, process_,
+        [process = process_, owner = QPointer<ResourcePreparation>(this)] {
+        // Disarm the active request first: its destructor must not reparent
+        // an exit-detached wrapper back to the application. This connection
+        // also outlives requests cancelled/destroyed before shutdown.
+        if (owner && owner->process_ == process) owner->cancel();
+        if (process->state() == QProcess::NotRunning) return;
+        process->kill();
+        process->setParent(nullptr);
+        process->disconnect(); // Never wait for blocked filesystem I/O at exit.
+    });
     ++activeHelpers;
     connect(process_, &QObject::destroyed, [] { --activeHelpers; });
     process_->setProcessChannelMode(QProcess::SeparateChannels);

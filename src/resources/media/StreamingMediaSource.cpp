@@ -61,6 +61,17 @@ void StreamingMediaSource::start(const QString &helper, const QString &url, int 
     // QProcess and its reaping outlive this source on asynchronous cancellation.
     auto *process = new QProcess(QCoreApplication::instance());
     process_ = process;
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, process,
+        [process, owner = QPointer<StreamingMediaSource>(this)] {
+        if (owner && owner->process_ == process) {
+            owner->cancel(); // Wake decoder reads before retiring the wrapper.
+            owner->process_ = nullptr;
+        }
+        if (process->state() == QProcess::NotRunning) return;
+        process->kill();
+        process->setParent(nullptr);
+        process->disconnect(); // A kernel-stuck source must not delay exit.
+    });
     ++helperCount;
     connect(process, &QObject::destroyed, [] { --helperCount; });
     connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), process, &QObject::deleteLater);

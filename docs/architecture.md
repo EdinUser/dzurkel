@@ -100,6 +100,19 @@ Cancellation kills the helper without a synchronous GUI wait. Preparation no
 longer creates a temporary source directory or snapshot. No new executable is
 added to the installation manifest.
 
+Resource preparation, folder navigation and streamed-media source helpers retain
+their independent helper budgets and asynchronous completion/reaping during
+normal operation. Cancellation does not free a slot until its process wrapper is
+destroyed. At application `aboutToQuit`, each surviving wrapper first cancels
+and disarms its active request, if any, then kills and detaches a still-running
+process wrapper and disconnects its callbacks. The shutdown connection belongs
+to the wrapper, so it also covers requests already cancelled or destroyed.
+Later owner destruction cannot reparent the detached wrapper. Stopped wrappers
+retain ordinary cleanup; live wrappers are deliberately left to operating-system
+cleanup at process exit, avoiding a synchronous `QProcess` destructor wait after
+the event loop stops. This teardown-only policy matches the decoder helpers;
+it cannot force immediate termination of kernel-blocked I/O.
+
 Plain text, CSV/TSV, XLSX and all supported document/book readers use `LazyCoordinator` with a persistent internal helper.
 Reader-owned opaque tokens identify reversible portions without a growing offset index.
 The coordinator owns one active request, a replaceable foreground target, one

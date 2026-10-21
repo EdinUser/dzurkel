@@ -1,5 +1,34 @@
 # Validation
 
+## Helper shutdown regression coverage (2026-10-21)
+
+Resource preparation, folder navigation and streamed-media source shutdown now
+have a subprocess regression suite using the actual request owners and disposable
+helpers:
+
+```bash
+ctest --test-dir build -R '^dzurkel_helper_shutdown$' --output-on-failure
+```
+
+The 28 cases cover normal completion, failed starts, active/cancelled/destroyed
+owners at shutdown, independent budget exhaustion and recovery, and replacement
+of a folder request on the same owner. They check detachment during `aboutToQuit`
+and cancellation/destruction after the application event loop returns, without
+subsequent event processing or process-destruction warnings. A test-only
+`LD_PRELOAD` shim suppresses SIGKILL delivery to simulate termination remaining
+pending; this is not a helper ignoring SIGKILL or a real kernel-blocked I/O test.
+Each probe has an eight-second external timeout. The Linux test supervisor adopts,
+kills and reaps disposable surviving helpers; the shim is not installed with the
+application.
+
+The focused suite passed three consecutive runs (4.27–4.41 s). The active-owner
+fault-injection cases for all three families timed out against the original
+implementation, confirming that the regressions detect the shutdown failure.
+The full build passed and all 35 configured CTest targets passed (127.06 s).
+Opt-in native Wayland and private-fixture checks retain their environment gates;
+this run does not establish new desktop acceptance or reproduce actual
+uninterruptible filesystem I/O.
+
 ## 1.0.0 version and documentation preparation (2026-10-21)
 
 Bumped the source version, RPM Version, Debian changelog and Arch pkgver to

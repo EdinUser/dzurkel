@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocale>
+#include <QPointer>
 #include <QTextStream>
 #include <algorithm>
 #include <cerrno>
@@ -59,6 +60,16 @@ void FolderNavigation::start(const FileResource &resource, int direction)
         return;
     }
     process_ = new QProcess(this);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, process_,
+        [process = process_, owner = QPointer<FolderNavigation>(this)] {
+        // Cancel before detaching so later owner destruction cannot reparent
+        // this wrapper. The process context also covers already-cancelled jobs.
+        if (owner && owner->process_ == process) owner->cancel();
+        if (process->state() == QProcess::NotRunning) return;
+        process->kill();
+        process->setParent(nullptr);
+        process->disconnect(); // No waiting QProcess destructor during shutdown.
+    });
     ++activeListings;
     connect(process_, &QObject::destroyed, [] { --activeListings; });
     process_->setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/dzurkel"));
