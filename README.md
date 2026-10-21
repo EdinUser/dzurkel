@@ -18,6 +18,35 @@ Enable Space previews in Dzurkel Settings after installation.
 [![Linux release packages](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml/badge.svg)](https://github.com/EdinUser/dzurkel/actions/workflows/ci.yml)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 
+## Supported systems
+
+| Support level | Fedora | Ubuntu | Arch Linux |
+| --- | --- | --- | --- |
+| **Minimum — core previews** | **37+**, with updates | **23.04+** (maintained LTS: **24.04+**) | Fully updated rolling system |
+| **Full — desktop features** | **43+**, with updates (KDE) | **26.04 LTS+** (GNOME) | Fully updated rolling system, with optional dependencies |
+| **Desktop tested** | **44**, KDE Plasma 6, Wayland | **26.04.1**, GNOME 50, Nautilus 50.2.2, Wayland | **2026-10-21**, XFCE 4.20, Thunar 4.20.10, X11 |
+
+Minimum versions are **calculated source compatibility floors** for native
+distribution libraries on x86_64/amd64. Full lists reviewed releases supplying
+the feature dependencies for the named desktop, with optional packages installed;
+it does not establish the earliest historical full-feature release. Desktop
+testing is recorded separately. Historical core floors include releases that
+have reached end of life; use a maintained release. Arch has no numbered release
+floor and requires full system updates.
+
+Folder sizing uses alternative adapters: GNOME/XFCE prefer GIO, while KDE prefers
+KIO and can fall back to GIO. KIO 6.30+ is needed only for the native KDE
+folder-size adapter; its absence does not make Ubuntu GNOME incomplete. Legacy
+Word DOC needs optional `antiword`, and media playback needs suitable codecs.
+Dolphin Space setup separately requires Dolphin 26.04+.
+
+**Downloaded packages may require a newer OS.** Use the package built for your
+distribution and release; a Debian DEB is not an Ubuntu compatibility promise.
+See [runtime requirements](docs/runtime-baseline.md)
+and [desktop testing and known limits](docs/testing.md). The tested row records
+selected checks across development builds, not complete acceptance of every
+1.0.0 release package.
+
 [![Dzurkel previewing an image, PDF, DOCX, XLSX, video and source code alongside Dolphin](docs/images/dzurkel-demo.gif)](docs/video/dzurkel-demo-0.8.0.mp4)
 
 *[Watch the full video](docs/video/dzurkel-demo-0.8.0.mp4): image → PDF → DOCX →
@@ -141,9 +170,10 @@ environment; file managers and desktops have different levels of validation.
 
 The **source baseline** requires Qt 6.4+, Qt PDF/PDF Widgets 6.4+ and libzip 1.7+.
 Debian 12 meets that baseline and has passed the headless build and staged-install
-checks. Fedora 43/44 meet the reviewed baseline dependencies; Arch requires a
-current, consistent rolling system. A RHEL minimum has not been established.
-Package installation and desktop validation determine supported environments.
+checks. The [supported systems table](#supported-systems) separates calculated
+Fedora/Ubuntu dependency floors from desktop testing. A RHEL minimum has not been
+established. Native package compatibility and desktop behavior require their
+own validation.
 
 **Downloaded packages can require a newer OS than the source baseline.** Each
 build ships a `build-compatibility.json` report with its runtime requirements,
@@ -154,10 +184,7 @@ See [runtime requirements and OS compatibility](docs/runtime-baseline.md) for de
 
 | Environment or location | Status |
 | --- | --- |
-| Fedora 44, KDE Plasma 6, Wayland | Primary development and desktop validation environment |
 | Dolphin 26.04+ | Target for Space shortcut integration |
-| Ubuntu 26.04.1, GNOME 50, Nautilus 50.2.2, Wayland | VM validation; opt-in Space previews for local files and folders |
-| Arch Linux, XFCE 4.20, Thunar 4.20.10, X11 | VM validation; opt-in Space and context-menu previews for one local file or folder |
 | Other distributions or desktops | Not yet validated; source builds may work |
 | Local files and mounted shares | Supported |
 | Direct SMB URLs | Optional KIO-FUSE/KIO workers required; authenticate in Dolphin |
