@@ -1,5 +1,25 @@
 # Validation
 
+## PDF baseline test compatibility and teardown (2026-10-21)
+
+The [second 1.0.0 release attempt](https://github.com/EdinUser/dzurkel/actions/runs/39621131861)
+built successfully on Debian 12 / Qt 6.4.2, but the PDF test still required the
+Qt 6.6 link model. It also crashed during process exit: its function-static
+synthetic mouse was destroyed after QApplication, inside Qt's input-device
+cleanup. A standalone Qt test reproduced that lifetime failure without PDF code.
+
+The PDF test now checks the documented empty-link fallback and manual page
+navigation on Qt 6.4/6.5, retaining real link-click navigation on Qt 6.6+.
+Its synthetic mouse belongs to the test object, so it remains valid throughout
+the suite and is destroyed before QApplication. No production or workflow
+behavior changes are involved.
+
+The audit's disposable prototype passed all 26 real Qt 6.4 baseline CTest targets
+(80.77 s), three additional PDF runs, and all 16 PDF checks on Qt 6.11.2.
+The link-assertion correction alone still crashed after all 16 checks passed;
+both corrections are required. These audit results precede verification of the
+committed correction and a new tagged release run.
+
 ## 1.0.0 release baseline blocker (2026-10-21)
 
 The [tagged release run](https://github.com/EdinUser/dzurkel/actions/runs/39619822934)
