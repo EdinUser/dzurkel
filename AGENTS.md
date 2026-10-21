@@ -2,9 +2,11 @@
 
 ## Project Structure & Module Organization
 
-Dzurkel is a standalone Linux file-preview application targeting Fedora, KDE
-Plasma 6, Wayland, and Dolphin 26.04+. Milestone 2 adds bounded image, PDF, and
-text previews to single-instance D-Bus control and Dolphin integration. Read
+Dzurkel is a standalone Linux file-preview application developed primarily on
+Fedora KDE Plasma 6 Wayland, with Dolphin 26.04+, Nautilus and Thunar integration.
+Version 1.0.0 provides direct-source progressive text, table, document and e-book
+previews alongside images, on-demand PDF pages and streamed audio/video, using
+single-instance D-Bus control. Read
 `README.md` for current scope and `docs/dbus-api.md` for IPC. Private
 specifications and work notes in `helpers/` are ignored by Git.
 

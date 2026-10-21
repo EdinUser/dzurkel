@@ -5,6 +5,8 @@ as audio. The executable keeps its baseline Qt dependencies; Qt Multimedia and
 Multimedia Widgets are loaded through the adapter. The existing build option
 `DZURKEL_AUDIO` and installed `libdzurkel_audio.so` filename cover both formats.
 The versioned media interface rejects incompatible older audio adapters safely.
+Version 1.0.0 retains this media lifecycle while extending direct-source lazy
+loading to non-media readers; see the [release notes](releases/v1.0.0.md).
 
 ## Behavior
 

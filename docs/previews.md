@@ -3,11 +3,14 @@
 Dzurkel renders content in one reusable window. Space or Escape dismisses the
 preview; the process stays resident until `dzurkel --quit`. Mouse-wheel scrolling
 works in documents and text. Previewing does not execute or edit file contents.
+Version 1.0.0 loads text, tables and supported documents/e-books progressively
+from direct sources, without whole-file temporary copies. See the
+[release notes](releases/v1.0.0.md) for changes and validation.
 
 The filename lives in the native title bar; navigation and supported zoom
 controls share a compact toolbar. The bottom strip shows image dimensions,
 text encoding and line count, PDF page counts, CSV/TSV row and column counts,
-or the active XLSX sheet's dimensions. Text counts describe the bounded preview,
+or the loaded row range and columns of the active XLSX sheet. Text counts describe the bounded preview,
 normalize line endings, and exclude an extra empty paragraph after a final newline.
 Spreadsheet zoom
 and sheet-creation controls are not shown. File information is available by
@@ -36,12 +39,15 @@ image windows temporarily replace the document reading size; returning to PDF,
 text or a table restores that size and maximized state. Resizing these temporary
 views does not replace the remembered document size. On opening a hidden window,
 fast results are fitted before mapping, giving Wayland the initial size it needs
-for placement. Image dimensions and orientation are read on the background
-worker before pixel decoding. On KDE Wayland, a small desktop adapter uses
+for placement. Qt reads image dimensions and orientation in the preparation/image helpers,
+but the window waits for decoded pixels before applying that size. An already
+mapped preview retains its content, size and filename until the replacement is
+ready; content and geometry are committed together with painting suspended during
+the update. On KDE Wayland, a small desktop adapter uses
 KWin's public scripting API to resize and reposition the existing mapped frame
 within the actual work area. Navigation keeps the same native window and does
 not request activation. If KWin scripting is unavailable, its visible size is
-retained. A 150 ms fallback shows a loading window for slow operations;
+retained. A 150 ms fallback shows a compact loading window for slow first opens;
 it does not impose a delay on fast previews. Initial loading and format selection
 remain asynchronous, without GUI-thread source-file reads.
 
@@ -49,7 +55,15 @@ DOC/DOCX, RTF, EPUB, Markdown and plain text have a separate reading geometry:
 the first preview uses a 700 × 900 logical-pixel portrait window, scaled down
 proportionally to fit within 90% of the available screen. Manual resizing and
 maximization are remembered within the resident process, independently of the
-existing PDF/table geometry. The aspect ratio is not locked. Content zoom never
+PDF and spreadsheet geometry. CSV and Excel grids have their own window size,
+with each new table's initial width derived from its column count, fixed default
+column widths, row header, scrollbar and window chrome. Width is bounded by a
+400-pixel minimum and 85% of the available screen; wider tables scroll horizontally.
+Height retains the table geometry, initially 85% of the screen. Manual resizing
+and maximization remain independent of reading previews and fitted PDFs. Returning
+to the same table through a reading preview preserves its manual size; switching
+sheet tabs does not resize the window.
+The aspect ratio is not locked. Content zoom never
 resizes the window. Images and compact audio/information views keep their
 existing sizing and restore the appropriate geometry on return.
 
@@ -58,20 +72,21 @@ existing sizing and restore the appropriate geometry on return.
 | Content | Behavior |
 | --- | --- |
 | Images | PNG, JPEG, and BMP; additional formats depend on installed Qt image readers. |
-| PDF | First page on open, fit-to-width display, page count, and multipage scrolling. |
+| PDF | First page on open, fit-to-width display, page count, and pages rendered on demand. |
 | Audio | MP3, FLAC, Ogg/Vorbis, Opus, WAV, AAC, M4A (AAC/ALAC) and audio-only MP4, subject to installed Qt decoding support. |
 | Video | MP4/M4V, MKV, WebM, MOV, AVI, MPG/MPEG, OGV and WMV; streamed into an aspect-preserving view, subject to installed Qt decoding support. |
-| CSV / TSV | Read-only table grid; literal values, quoted fields and bounded complete records. |
-| XLSX | Same table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
-| DOCX / RTF / EPUB | Bounded content previews with basic formatting and plain-text fallback for unsupported formatting. |
-| FB2 / SFB / MOBI 6 | Bounded e-book previews with simplified formatting; only the variants described below are supported. |
+| CSV / TSV | Progressive read-only table grid; literal values, quoted fields and batches of complete records. |
+| XLSX | Progressive table grid with sheet tabs, saved values, recognized dates/times and unavailable-result markers; no formula calculation or charts. |
+| DOCX / RTF / EPUB | Progressive content previews with basic formatting and readable fallback for unsupported formatting. |
+| FB2 / SFB / MOBI 6 | Progressive e-book previews with simplified formatting; only the variants described below are supported. |
 | Markdown | Formatted MD/Markdown headings, lists, emphasis, quotes, code and tables; embedded HTML and external resources disabled. |
 | Legacy DOC | Text only, using optional `antiword`; file information if the extractor is unavailable. |
 | Text | Plain text, logs, JSON, XML, and source files identified as text by Qt; automatic syntax highlighting when the optional backend recognises the format. |
 | Other files | Filename, type/MIME, size, modification time, icon, and explanation. |
-| Directories, links, special objects | Information only; contents/targets are not opened. |
+| Directories | Folder information and optional asynchronous contents size/counts. |
+| Links, special objects | Information only; targets are not opened for content. |
 
-Image capability is checked against the actual reader, not just the extension.
+Image capability is checked through Qt readers on a bounded header, not just the extension.
 Images retain their aspect ratio and supported orientation metadata. Animated GIFs play automatically, with a **Pause/Play** button (`P`) and **Replay**
 for animations that finish. Playback follows the file's loop count. Frames decode
 on the worker before playback; the GUI only presents retained frames. GIF decoding
@@ -113,14 +128,74 @@ transfers ranges of at most 64 KiB, with no whole-file snapshot. Underlying moun
 may cache more data. See [video behavior and limits](video-preview.md).
 See the shared [audio/video policy](preview-library.md#audio-and-video-playback-policy).
 
+Images decode in an isolated helper directly from the resolved source. The
+existing Qt readers still supply scaling, orientation and GIF frames. The viewer
+retains bounded decoded pixels for zoom and playback; it does not reread the
+source while painting. Very large dimensions can still exceed a reader's decode
+budget even when its source file is small. Each helper has a 30-second deadline,
+with at most two image helpers live or awaiting reaping. Cancellation does not
+wait for a blocked image plugin or mounted-file read. Source mutation/disappearance
+can fail decoding; original file identity stays visible.
+
+Plain text opens in a persistent helper and loads a small initial portion.
+Scrolling near the top or bottom requests adjacent content, including previously
+evicted content. The view retains three portions and a bounded lookahead/cache;
+it does not append indefinitely. Whitespace and Unicode characters are preserved,
+and loading/eviction keeps a visible text anchor and the window geometry.
+Selection and copying cover the currently resident window. Source changes or
+later decode errors leave existing content visible with an explanation.
+
+For text, logs and source files such as SQL exports, **End** (Ctrl+End) opens the
+actual final portion directly; **Beginning** (Ctrl+Home) returns to the start.
+The status confirms which end was reached. Scroll upward from the final portion
+to inspect preceding text. These jumps keep the current language, zoom and window
+and reset the text selection. Reopen the preview after a source change.
+
+Lazy loading supports ordinary inspection within resource budgets. Very distant
+structured-document navigation may fail with an explanation while retaining useful
+content. Fast logical EOF is provided for the text view; compressed document
+containers keep their existing navigation facilities. Multiline highlighting
+context outside the resident text is best effort, while the language stays fixed.
+
+CSV/TSV share that coordinator and adjacent-window policy. They load small batches
+of complete records near the visible boundary, retain three batches and reload
+earlier rows when scrolling backward. Absolute row numbers and the range summary
+identify the resident source rows. Qt model notifications preserve retained
+selection, column widths and scroll anchors. Initial malformed CSV falls back to
+progressive text; a later error keeps useful rows visible. Neither path creates
+temporary source copies. Original URLs and desktop adapters remain intact.
+
+DOCX, DOC, RTF, FB2, SFB, MOBI and Markdown now load further content as you scroll,
+sharing the bounded rich-document window used by EPUB. Three adjacent portions
+remain resident, and earlier content reloads when revisited. Formatting and reader
+state continue across loads; selection, scroll anchors and geometry are retained.
+Later errors keep useful visible content. Parser/metadata limits still apply:
+a large indivisible table, list, fence or paragraph can exceed a portion budget,
+and distant backward replay can exceed its work budget. Markdown reference lookup
+may scan ahead within a bounded work budget before showing reference-bearing text.
+
+Decoded images/GIF frames retain at most 64 MiB in total. The private transfer
+also bounds colour profiles to 1 MiB per frame and frame metadata to 2 MiB per
+result. Unsupported metadata receives an explanation rather than a partial or
+miscoloured image. These are decoded/metadata budgets, not source-file limits.
+
+PDF opens on page one. Its dimensions determine the initial window size; later
+pages fit to their own dimensions inside that window. Scroll within a page
+normally, then scroll again at the bottom/top to open the next/previous page.
+A page that fits entirely can change pages directly. Touchpad momentum cannot
+skip multiple pages. The toolbar page number and buttons, or PageUp/PageDown,
+also change pages; navigation does not wrap. A requested page shows loading
+feedback while retaining the displayed page. If rendering fails later, the
+existing page remains visible with an explanation.
+
 PDF search, annotations, editing, printing, and password entry are not supported.
-Password-protected, damaged, oversized, or unsupported documents show an
+Password-protected, damaged, or unsupported documents show an
 explanation with file information instead of an empty preview.
 
 Text is shown in a read-only monospace editor and wraps to the preview width by
 default. The toolbar's **Wrap lines** toggle is remembered per user; turning it
 off enables horizontal scrolling for long lines. Whitespace and line numbers
-still describe the original bounded text, not the visual wrap positions.
+describe the initial resident text, not the entire file or visual wrap positions.
 Markup is displayed literally. UTF-8 is preferred; a byte-order mark
 can identify UTF-16/UTF-32. Invalid UTF-8 may use a labeled Latin-1 fallback;
 unknown legacy encodings are not reliably detected. Binary data receives an
@@ -134,7 +209,9 @@ executed and no automatic pretty-printing is applied. Missing/unloadable adapter
 missing/incompatible libraries and unrecognised formats silently retain plain text.
 For responsiveness, previews over 256 Ki UTF-16 code units (including the final
 document separator), or with a paragraph over 4096 code units including its
-separator, also remain plain text. Existing text loading limits still apply.
+separator, also remain plain text. Highlighting after eviction may lose lexer
+context that began before the resident text window. The language remains fixed;
+perfect multiline-context recovery is outside the agreed quick-preview scope.
 
 Source builds use `-DDZURKEL_HIGHLIGHTING=AUTO` by default: the adapter is built
 when KSyntaxHighlighting >= 6.0 development files are available. `ON` requires
@@ -166,8 +243,8 @@ own compatibility check.
 - Manual zoom normally ranges from 10% to 800%. PDF manual zoom has a lower
   ceiling when necessary to keep a rendered page within 16 million physical
   pixels and an 8192-pixel edge, accounting for display scaling. The percentage
-  tooltip explains that ceiling. Qt manages PDF page caching; this is a per-page
-  manual-zoom limit, not a total process-memory guarantee or a new fit-mode limit.
+  tooltip explains the rendering budget. Both fit and manual rendering obey
+  these bounds for the current page; this is not a total process-memory guarantee.
 - Image zoom scales the retained decoded pixels. Images larger than the bounded
   decode do not regain full source detail at higher zoom; the percentage tooltip
   explains this. No zoom-sized image bitmap is allocated. Plain text and formatted
@@ -250,18 +327,21 @@ stays in file information. Partial-preview and other warnings remain separate.
 Markdown uses Qt's built-in GitHub-style parser for `.md`/`.markdown` files and
 recognized Markdown MIME types. Code whitespace is preserved; raw HTML is
 disabled and image/file/network resources are not loaded. Other text/source
-formats remain literal plain text. A 2 MiB bounded source prefix feeds at most
-200,000 UTF-16 text units and 5,000 physical lines into the reading view; stopped
-input is labelled partial. Parsing and bounded typography happen on the GUI
-thread after worker-side decoding, not through an external converter.
+formats remain literal plain text. The isolated helper imports bounded structural
+segments through Qt, retaining complete lists, fences and tables rather than
+arbitrary character slices. Reference-bearing text can require a bounded
+source scan before publication. A segment still has character/line/layout limits;
+these are not a permanent source-prefix cutoff. The GUI inserts and formats only
+the new bounded portion; explicit zoom/theme changes update all resident text.
 Potentially excessive Markdown table layouts conservatively fall back to plain
-text before Qt parsing: more than 256 pipes in a line, or a maximum line pipe
+text before rich-text parsing: more than 256 pipes in a line, or a maximum line pipe
 count plus one multiplied by retained line count above 100,000. This estimate
 can also simplify pipe-heavy code/prose; its contents remain available as text.
 
 EPUB follows the package's declared reading order and opens into content,
-skipping an image-only opening cover. The compact Contents menu lists only
-sections retained in the preview, not the entire book. Title and author are
+skipping an image-only opening cover. The compact Contents menu includes bounded
+spine chapter entries and discovered sections; internal chapter/fragment links
+can load unread or evicted content. It is not a full-book search index. Title and author are
 available through file information. Publisher fonts, colors, CSS and exact
 pagination are omitted. Fixed-layout content is simplified with a notice;
 scripts, remote resources and audio/video overlays are not loaded. Encrypted
@@ -293,17 +373,49 @@ bookmark or reading-progress features.
 
 Limits are configured in the provider source files:
 
-- Images: 64 MiB source-copy limit and 64 MiB Qt image-allocation budget; decoded previews are bounded to
+- Images: no source-file size cap or whole-file copy; a 64 MiB Qt image-allocation budget; decoded previews are bounded to
   4,096 pixels per axis, retained for zoom without reopening the source on the UI thread. Readers without native scaled decoding reject originals
   exceeding the pixel budget before loading. Qt's `QT_IMAGEIO_MAXALLOC`
   environment setting can override its library allocation limit.
-- Text: at most 2 MiB of source bytes, 20,000 lines, and 16,384 characters per line.
-  A visible “Partial preview” notice identifies byte/line truncation or shortened
-  lines. A multibyte character cut off at the byte limit is omitted safely.
-- PDF: at most 64 MiB and 10,000 pages. File loading happens on a worker;
-  `QPdfView` renders and scrolls the accepted document.
-- DOCX/RTF/EPUB/DOC/FB2/SFB/MOBI: complete source snapshots up to 16 MiB; up to 200,000
-  retained text characters and 5,000 block boundaries. See
+- Plain text: nominal 4 KiB source portions with at most 1 KiB boundary lookahead,
+  three rendered portions, and a five-entry/384 KiB charged reply cache. Source
+  length and long lines have no permanent preview cutoff. Per-request protocol,
+  timeout and concurrency budgets still apply. Synchronous in-memory/fallback
+  callers retain the earlier 2 MiB/20,000-line/16,384-character limits.
+- CSV/TSV: batches target 64 complete rows or 16,384 characters, with 256 columns
+  and 16,384 characters per field. Three rendered batches and a five-entry/64 MiB
+  charged reply cache remain bounded. Large rows use validated chunked replies
+  up to 16 MiB; reverse reads have byte/work budgets. The production path has
+  no lifetime 2 MiB or 10,000-row cutoff. Selection covers resident rows.
+- XLSX: direct persistent ZIP/XML cursor, up to 64 rows per batch with a soft
+  16,384-character target, three rendered batches and the same bounded reply
+  cache/transport as CSV. Unselected sheets stay unloaded; switching releases
+  resident rows and remembers one region token per sheet. Older uncached ranges
+  replay compressed XML within per-request budgets. Metadata/styles/shared strings
+  still have eager size/count limits; distant replay can hit a work limit. See
+  [the XLSX limits](preview-library.md#xlsx). No complete archive/worksheet copy
+  or lifetime worksheet row/cell cutoff is introduced.
+- PDF: no application file-size or page-count cap. A separate process opens the
+  original resolved source, checks the requested page's dimensions and renders bounded RGBA
+  pixels. The GUI displays one page at a time. At most two PDF helpers may be
+  live or awaiting reaping; a 30-second request deadline bounds ordinary stalls.
+  Cancellation kills the helper without waiting on the GUI thread. This process
+  boundary is not a decoder sandbox. PDF sources are not copied in full.
+- EPUB: progressive semantic blocks and ordered chapters, with the shared lazy
+  coordinator, three rich-text portions, bounded decoded images and reusable Qt
+  resource slots. Contents/links can load unread chapters or fragments. Chapter
+  XML and individual blocks retain parsing/content budgets; backward misses may
+  replay blocks. See [document limits](preview-library.md#formatted-documents-and-e-books).
+- DOCX/RTF/DOC/FB2/SFB/MOBI/Markdown: persistent direct-source parsers in the
+  shared rich-document helper, three resident portions and a bounded reply cache.
+  Loads target 8,192 text units or 64 complete units, with character/block/HTML,
+  subtree, image, metadata and per-request read/time budgets. DOCX streams XML
+  blocks with style/list state; RTF/FB2/SFB retain parser state; MOBI retains
+  record/encoding/markup carry; DOC uses antiword with bounded pipe backpressure.
+  Markdown uses Qt structural imports and bounded reference discovery. Earlier
+  16 MiB/2 MiB source-prefix limits apply only to compatibility callers, not
+  production scrolling. Large indivisible structures and distant replay can
+  fail explicitly while keeping useful visible content. See
   [document reader bounds](preview-library.md#formatted-documents-and-e-books).
 - Audio/video: no whole-file size/copy limit; one outstanding IPC read of at most
   64 KiB and a fixed 512 KiB source read-ahead window. At most two source helpers
@@ -315,10 +427,11 @@ Limits are configured in the provider source files:
   pending one, and generation checks discard superseded results. Dismissal
   cancels display of unfinished work and releases the visible content.
 
-An already-running native decoder may finish before cancellation takes effect.
-On shutdown, Dzurkel waits for that worker before releasing application state.
-These limits reduce resource use; in-process Qt decoding is not a security
-sandbox. Dedicated decoder isolation remains future work.
+The shared worker retains bounded in-memory/fallback reader entry points; the
+production text/table/document paths publish candidates for their persistent helper.
+Source-consuming text, image, PDF, table and document readers run in isolated helpers.
+Closing/switching stops them without waiting on filesystem/native decoder calls.
+These bounds reduce resource use and are not an OS memory sandbox.
 
 ## Filesystem policy
 
@@ -327,20 +440,21 @@ the [experimental opt-in](compatibility.md#trying-experimental-sftp). Relative p
 the caller's working directory. Local/mounted filesystem checks run in a
 separate resource helper, keeping slow mounts away from the UI thread.
 Every symbolic link, including broken/cyclic links, receives information only;
-targets are not opened. Directory previews remain metadata-only; navigation lists
-the parent of a selected regular file separately. FIFOs, sockets and
+targets are not opened for content. Directory previews can calculate contents
+size through optional desktop libraries, without reading file contents;
+navigation lists the parent of a selected regular file separately. FIFOs, sockets and
 devices are never opened for content. Regular files are opened with
 nonblocking/no-follow flags and checked by descriptor.
 
-Non-media readers use bounded copies in a private temporary directory before
-decoding. Text/Markdown/CSV prefixes contain at most 2 MiB plus one byte for
-truncation detection; image/PDF copies are limited to 64 MiB, and XLSX/formatted
-document/e-book copies to 16 MiB. Audio/video use isolated helper-backed range
-reads with no whole-file temporary copy. Unsupported types and oversized complete
-snapshots receive information views without a content copy. Original metadata
-and URLs remain visible. Temporary backing files are released when their resources
-are no longer needed; the parent retains a cancelled helper's directory until
-that helper exits. This is a bounded copy, not an atomic filesystem snapshot.
+Plain text, CSV/TSV and all other implemented file readers use helper-backed direct access to the original local or
+mounted file, including paths resolved through the existing KIO-FUSE adapter;
+authentication and transport caching remain with the desktop/OS. Audio/video
+use isolated helper-backed range
+reads with no whole-file temporary copy. Unsupported types and exhausted decoding
+budgets receive information views. Original metadata
+and URLs remain visible. Preparation creates no temporary source files or
+directories. Direct access does not promise an immutable snapshot if another
+process modifies the source during loading.
 
 Malformed/unsupported URLs return CLI/D-Bus errors. Filesystem, connection and
 decoding failures after acceptance display an information view instead. A CLI
@@ -360,7 +474,7 @@ requires the optional runtime packages `kio-fuse` and `kio-extras`; failures sho
 setup/authentication guidance. No KIO development library is required. This route
 is available in Qt-only builds too when the service exists; it is not a claim of
 GNOME integration. Transport caching and actual network transfer volume depend
-on KIO-FUSE, so the snapshot limit is not a network-bandwidth guarantee.
+on KIO-FUSE, so application read/copy limits are not a network-bandwidth guarantee.
 
 ### Experimental SFTP
 
@@ -375,13 +489,13 @@ Preparation times out after 30 seconds (the mount call can time out earlier).
 Hide/replacement kills the helper without waiting on the UI thread. At most two
 helpers may exist while a cancelled helper is being reaped; another request gets
 a retry explanation if both slots are still occupied. A kernel-stuck filesystem
-operation may delay process exit and temporary-directory cleanup despite kill.
+operation may delay helper process exit despite kill.
 Native decoder cancellation/shutdown limitations still apply separately.
 
 Fast information views retain compact first-map sizing. If preparation takes
-more than 150 ms, a normal-sized loading window appears; it may shrink when an
-information result arrives. File replacement keeps the current loading view
-size, with normal preview dimensions restored when reopening a compact window.
+more than 150 ms, a compact loading window appears and transitions directly to
+the completed preview. Navigating an already open preview retains the previous
+content and geometry until its replacement is ready.
 
 ## Folder contents size
 

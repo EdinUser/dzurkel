@@ -1,5 +1,5 @@
 Name:           dzurkel
-Version:        0.9.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Quick file previews for Dolphin, Nautilus and Thunar
 
@@ -83,6 +83,11 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 %{_datadir}/icons/hicolor/scalable/apps/dzurkel-symbolic.svg
 
 %changelog
+* Wed Oct 21 2026 Dzurkel contributors - 1.0.0-1
+- Load text, tables, documents and e-books progressively from direct sources.
+- Bound resident portions and add practical Beginning/End access for text files.
+- Preserve preview geometry and document formatting during continuation.
+
 * Tue Oct 20 2026 Dzurkel contributors - 0.9.0-1
 - Add desktop-backed folder contents sizing with optional KIO and GIO adapters.
 - Add reversible Thunar folder preview setup and opt-in KDE file-dialog previews.

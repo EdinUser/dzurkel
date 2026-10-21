@@ -1,4 +1,4 @@
-# Dzurkel documentation
+# Dzurkel 1.0.0 documentation
 
 Start with the [project overview](../README.md) for capabilities and downloads.
 These guides describe existing behavior, implementation boundaries and validation;
@@ -7,7 +7,7 @@ an available access route or dependency candidate is not a desktop support claim
 ## Getting started
 
 - [Installation, updates and removal](installation.md) — Fedora, Debian and Arch packages, source installation and optional dependencies.
-- [Usage and keyboard controls](usage.md) — Settings, playback, navigation and dismissal.
+- [Usage and keyboard controls](usage.md) — progressive scrolling, text Beginning/End, playback, navigation and dismissal.
 - [Preview demonstration](video/README.md) — video, GIF and recording details using synthetic files.
 - [Supported previews and limits](previews.md) — formats, simplified rendering, resource limits and filesystem policy.
 - [Runtime baseline and OS compatibility](runtime-baseline.md) — baseline application, optional adapters and build-specific requirements.
@@ -37,10 +37,11 @@ an available access route or dependency candidate is not a desktop support claim
 - [Testing evidence](testing.md) — recorded automated/native results and unresolved checks.
 - [Arch VM library workflow](arch-vm-testing.md) — separate builder/runtime environments and optional-library recovery.
 - [Packaging and release process](releasing.md) — validation gates, assets and prerelease-to-stable promotion.
-- [0.9.0 release notes](releases/v0.9.0.md) — folder contents sizing, Thunar folders and opt-in KDE dialog previews; validation passed and runtime installers are attached to the [stable release](https://github.com/EdinUser/dzurkel/releases/tag/v0.9.0).
+- [1.0.0 release notes](releases/v1.0.0.md) — direct-source progressive previews, practical text EOF, validation and accepted limits; prepared for release, with publication separate.
 
 ## Historical release notes
 
+- [0.9.0](releases/v0.9.0.md) — folder contents sizing, Thunar folders and opt-in KDE dialog previews.
 - [0.8.0](releases/v0.8.0.md) — video previews, shared media controls and the video demonstration.
 - [0.7.1](releases/v0.7.1.md) — optional-library recovery, Settings and icons.
 - [0.7.0](releases/v0.7.0.md) — audio, formatted documents and e-books.
@@ -48,4 +49,4 @@ an available access route or dependency candidate is not a desktop support claim
 - [Legacy 0.7.1 notes location](release-notes-0.7.1.md) — redirect retained for existing links.
 
 Historical notes and test measurements retain the version and environment they
-describe. They do not automatically establish support or performance for 0.9.0.
+describe. They do not automatically establish support or performance for 1.0.0.

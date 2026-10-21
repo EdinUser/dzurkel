@@ -2,8 +2,9 @@
 
 The source-access experiment has been integrated into normal audio/video previews.
 This opt-in, uninstalled probe remains available to measure the shared source
-implementation independently of the application UI. Existing snapshot readers
-and file-manager adapters retain their behavior. Video uses the same seekable
+implementation independently of the application UI. File-manager adapters retain
+their existing routes; production non-media readers also use direct sources
+without whole-file snapshots. Video uses the same seekable
 access model; [video previews](video-preview.md) describes the integrated view.
 
 Audio and video share the agreed [playback policy](preview-library.md#audio-and-video-playback-policy):

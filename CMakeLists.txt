@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Dzurkel VERSION 0.9.0 LANGUAGES CXX)
+project(Dzurkel VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -69,15 +69,35 @@ add_library(dzurkel_core STATIC
     src/preview/providers/DocumentPreviewProvider.cpp
     src/preview/readers/DocumentReader.cpp
     src/preview/readers/RtfReader.cpp
+    src/preview/readers/MarkdownReader.cpp
     src/preview/readers/LegacyDocReader.cpp
     src/preview/readers/EbookReader.cpp
     src/preview/document/DocumentView.cpp
     src/preview/readers/XlsxReader.cpp
     src/preview/readers/CsvReader.cpp
+    src/preview/readers/CsvRecordParser.cpp
     src/preview/readers/TextDecoder.cpp
+    src/preview/readers/TextCodec.cpp
     src/preview/table/SpreadsheetView.cpp
+    src/preview/table/TableRowBatch.cpp
     src/preview/providers/ImagePreviewProvider.cpp
     src/preview/providers/PdfPreviewProvider.cpp
+    src/preview/image/ImageHelper.cpp
+    src/preview/image/ImageDecodeJob.cpp
+    src/preview/StructuredDecodeJob.cpp
+    src/preview/lazy/LazyCoordinator.cpp
+    src/preview/lazy/LazyHelper.cpp
+    src/preview/lazy/TextPortionReader.cpp
+    src/preview/lazy/TextSource.cpp
+    src/preview/lazy/CsvPortionReader.cpp
+    src/preview/lazy/LazyTextWindow.cpp
+    src/preview/lazy/LazyWindow.cpp
+    src/preview/lazy/LazyTableWindow.cpp
+    src/preview/document/DocumentHelper.cpp
+    src/preview/xlsx/XlsxHelper.cpp
+    src/preview/pdf/PdfHelper.cpp
+    src/preview/pdf/PdfSession.cpp
+    src/preview/pdf/PdfView.cpp
     src/preview/providers/TextPreviewProvider.cpp
     src/preview/text/TextHighlighting.cpp
     src/preview/providers/FileInfoProvider.cpp
@@ -484,6 +504,27 @@ if(BUILD_TESTING)
     target_compile_definitions(dzurkel_preview_tests PRIVATE DZURKEL_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     add_test(NAME dzurkel_previews COMMAND dzurkel_preview_tests)
     set_tests_properties(dzurkel_previews PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_executable(dzurkel_pdf_tests tests/integration/PdfTest.cpp)
+    add_executable(dzurkel_lazy_tests tests/integration/LazyTest.cpp)
+    add_executable(dzurkel_csv_lazy_tests tests/integration/CsvLazyTest.cpp)
+    add_dependencies(dzurkel_csv_lazy_tests dzurkel)
+    target_link_libraries(dzurkel_csv_lazy_tests PRIVATE dzurkel_core Qt6::Test)
+    add_test(NAME dzurkel_csv_lazy COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_csv_lazy_tests>)
+    set_tests_properties(dzurkel_csv_lazy PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 90)
+    add_dependencies(dzurkel_lazy_tests dzurkel)
+    target_link_libraries(dzurkel_lazy_tests PRIVATE dzurkel_core Qt6::Test)
+    add_test(NAME dzurkel_lazy COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_lazy_tests>)
+    set_tests_properties(dzurkel_lazy PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
+    add_dependencies(dzurkel_pdf_tests dzurkel)
+    target_link_libraries(dzurkel_pdf_tests PRIVATE dzurkel_core Qt6::Test)
+    add_test(NAME dzurkel_pdf COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_pdf_tests>)
+    set_tests_properties(dzurkel_pdf PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 45)
+    add_executable(dzurkel_image_tests tests/integration/ImageTest.cpp)
+    add_dependencies(dzurkel_image_tests dzurkel)
+    target_link_libraries(dzurkel_image_tests PRIVATE dzurkel_core Qt6::Test)
+    target_compile_definitions(dzurkel_image_tests PRIVATE DZURKEL_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME dzurkel_images COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:dzurkel_image_tests>)
+    set_tests_properties(dzurkel_images PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 45)
     add_test(NAME dzurkel_gnome_backend_guard COMMAND ${CMAKE_COMMAND}
         -DPREVIEW_TESTS=$<TARGET_FILE:dzurkel_preview_tests>
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/GnomeGuard.cmake)

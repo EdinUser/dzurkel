@@ -1,12 +1,12 @@
 name: Bug report
-description: Report a preview, Dolphin integration or installation problem
+description: Report a preview, file-manager integration or installation problem
 labels: [bug]
 body:
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: Distribution, Plasma, Dolphin, Qt and Dzurkel versions; Wayland or X11; installation method.
+      description: Distribution, desktop, file-manager, Qt and Dzurkel versions; Wayland or X11; installation method.
     validations:
       required: true
   - type: textarea

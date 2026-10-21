@@ -1,10 +1,22 @@
 # Performance and footprint
 
 Dzurkel uses shared Qt/KDE libraries and one resident process. It keeps one
-active decoder worker and one coalesced pending request, bounds image/text/PDF input, and frees
-the visible preview on dismissal. It does not index files or start a decoder
-process for every preview. The results below describe small synthetic fixtures
+active decoder worker and one coalesced pending request, bounds retained preview
+content, and frees the visible preview on dismissal. Plain text uses a persistent
+helper with small reversible portions, a bounded cache and three rendered
+portions. CSV/TSV and XLSX retain three row batches using the existing Qt table
+model/view; supported rich documents/books retain three bounded rich portions.
+PDF renders requested pages. Source-consuming decoders run in isolated helpers
+without whole-file temporary copies, retaining their documented content/parsing budgets.
+Dzurkel does not build a general file index. The results below describe small synthetic fixtures
 on the tested Fedora 44 machine, not arbitrary documents or other hardware.
+
+The 1.0.0 progressive-loading changes have functional, sanitizer and selected
+native desktop evidence in [testing](testing.md), mostly recorded under the
+preceding development version. The historical measurements below are not new
+1.0.0 first-paint or whole-session memory benchmarks. Comparisons must include
+decoder helpers, desktop/OS caches and actual painted content; no comparative
+speed or total-memory improvement is claimed here.
 
 ## Build configurations
 
@@ -74,14 +86,20 @@ but include allocator arenas and caches, not just live application objects.
 PSS changes with other running Qt applications and the benchmark itself.
 Sanitizer memory totals are unsuitable for comparison with production builds.
 
-Repeated PDF opening originally restarted Qt's PDF runtime each time. Source
+The 2026-10-20 PDF helper change supersedes the retained-runtime optimization
+below. Each preview now initializes PDFium in its own helper and releases it
+with that process. Earlier host-only memory and reload timings do not measure
+this implementation; comparisons must include helper PSS and actual first
+paint. No startup-speed or total-memory improvement is claimed yet.
+
+Previously, repeated PDF opening restarted Qt's PDF runtime each time. Source
 inspection and provider-isolation runs identified this as the main source of
 reload cost and allocator retention in the tested Qt version. After the first
-successful PDF preview, the controller now retains an **empty** `QPdfDocument`
+successful PDF preview, the controller retained an **empty** `QPdfDocument`
 to keep that runtime initialized. Actual documents, backing files, and viewer
 widgets are still released on dismissal; a regression test checks eight
-successive documents. The empty runtime is released at application shutdown.
-Text-only startup does not construct it.
+successive documents. That empty runtime was released at application shutdown.
+Text-only startup did not construct it.
 
 The implementation uses public Qt objects. Qt 6.11.2's
 [runtime initialization and destruction](https://github.com/qt/qtwebengine/blob/v6.11.2/src/pdf/qpdfdocument.cpp#L99)
@@ -214,18 +232,21 @@ on what Fedora already has installed. Development headers, static build archives
 test binaries, benchmark reports, and build directories are not installed.
 
 Further runtime savings should target measured document/render caches and idle
-allocator retention. Lazy PDF isolation could change the tradeoff between initial
-footprint and repeated-preview latency; it needs a separate design decision.
+allocator retention. PDF isolation and progressive document windows are now
+implemented; their whole-session footprint and repeated-preview latency need
+fresh measurements before drawing comparisons with the historical results.
 The viewer-dependency/bundling policy remains deferred. Shared libraries should
 not be removed just to reduce this checkout's apparent footprint.
 
 ## Resource preparation change
 
-The development SMB/resource-loading implementation adds a short-lived helper
-process and a bounded temporary copy before non-media decoding, including local
-files. Audio/video instead use helper-backed range reads without a whole-file
-copy; see [video source policies](video-preview.md).
-Earlier latency and memory measurements above predate this change and must not
-be treated as current preparation costs. CLI acknowledgement now covers syntax
+Resource preparation uses a short-lived helper for local/mounted checks and
+desktop remote resolution. Production readers consume direct sources without
+the earlier whole-file temporary copy. Text/tables/documents use persistent lazy
+portions, PDF renders pages on demand, images retain bounded decoded pixels,
+and audio/video use helper-backed range reads; see
+[architecture](architecture.md) and [video source policies](video-preview.md).
+Earlier latency and memory measurements above predate these changes and must
+not be treated as current preparation costs. CLI acknowledgement covers syntax
 validation/submission rather than filesystem validation. Re-measure cold/warm
 local and mounted/direct SMB previews before making release performance claims.

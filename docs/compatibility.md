@@ -6,7 +6,7 @@ and the same bounded resource-preparation helper as local files.
 
 | Location | Default | Evidence / limitations |
 | --- | --- | --- |
-| Local paths and file URLs | Enabled | Automated and native Fedora KDE Wayland checks. |
+| Local paths and file URLs | Enabled | Automated checks plus selected native Fedora KDE Wayland, Ubuntu GNOME Wayland and Arch XFCE/X11 checks; see [testing](testing.md) for exact scope. |
 | Mounted network shares | Enabled as filesystem paths | User confirmed CIFS and mounted S3 workflows; other mount types and failure cases have not all been validated. |
 | Direct SMB URLs | Enabled | Automated resource lifecycle tests, real native PDF/JPEG checks and user confirmation on Fedora KDE. |
 | Direct SFTP URLs | Disabled; experimental opt-in | Automated URL/policy/fake-backend tests pass; user confirmed the normal workflow on their Fedora KDE SFTP setup. Broader server/authentication/failure-case coverage remains incomplete. |
@@ -46,8 +46,10 @@ are rejected with opt-in guidance until this preference is enabled. Rejected
 requests preserve the current preview. Other schemes remain disabled even when
 experimental SFTP is enabled.
 
-Image/PDF source limits, text truncation, preparation timeout, cancellation and
-cleanup follow [the existing resource policy](previews.md#filesystem-policy).
+Direct-source access, progressive content/work budgets, preparation timeout,
+cancellation and cleanup follow [the resource policy](previews.md#filesystem-policy).
+Dzurkel creates no whole-file source copy; desktop/OS transport caching can still
+read or retain more data than an application request.
 Remote paths retain their identity in the window and D-Bus FileUrl property.
 
 ## Controlled real SFTP check

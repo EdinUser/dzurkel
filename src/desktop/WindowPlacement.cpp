@@ -84,9 +84,18 @@ void WindowPlacement::start()
                 {"chromeWidth", request.chrome.width()}, {"chromeHeight", request.chrome.height()}};
             // JSON serialization is essential: titles contain untrusted filenames.
             const QByteArray source = "const p = " + QJsonDocument(parameters).toJson(QJsonDocument::Compact) + R"JS(;
-workspace.stackingOrder.forEach(function(w) {
-    if (w.pid !== p.pid || !w.normalWindow || w.dialog || w.deleted || w.hidden || w.minimized || w.fullScreen || w.move || w.resize) return;
-    if (w.caption !== p.title && w.caption.indexOf(p.title + " — ") !== 0) return;
+// Caption changes travel over Wayland independently of this D-Bus request.
+// Prefer the caption, but allow the sole eligible window of this process while
+// that caption is still in flight. Never select another process or a dialog.
+const candidates = workspace.stackingOrder.filter(function(w) {
+    return w.pid === p.pid && w.normalWindow && !w.dialog && !w.deleted && !w.hidden
+        && !w.minimized && !w.fullScreen && !w.move && !w.resize;
+});
+const matches = candidates.filter(function(w) {
+    return w.caption === p.title || w.caption.indexOf(p.title + " — ") === 0;
+});
+const targets = matches.length === 1 ? matches : candidates.length === 1 ? candidates : [];
+targets.forEach(function(w) {
     const f = w.frameGeometry, c = w.clientGeometry;
     const area = workspace.clientArea(KWin.MaximizeArea, w);
     const dw = Math.max(0, f.width - c.width), dh = Math.max(0, f.height - c.height);

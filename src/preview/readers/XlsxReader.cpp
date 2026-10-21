@@ -1,4 +1,5 @@
 #include "XlsxReader.h"
+#include "SeekableZipSource.h"
 #include <QDir>
 #include <QDate>
 #include <QTime>
@@ -7,6 +8,10 @@
 #include <QSet>
 #include <QUrl>
 #include <QXmlStreamReader>
+#include "ZipEntryDevice.h"
+#include <QJsonArray>
+#include <QDateTime>
+#include "preview/table/TableRowBatch.h"
 #include <zip.h>
 #include <cmath>
 
@@ -19,6 +24,7 @@ bool spreadsheet(const QXmlStreamReader &xml) { return xml.namespaceUri() == Mai
 struct Relationship { QString target; QString type; };
 struct Sheet { QString name; QString id; };
 struct Stop { QString error; bool cancelled = false; };
+
 
 enum class NumberKind { Raw, Date, Time, DateTime, Duration };
 NumberKind numberKind(int id, const QString &code)
@@ -105,19 +111,25 @@ QString formattedNumber(const QString &raw, NumberKind kind, bool date1904)
     return kind == NumberKind::DateTime ? dateText + QChar(' ') + timeText : dateText;
 }
 
-// All package reads use bounded immutable snapshot bytes. ZIP paths are lookup
+// Package reads seek in the validated source descriptor. ZIP paths are lookup
 // keys only: no archive content is extracted to the filesystem or fetched.
 class Reader {
 public:
     explicit Reader(const Cancellation &cancel) : cancel_(cancel) { clock_.start(); }
-    ~Reader() { if (zip_) zip_discard(zip_); }
+    ~Reader() { xml_.reset(); entry_.reset(); if (zip_) zip_discard(zip_); }
     std::shared_ptr<TabularDocument> read(QFile &file);
+    void initialize(QFile &file);
+    QJsonObject portion(const QString &token);
 private:
     void check() const {
         if (cancel_ && cancel_->load()) throw Stop{{}, true};
         if (clock_.elapsed() > 5000) throw Stop{QStringLiteral("XLSX preview loading timed out.")};
     }
-    [[noreturn]] void invalid() const { throw Stop{QStringLiteral("Cannot preview this damaged, encrypted or unsupported XLSX workbook.")}; }
+    [[noreturn]] void invalid() const {
+        check();
+        if (input_ && input_->exceeded) limit();
+        throw Stop{QStringLiteral("Cannot preview this damaged, encrypted or unsupported XLSX workbook.")};
+    }
     [[noreturn]] void limit() const { throw Stop{QStringLiteral("XLSX workbook exceeds the preview resource limits.")}; }
     void next(QXmlStreamReader &xml) {
         check();
@@ -163,13 +175,16 @@ private:
     void strings(const QString &path);
     void styles(const QString &path);
     TabularSheet worksheet(const QString &path, const QString &name);
+    TabularSheet worksheetXml(QXmlStreamReader &xml, const QString &name, int firstRow = -1);
+    void openSheet(int index);
+    QString cell(QXmlStreamReader &xml);
     void charge(const QString &value) {
         characters_ += value.size();
         if (characters_ > XlsxReader::CharacterLimit) limit();
     }
     Cancellation cancel_;
     QElapsedTimer clock_;
-    QByteArray bytes_;
+    std::unique_ptr<SeekableZipSource> input_;
     zip_t *zip_ = nullptr;
     QHash<QString, zip_uint64_t> entries_;
     QStringList strings_;
@@ -181,6 +196,19 @@ private:
     int characters_ = 0;
     int cells_ = 0;
     int depth_ = 0;
+    QList<Sheet> sheets_;
+    QHash<QString, Relationship> workbookRels_;
+    // Only one XML cursor is retained. Backward/sheet changes replay through
+    // libzip and Qt, with per-request work budgets rather than a growing index.
+    std::unique_ptr<ZipEntryDevice> entry_;
+    std::unique_ptr<QXmlStreamReader> xml_;
+    int activeSheet_ = -1, position_ = 0, previous_ = 0;
+    int row_ = 0, column_ = 0;
+    bool held_ = false;
+    QString heldValue_;
+    QString deferredError_;
+    bool cellMissing_ = false;
+
 };
 
 QByteArray Reader::part(const QString &name)
@@ -308,120 +336,156 @@ TabularSheet Reader::worksheet(const QString &path, const QString &name)
 {
     QXmlStreamReader xml(part(path));
     depth_ = 0;
+    row_ = column_ = 0;
+    held_ = false;
+    return worksheetXml(xml, name);
+}
+TabularSheet Reader::worksheetXml(QXmlStreamReader &xml, const QString &name, int firstRow)
+{
+    const bool lazy = firstRow >= 0;
+    const int offset = lazy ? firstRow : 0;
     TabularSheet sheet;
     sheet.name = name;
-    int row = 0;
-    int column = 0;
-    while (!xml.atEnd()) {
-        next(xml);
-        if (!xml.isStartElement()) continue;
-        if (depth_ == 1) {
-            if (!spreadsheet(xml) || xml.name() != QLatin1String("worksheet")) invalid();
-        } else if (depth_ == 2 && spreadsheet(xml) && xml.name() == QLatin1String("sheetData")) {
-            // Only actual sheetData cells determine the extent; dimension and
-            // formatted empty rows/columns may describe millions of positions.
-        } else if (depth_ == 3 && spreadsheet(xml) && xml.name() == QLatin1String("row")) {
-            const auto r = xml.attributes().value(QLatin1String("r"));
-            bool ok = true;
-            row = r.isEmpty() ? row + 1 : r.toInt(&ok);
-            if (!ok || row < 1 || row > 1048576) invalid();
-            column = 0;
-        } else if (depth_ == 4 && spreadsheet(xml) && xml.name() == QLatin1String("c")) {
-            if (++cells_ > XlsxReader::CellLimit) { document_->partial = true; break; }
-            const auto attributes = xml.attributes();
-            const auto ref = attributes.value(QLatin1String("r"));
-            if (!ref.isEmpty()) {
-                int pos = 0;
-                column = 0;
-                while (pos < ref.size() && ref.at(pos) >= QChar('A') && ref.at(pos) <= QChar('Z')) {
-                    column = column * 26 + ref.at(pos++).unicode() - 'A' + 1;
-                    if (column > 16384) invalid();
-                }
-                bool ok = false;
-                const int cellRow = ref.mid(pos).toInt(&ok);
-                if (!ok || !column || cellRow != row) invalid();
-            } else ++column;
-            if (column > 16384) invalid();
-            const auto type = attributes.value(QLatin1String("t")).toString();
-            QString value;
-            bool hasValue = false;
-            bool valueElement = false;
-            bool formula = false;
-            const int level = depth_;
-            while (!xml.atEnd()) {
-                next(xml);
-                if (depth_ < level) break;
-                if (!xml.isStartElement()) continue;
-                if (depth_ == level + 1 && spreadsheet(xml) && xml.name() == QLatin1String("v")) {
-                    value = text(xml); hasValue = !value.isEmpty(); valueElement = true;
-                } else if (depth_ == level + 1 && spreadsheet(xml) && xml.name() == QLatin1String("is")) {
-                    value = richText(xml); hasValue = !value.isEmpty();
-                } else {
-                    if (depth_ == level + 1 && spreadsheet(xml) && xml.name() == QLatin1String("f")) formula = true;
-                    skip(xml);
-                }
-            }
-            if (!hasValue) {
-                // An explicit empty string cache is a valid calculated result.
-                if (!formula || (type == QLatin1String("str") && valueElement)) continue;
-                value = QStringLiteral("[Result unavailable]");
-                if (row <= XlsxReader::RowLimit && column <= XlsxReader::ColumnLimit) ++missingResults_;
-            }
-            if (hasValue && type == QLatin1String("s")) {
-                bool ok = false;
-                const int index = value.toInt(&ok);
-                if (!ok || index < 0 || index >= strings_.size()) invalid();
-                value = strings_.at(index);
-            } else if (hasValue && type == QLatin1String("b")) {
-                if (value != QLatin1String("0") && value != QLatin1String("1")) invalid();
-                value = value == QLatin1String("1") ? QStringLiteral("TRUE") : QStringLiteral("FALSE");
-            } else if (hasValue && !type.isEmpty() && type != QLatin1String("n") && type != QLatin1String("str")
-                       && type != QLatin1String("inlineStr") && type != QLatin1String("e") && type != QLatin1String("d")) invalid();
-            // Only recognized numeric date/time formats are interpreted;
-            // other numeric lexemes remain intact to avoid rounding identifiers.
-            if (hasValue && (type.isEmpty() || type == QLatin1String("n"))) {
-                const auto style = attributes.value(QLatin1String("s"));
+    auto &row = row_;
+    auto &column = column_;
+    try {
+        while (!xml.atEnd()) {
+            const bool pending = held_;
+            if (!pending) next(xml);
+            held_ = false;
+            if (!pending && !xml.isStartElement()) continue;
+            if (depth_ == 1) {
+                if (!spreadsheet(xml) || xml.name() != QLatin1String("worksheet")) invalid();
+            } else if (depth_ == 2 && spreadsheet(xml) && xml.name() == QLatin1String("sheetData")) {
+                // Only actual sheetData cells determine the extent; dimension and
+                // formatted empty rows/columns may describe millions of positions.
+            } else if (depth_ == 3 && spreadsheet(xml) && xml.name() == QLatin1String("row")) {
+                const auto r = xml.attributes().value(QLatin1String("r"));
                 bool ok = true;
-                const int index = style.isEmpty() ? 0 : style.toInt(&ok);
-                if (!ok || index < 0) invalid();
-                if (index < formats_.size()) value = formattedNumber(value, formats_.at(index), date1904_);
-            }
-            if (row > XlsxReader::RowLimit || column > XlsxReader::ColumnLimit) { document_->partial = true; continue; }
-            charge(value);
-            sheet.rowCount = qMax(sheet.rowCount, row);
-            sheet.columnCount = qMax(sheet.columnCount, column);
-            sheet.cells.insert(TabularSheet::key(row - 1, column - 1), value);
-        } else skip(xml);
+                const int previousRow = row;
+                row = r.isEmpty() ? row + 1 : r.toInt(&ok);
+                if (lazy && row <= previousRow) invalid();
+                if (!ok || row < 1 || row > 1048576) invalid();
+                column = 0;
+            } else if (pending || (depth_ == 4 && spreadsheet(xml) && xml.name() == QLatin1String("c"))) {
+                if (!pending && ++cells_ > XlsxReader::CellLimit) {
+                    if (lazy) limit();
+                    document_->partial = true;
+                    break;
+                }
+                const auto value = pending ? heldValue_ : cell(xml);
+                if (value.isNull()) continue;
+                if ((!lazy && row > XlsxReader::RowLimit) || column > XlsxReader::ColumnLimit) { document_->partial = true; continue; }
+                if (lazy && (row > offset + TableRowBatch::RowLimit
+                    || (row > offset + sheet.rowCount && characters_ >= TableRowBatch::CharacterTarget))) {
+                    held_ = true;
+                    heldValue_ = value;
+                    sheet.rowCount = qMax(sheet.rowCount, qMin(TableRowBatch::RowLimit, row - 1 - offset));
+                    break;
+                }
+                if (cellMissing_) ++missingResults_;
+                charge(value);
+                sheet.rowCount = qMax(sheet.rowCount, row - offset);
+                sheet.columnCount = qMax(sheet.columnCount, column);
+                sheet.cells.insert(TabularSheet::key(row - 1 - offset, column - 1), value);
+            } else skip(xml);
+        }
+    } catch (const Stop &stop) {
+        if (!lazy || !sheet.rowCount || stop.cancelled) throw;
+        // Publish the useful batch, then surface a later parse/read failure on
+        // continuation instead of discarding content already decoded safely.
+        deferredError_ = stop.error;
+        held_ = true;
     }
     return sheet;
 }
-std::shared_ptr<TabularDocument> Reader::read(QFile &file)
+QString Reader::cell(QXmlStreamReader &xml)
 {
-    check();
-    if (file.size() > XlsxReader::ByteLimit) limit();
-    while (!file.atEnd()) {
-        check();
-        const auto chunk = file.read(65536);
-        if (chunk.isEmpty() && file.error() != QFile::NoError) invalid();
-        bytes_ += chunk;
-        if (bytes_.size() > XlsxReader::ByteLimit) limit();
+    auto &row = row_;
+    auto &column = column_;
+    cellMissing_ = false;
+    const auto attributes = xml.attributes();
+    const auto ref = attributes.value(QLatin1String("r"));
+    if (!ref.isEmpty()) {
+        int pos = 0;
+        column = 0;
+        while (pos < ref.size() && ref.at(pos) >= QChar('A') && ref.at(pos) <= QChar('Z')) {
+            column = column * 26 + ref.at(pos++).unicode() - 'A' + 1;
+            if (column > 16384) invalid();
+        }
+        bool ok = false;
+        const int cellRow = ref.mid(pos).toInt(&ok);
+        if (!ok || !column || cellRow != row) invalid();
+    } else ++column;
+    if (column > 16384) invalid();
+    const auto type = attributes.value(QLatin1String("t")).toString();
+    const auto style = attributes.value(QLatin1String("s")).toString();
+    QString value;
+    bool hasValue = false;
+    bool valueElement = false;
+    bool formula = false;
+    const int level = depth_;
+    while (!xml.atEnd()) {
+        next(xml);
+        if (depth_ < level) break;
+        if (!xml.isStartElement()) continue;
+        if (depth_ == level + 1 && spreadsheet(xml) && xml.name() == QLatin1String("v")) {
+            value = text(xml); hasValue = !value.isEmpty(); valueElement = true;
+        } else if (depth_ == level + 1 && spreadsheet(xml) && xml.name() == QLatin1String("is")) {
+            value = richText(xml); hasValue = !value.isEmpty();
+        } else {
+            if (depth_ == level + 1 && spreadsheet(xml) && xml.name() == QLatin1String("f")) formula = true;
+            skip(xml);
+        }
     }
-    auto *source = zip_source_buffer_create(bytes_.constData(), zip_uint64_t(bytes_.size()), 0, nullptr);
+    if (!hasValue) {
+        // An explicit empty string cache is a valid calculated result.
+        if (!formula || (type == QLatin1String("str") && valueElement)) return {};
+        value = QStringLiteral("[Result unavailable]");
+        cellMissing_ = true;
+    }
+    if (hasValue && type == QLatin1String("s")) {
+        bool ok = false;
+        const int index = value.toInt(&ok);
+        if (!ok || index < 0 || index >= strings_.size()) invalid();
+        value = strings_.at(index);
+    } else if (hasValue && type == QLatin1String("b")) {
+        if (value != QLatin1String("0") && value != QLatin1String("1")) invalid();
+        value = value == QLatin1String("1") ? QStringLiteral("TRUE") : QStringLiteral("FALSE");
+    } else if (hasValue && !type.isEmpty() && type != QLatin1String("n") && type != QLatin1String("str")
+               && type != QLatin1String("inlineStr") && type != QLatin1String("e") && type != QLatin1String("d")) invalid();
+    // Only recognized numeric date/time formats are interpreted;
+    // other numeric lexemes remain intact to avoid rounding identifiers.
+    if (hasValue && (type.isEmpty() || type == QLatin1String("n"))) {
+        bool ok = true;
+        const int index = style.isEmpty() ? 0 : style.toInt(&ok);
+        if (!ok || index < 0) invalid();
+        if (index < formats_.size()) value = formattedNumber(value, formats_.at(index), date1904_);
+    }
+    return value.isNull() ? QStringLiteral("") : value;
+}
+void Reader::initialize(QFile &file)
+{
+    clock_.restart();
+    check();
+    input_ = std::make_unique<SeekableZipSource>(file, cancel_, clock_);
+    auto *source = zip_source_function_create(&SeekableZipSource::callback, input_.get(), nullptr);
     if (!source) invalid();
     zip_ = zip_open_from_source(source, ZIP_RDONLY, nullptr);
     if (!zip_) { zip_source_free(source); invalid(); }
+    input_->remaining = XlsxReader::SourceReadLimit;
+    check();
     const auto count = zip_get_num_entries(zip_, 0);
     if (count < 0) invalid();
     if (count > XlsxReader::EntryLimit) limit();
-    quint64 total = 0;
     for (zip_int64_t i = 0; i < count; ++i) {
         check();
         zip_stat_t stat;
         zip_stat_init(&stat);
         if (zip_stat_index(zip_, zip_uint64_t(i), 0, &stat) != 0 || !(stat.valid & ZIP_STAT_SIZE)
             || !(stat.valid & ZIP_STAT_NAME) || !stat.name || stat.encryption_method != ZIP_EM_NONE) invalid();
-        if (stat.size > XlsxReader::ExpandedLimit || total > quint64(XlsxReader::ExpandedLimit) - stat.size) limit();
-        total += stat.size;
+        // Unused media/parts are indexed but never decompressed. The aggregate
+        // expanded-byte budget is charged only when a required part is read.
         const auto name = QString::fromUtf8(stat.name);
         if (entries_.contains(name)) invalid();
         entries_.insert(name, zip_uint64_t(i));
@@ -479,10 +543,16 @@ std::shared_ptr<TabularDocument> Reader::read(QFile &file)
         stylePath = rel.target;
     }
     if (!stylePath.isEmpty()) styles(stylePath);
-    for (const auto &sheet : sheets) {
+    sheets_ = sheets;
+    workbookRels_ = rels;
+}
+std::shared_ptr<TabularDocument> Reader::read(QFile &file)
+{
+    initialize(file);
+    for (const auto &sheet : sheets_) {
         check();
         if (cells_ >= XlsxReader::CellLimit) { document_->partial = true; break; }
-        document_->sheets.append(worksheet(rels.value(sheet.id).target, sheet.name));
+        document_->sheets.append(worksheet(workbookRels_.value(sheet.id).target, sheet.name));
     }
     if (document_->partial) document_->notice = QStringLiteral("Partial XLSX preview: sheet, row, column or cell limit reached.");
     if (missingResults_) {
@@ -491,10 +561,112 @@ std::shared_ptr<TabularDocument> Reader::read(QFile &file)
     }
     return document_;
 }
+void Reader::openSheet(int index)
+{
+    xml_.reset();
+    entry_.reset();
+    const auto path = workbookRels_.value(sheets_.at(index).id).target;
+    if (!entries_.contains(path)) invalid();
+    entry_ = std::make_unique<ZipEntryDevice>(zip_, entries_.value(path), expanded_, XlsxReader::ExpandedLimit, [](const QString &message) { throw Stop{message}; });
+    xml_ = std::make_unique<QXmlStreamReader>(entry_.get());
+    activeSheet_ = index;
+    position_ = previous_ = row_ = column_ = depth_ = 0;
+    held_ = false;
+}
+QJsonObject Reader::portion(const QString &token)
+{
+    if (!deferredError_.isEmpty()) throw Stop{deferredError_};
+    clock_.restart();
+    input_->remaining = XlsxReader::SourceReadLimit;
+    input_->exceeded = false;
+    expanded_ = 0;
+    int index = 0, requested = 0;
+    if (token != QStringLiteral("0")) {
+        const auto parts = token.split(':');
+        bool sheetOk = false, rowOk = false;
+        if (parts.size() != 3 || parts[0] != QLatin1String("f")) invalid();
+        index = parts[1].toInt(&sheetOk);
+        requested = parts[2].toInt(&rowOk);
+        if (!sheetOk || !rowOk || index < 0 || index >= sheets_.size() || requested < 0 || requested > 1048576
+            || QStringLiteral("%1:%2:%3").arg(parts[0]).arg(index).arg(requested) != token) invalid();
+    }
+    if (activeSheet_ != index || position_ != requested) openSheet(index);
+    TabularSheet batch;
+    int first = position_, previous = previous_;
+    for (;;) {
+        check();
+        first = position_;
+        previous = previous_;
+        characters_ = cells_ = missingResults_ = 0;
+        batch = worksheetXml(*xml_, sheets_.at(index).name, first);
+        position_ += batch.rowCount;
+        previous_ = first;
+        if (first == requested) break;
+        if (position_ <= first || position_ > requested || !held_) invalid();
+    }
+    QJsonArray rows;
+    for (int row = 0; row < batch.rowCount; ++row) {
+        QJsonArray values;
+        for (int col = 0; col < batch.columnCount; ++col) values.append(batch.value(row, col).toString());
+        rows.append(values);
+    }
+    QJsonArray names, sheetTokens;
+    for (int i = 0; i < sheets_.size(); ++i) {
+        names.append(sheets_.at(i).name);
+        sheetTokens.append(QStringLiteral("f:%1:0").arg(i));
+    }
+    const auto forward = [index](int row) { return QStringLiteral("f:%1:%2").arg(index).arg(row); };
+    QString notice;
+    if (document_->partial) notice = QStringLiteral("Partial XLSX preview: only the first 32 worksheets and 256 columns are shown.");
+    if (missingResults_) notice += QStringLiteral(" %1 formula result(s) unavailable; saved results are not recalculated.").arg(missingResults_);
+    return {{"previous", first ? forward(previous) : QString()},
+        {"next", held_ ? forward(position_) : QString()},
+        {"content", QJsonObject{{"kind", "table"}, {"sheet", batch.name}, {"sheets", names}, {"sheetTokens", sheetTokens},
+            {"rowOffset", first}, {"rows", rows}, {"columns", batch.columnCount}, {"notice", notice}}}};
+}
+
 }
 XlsxResult XlsxReader::read(QFile &file, const Cancellation &cancel)
 {
     try { return {Reader(cancel).read(file), {}, false}; }
     catch (const Stop &stop) { return {{}, stop.error, stop.cancelled}; }
 }
+struct XlsxPortionReader::State {
+    QFile file;
+    QString error;
+    qint64 size = 0;
+    QDateTime modified;
+    Reader reader{Cancellation{}};
+    bool initialized = false;
+    explicit State(const QString &path) {
+        FileResource resource;
+        resource.path = path;
+        if (!openPreviewFile(resource, file, error)) return;
+        size = file.size();
+        modified = file.fileTime(QFileDevice::FileModificationTime);
+    }
+};
+XlsxPortionReader::XlsxPortionReader(const QString &path) : state_(std::make_unique<State>(path)) {}
+XlsxPortionReader::~XlsxPortionReader() = default;
+QJsonObject XlsxPortionReader::read(const QString &token)
+{
+    auto &state = *state_;
+    if (!state.error.isEmpty()) return {{"error", state.error}};
+    if (state.file.size() != state.size || state.file.fileTime(QFileDevice::FileModificationTime) != state.modified)
+        return {{"error", QStringLiteral("The source changed. Reopen the preview to continue.")}};
+    try {
+        if (!state.initialized) {
+            state.reader.initialize(state.file);
+            state.initialized = true;
+        }
+        auto response = state.reader.portion(token);
+        if (state.file.size() != state.size || state.file.fileTime(QFileDevice::FileModificationTime) != state.modified)
+            return {{"error", QStringLiteral("The source changed. Reopen the preview to continue.")}};
+        return response;
+    } catch (const Stop &stop) {
+        state.error = stop.error;
+        return {{"error", state.error}};
+    }
+}
+
 }

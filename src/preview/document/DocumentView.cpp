@@ -1,5 +1,12 @@
 #include "DocumentView.h"
+#include "DocumentRecords.h"
+#include "MarkdownLayout.h"
+#include "preview/PreviewProvider.h"
+#include <QLabel>
+#include <QScopedValueRollback>
+#include <QTextImageFormat>
 #include <QMenu>
+#include <QSet>
 #include <QEvent>
 #include <QAbstractTextDocumentLayout>
 #include <QScrollBar>
@@ -19,43 +26,6 @@ qreal luminance(const QColor &color)
 {
     const auto linear = [](qreal value) { return value <= .04045 ? value / 12.92 : std::pow((value + .055) / 1.055, 2.4); };
     return .2126 * linear(color.redF()) + .7152 * linear(color.greenF()) + .0722 * linear(color.blueF());
-}
-void normalizeMarkdownTables(QTextDocument *document)
-{
-    QList<QTextFrame *> frames{document->rootFrame()};
-    QTextCursor edit(document);
-    edit.beginEditBlock();
-    while (!frames.isEmpty()) {
-        auto *frame = frames.takeLast();
-        frames.append(frame->childFrames());
-        auto *table = qobject_cast<QTextTable *>(frame);
-        if (!table) continue;
-        auto format = table->format();
-        format.setCellPadding(4);
-        format.setCellSpacing(0);
-        table->setFormat(format);
-        for (int row = 0; row < table->rows(); ++row) for (int column = 0; column < table->columns(); ++column) {
-            auto cell = table->cellAt(row, column);
-            auto cellFormat = cell.format().toTableCellFormat();
-            cellFormat.setVerticalAlignment(QTextCharFormat::AlignTop);
-            cell.setFormat(cellFormat);
-            // Qt's Markdown importer can leave an empty leading block in the
-            // first header cell. Remove only that synthetic empty paragraph.
-            auto first = cell.firstCursorPosition();
-            if (first.block().text().isEmpty() && first.block().next().position() <= cell.lastCursorPosition().position()) {
-                first.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
-                first.removeSelectedText();
-            }
-            if (!row) {
-                auto header = cell.firstCursorPosition();
-                header.setPosition(cell.lastCursorPosition().position(), QTextCursor::KeepAnchor);
-                QTextCharFormat bold;
-                bold.setFontWeight(QFont::Bold);
-                header.mergeCharFormat(bold);
-            }
-        }
-    }
-    edit.endEditBlock();
 }
 class ContentDocument : public QTextDocument {
 public:
@@ -144,7 +114,10 @@ DocumentView::DocumentView(std::shared_ptr<const FormattedDocument> document, QW
         contents->hide(); // Shown by PreviewWindow in the shared toolbar.
     }
     connect(view_, &QTextBrowser::anchorClicked, this, [this](const QUrl &url) {
-        if (url.isRelative() && url.path().isEmpty() && url.hasFragment()) view_->scrollToAnchor(url.fragment());
+        if (url.isRelative() && url.path().isEmpty() && url.hasFragment()) {
+            if (coordinator_) jumpTo(url.fragment());
+            else view_->scrollToAnchor(url.fragment());
+        }
     });
     // Direct QTextDocument imports leave the browser cursor at the end. Qt
     // reveals that cursor on focus, so reset it before presenting the preview.
@@ -154,9 +127,208 @@ DocumentView::DocumentView(std::shared_ptr<const FormattedDocument> document, QW
     layout->addWidget(view_);
     setFocusProxy(view_);
 }
+
+DocumentView::DocumentView(const PreviewData &data, QWidget *parent) : DocumentView(data.document, parent)
+{
+    if (!data.lazy) return;
+    coordinator_ = data.lazy;
+    navigation_ = data.document->navigation;
+    // Public Qt frame insertion wraps the imported rich document, including
+    // lists/tables. Portion removal then releases its entire native subtree.
+    QTextCursor cursor(view_->document());
+    cursor.select(QTextCursor::Document);
+    auto *frame = cursor.insertFrame(QTextFrameFormat());
+    portions_.append({0, frame, data.document});
+    status_ = new QLabel(this);
+    status_->setObjectName(QStringLiteral("documentLoadingStatus"));
+    layout()->addWidget(status_);
+    window_ = new LazyWindow(coordinator_, {QStringLiteral("0"), data.lazyPrevious, data.lazyNext, {}, 0}, this);
+    watcher_ = new LazyBoundaryWatcher(view_, window_, this);
+    connectLazyStatus(window_, status_);
+    status_->setText(data.document->notice);
+    connect(window_, &LazyWindow::changed, this, &DocumentView::acceptPortion);
+    connect(coordinator_.get(), &LazyCoordinator::ready, this, [this](const LazyPortion &portion) {
+        if (jump_.isEmpty() || portion.token != jump_) return;
+        acceptPortion(portion, {}, 0);
+    });
+    connect(coordinator_.get(), &LazyCoordinator::failed, this, [this] {
+        lazyFailed_ = true;
+        jump_.clear(); watcher_->paused = false;
+    });
+    if (!contents_) {
+        contents_ = new QToolButton(this);
+        contents_->setObjectName(QStringLiteral("documentContents"));
+        contents_->setText(QStringLiteral("Contents"));
+        contents_->setPopupMode(QToolButton::InstantPopup);
+        contents_->setMenu(new QMenu(contents_));
+        contents_->hide();
+    }
+    updateContents();
+    view_->moveCursor(QTextCursor::Start);
+    view_->verticalScrollBar()->setValue(0);
+}
+bool DocumentView::hasAnchor(const QString &anchor) const
+{
+    for (auto block = view_->document()->begin(); block.isValid(); block = block.next())
+        for (auto run = block.begin(); !run.atEnd(); ++run)
+            if (run.fragment().charFormat().anchorNames().contains(anchor)) return true;
+    return false;
+}
+void DocumentView::jumpTo(const QString &anchor)
+{
+    ++layoutRevision_;
+    if (hasAnchor(anchor)) {
+        if (!jump_.isEmpty()) {
+            jump_.clear(); watcher_->paused = false;
+            coordinator_->request(window_->firstToken()); // Supersede an unloaded target through the existing generation guard.
+        }
+        view_->scrollToAnchor(anchor); view_->setFocus(); return;
+    }
+    if (!coordinator_ || lazyFailed_) return;
+    if (anchor.size() > 4096) { status_->setText(QStringLiteral("Link target exceeds the navigation budget.")); return; }
+    jump_ = anchor;
+    watcher_->paused = true;
+    coordinator_->request(anchor);
+}
+void DocumentView::updateContents()
+{
+    if (!contents_) return;
+    auto *menu = contents_->menu();
+    menu->clear();
+    QList<DocumentSection> sections = navigation_;
+    for (const auto &portion : portions_) sections.append(portion.content->sections);
+    QSet<QString> seen;
+    for (const auto &section : sections) {
+        if (seen.contains(section.anchor)) continue;
+        seen.insert(section.anchor);
+        auto title = section.title;
+        title.replace(QStringLiteral("&"), QStringLiteral("&&"));
+        auto *action = menu->addAction(title);
+        connect(action, &QAction::triggered, this, [this, anchor = section.anchor] { jumpTo(anchor); });
+    }
+}
+void DocumentView::removePortion(int index)
+{
+    auto portion = portions_.takeAt(index);
+    QTextCursor cursor(view_->document());
+    cursor.setPosition(portion.frame->firstPosition() - 1);
+    cursor.setPosition(portion.frame->lastPosition() + 1, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    for (auto image = portion.content->images.cbegin(); image != portion.content->images.cend(); ++image)
+        view_->document()->addResource(QTextDocument::ImageResource,
+            QUrl(QStringLiteral("dzurkel-portion:%1:%2").arg(portion.slot).arg(image.key())), QVariant());
+}
+void DocumentView::addPortion(std::shared_ptr<const FormattedDocument> content, int direction)
+{
+    int slot = 0;
+    while (std::any_of(portions_.cbegin(), portions_.cend(), [slot](const PortionFrame &p) { return p.slot == slot; })) ++slot;
+    QString html = content->html;
+    for (auto image = content->images.cbegin(); image != content->images.cend(); ++image) {
+        const auto id = QStringLiteral("dzurkel-portion:%1:%2").arg(slot).arg(image.key());
+        html.replace(QStringLiteral("src=\"%1\"").arg(image.key()), QStringLiteral("src=\"%1\"").arg(id));
+        view_->document()->addResource(QTextDocument::ImageResource, QUrl(id), image.value());
+    }
+    QTextCursor cursor(view_->document());
+    cursor.setPosition(direction < 0 ? 0 : view_->document()->characterCount() - 1);
+    auto *frame = cursor.insertFrame(QTextFrameFormat());
+    cursor = frame->firstCursorPosition();
+    cursor.insertHtml(html);
+    applyColors(true, frame);
+    applyTypography(frame);
+    PortionFrame added{slot, frame, std::move(content)};
+    if (direction < 0) portions_.prepend(added);
+    else portions_.append(added);
+}
+void DocumentView::compactFormats(QTextCursor &anchor)
+{
+    // Qt retains interned formats after deletion. Clear through its public API
+    // and reimport only resident sanitized portions, keeping the widget/layout
+    // engine and bounded resources. No private Qt format/cache manipulation.
+    struct Position { int portion; int offset; };
+    const auto locate = [this](int position) {
+        for (int i = 0; i < portions_.size(); ++i) {
+            const auto *frame = portions_[i].frame.data();
+            if (position <= frame->lastPosition()) return Position{i, qMax(0, position - frame->firstPosition())};
+        }
+        return Position{int(portions_.size()) - 1, portions_.last().frame->lastPosition() - portions_.last().frame->firstPosition()};
+    };
+    const auto reading = locate(anchor.position());
+    const auto selection = view_->textCursor();
+    const auto start = locate(selection.anchor()), end = locate(selection.position());
+    QList<std::shared_ptr<const FormattedDocument>> retained;
+    for (const auto &portion : portions_) retained.append(portion.content);
+    const auto font = view_->document()->defaultFont();
+    portions_.clear();
+    view_->document()->clear();
+    view_->document()->setDefaultFont(font);
+    for (const auto &content : retained) addPortion(content, 1);
+    const auto restore = [this](Position position) {
+        const auto *frame = portions_[position.portion].frame.data();
+        return qMin(frame->lastPosition(), frame->firstPosition() + position.offset);
+    };
+    anchor = QTextCursor(view_->document());
+    anchor.setPosition(restore(reading));
+    QTextCursor restored(view_->document());
+    restored.setPosition(restore(start));
+    restored.setPosition(restore(end), QTextCursor::KeepAnchor);
+    view_->setTextCursor(restored);
+}
+void DocumentView::acceptPortion(const LazyPortion &portion, const LazyPortion &evicted, int direction)
+{
+    if (!direction && portion.content.value("kind") == QJsonValue(QStringLiteral("navigation-error"))) {
+        status_->setText(portion.content.value("message").toString().left(4096));
+        jump_.clear(); watcher_->paused = false;
+        return;
+    }
+    std::shared_ptr<const FormattedDocument> content;
+    if (!decodeDocumentPortion(portion.content, content)) {
+        coordinator_->stop();
+        lazyFailed_ = true;
+        status_->setText(QStringLiteral("Invalid document content."));
+        jump_.clear(); watcher_->paused = false;
+        return;
+    }
+    watcher_->paused = true;
+    const int margin = qRound(view_->document()->documentMargin());
+    QTextCursor anchor = view_->cursorForPosition(QPoint(margin, margin + view_->fontMetrics().height() / 2));
+    const int top = view_->cursorRect(anchor).top();
+    const int horizontal = view_->horizontalScrollBar()->value();
+    if (!direction) {
+        while (!portions_.isEmpty()) removePortion(0);
+        window_->reset(portion);
+    }
+    addPortion(content, direction);
+    if (!evicted.token.isEmpty()) removePortion(direction > 0 ? 0 : portions_.size() - 1);
+    if (view_->document()->allFormats().size() > 4096) compactFormats(anchor);
+    view_->document()->documentLayout()->documentSize();
+    if (direction) view_->verticalScrollBar()->setValue(view_->verticalScrollBar()->value() + view_->cursorRect(anchor).top() - top);
+    else {
+        view_->verticalScrollBar()->setValue(0);
+        if (!content->targetAnchor.isEmpty()) view_->scrollToAnchor(content->targetAnchor);
+        jump_.clear();
+    }
+    view_->horizontalScrollBar()->setValue(horizontal);
+    status_->setText(content->notice);
+    updateContents();
+    const auto revision = ++layoutRevision_;
+    if (direction) {
+        const int applied = view_->verticalScrollBar()->value();
+        // QTextEdit may finish a fractional-pixel layout/scrollbar adjustment
+        // after the edit. Correct the same live cursor once Qt settles, unless
+        // another edit or user scroll has superseded this anchor.
+        QTimer::singleShot(0, this, [this, revision, anchor, top, applied] {
+            if (revision != layoutRevision_ || view_->verticalScrollBar()->value() != applied || !jump_.isEmpty()) return;
+            QScopedValueRollback<bool> updating(watcher_->paused, true);
+            view_->document()->documentLayout()->documentSize();
+            view_->verticalScrollBar()->setValue(applied + view_->cursorRect(anchor).top() - top);
+        });
+    }
+    watcher_->paused = false;
+}
 QWidget *DocumentView::toolbarWidget() const { return contents_; }
 void DocumentView::applyZoom(qreal factor)
 {
+    ++layoutRevision_;
     factor = std::clamp(factor, .5, maximumZoom());
     auto *scroll = view_->verticalScrollBar();
     const auto ratio = scroll->maximum() > 0 ? qreal(scroll->value()) / scroll->maximum() : 0;
@@ -173,12 +345,14 @@ void DocumentView::applyZoom(qreal factor)
 void DocumentView::zoomBy(int steps) { applyZoom(steppedZoom(steps)); }
 void DocumentView::fit() { applyZoom(1.0); }
 QString DocumentView::zoomHint() const { return QStringLiteral("Text reflows to the window. Fit restores the default text size; zoom ranges from 50% to 300%."); }
-void DocumentView::applyTypography()
+void DocumentView::applyTypography(QTextFrame *portion)
 {
     QTextCursor edit(view_->document());
     edit.beginEditBlock();
     const qreal size = baseFont_.pointSizeF() * factor_;
-    for (auto block = view_->document()->begin(); block.isValid(); block = block.next()) {
+    const auto first = portion ? portion->firstCursorPosition().block() : view_->document()->begin();
+    const int end = portion ? portion->lastPosition() : view_->document()->characterCount();
+    for (auto block = first; block.isValid() && block.position() <= end; block = block.next()) {
         auto format = block.blockFormat();
         const int heading = format.headingLevel();
         bool title = false, subtitle = false;
@@ -214,12 +388,14 @@ void DocumentView::applyTypography()
     }
     edit.endEditBlock();
 }
-void DocumentView::applyColors(bool rememberSource)
+void DocumentView::applyColors(bool rememberSource, QTextFrame *portion)
 {
     const auto background = luminance(palette().color(QPalette::Base));
     QTextCursor edit(view_->document());
     edit.beginEditBlock();
-    for (auto block = view_->document()->begin(); block.isValid(); block = block.next()) {
+    const auto first = portion ? portion->firstCursorPosition().block() : view_->document()->begin();
+    const int end = portion ? portion->lastPosition() : view_->document()->characterCount();
+    for (auto block = first; block.isValid() && block.position() <= end; block = block.next()) {
         // Snapshot positions first: merging formats can merge/split fragments.
         struct Run { int start; int length; QColor source; };
         QList<Run> runs;

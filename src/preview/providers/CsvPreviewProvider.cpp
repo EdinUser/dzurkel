@@ -15,7 +15,13 @@ bool CsvPreviewProvider::supports(const QMimeType &mime) const
 PreviewData CsvPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData data,
                                    const QSize &target, const Cancellation &cancel) const
 {
-    auto decoded = decodePreviewText(*file, CsvReader::ByteLimit, cancel);
+    return loadFromDevice(*file, std::move(data), target, cancel);
+}
+PreviewData CsvPreviewProvider::loadFromDevice(QIODevice &device, PreviewData data,
+                                             const QSize &target, const Cancellation &cancel) const
+{
+    Q_UNUSED(target);
+    auto decoded = decodePreviewText(device, CsvReader::ByteLimit, cancel);
     if (decoded.cancelled) { data.kind = PreviewKind::Cancelled; return data; }
     if (!decoded.error.isEmpty()) { data.message = decoded.error; return data; }
     const bool tsv = QFileInfo(data.resource.path).suffix().compare(QStringLiteral("tsv"), Qt::CaseInsensitive) == 0
@@ -23,9 +29,9 @@ PreviewData CsvPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData da
     auto parsed = CsvReader::read(decoded.text, decoded.truncated, cancel, tsv ? QChar('\t') : QChar());
     if (parsed.cancelled) { data.kind = PreviewKind::Cancelled; return data; }
     if (!parsed.error.isEmpty() || (parsed.document->partial && !parsed.document->sheets.first().rowCount)) {
-        if (!file->seek(0)) { data.message = QStringLiteral("CSV text fallback could not be read."); return data; }
+        if (!device.seek(0)) { data.message = QStringLiteral("CSV text fallback could not be read."); return data; }
         const auto reason = parsed.error.isEmpty() ? QStringLiteral("No complete CSV record fits the preview limits.") : parsed.error;
-        data = TextPreviewProvider().load(std::move(file), std::move(data), target, cancel);
+        data = TextPreviewProvider().loadFromDevice(device, std::move(data), cancel);
         if (data.kind == PreviewKind::Text) {
             data.readerId = QStringLiteral("text");
             data.message = reason + QStringLiteral(" Showing text instead.") + (data.message.isEmpty() ? QString() : QChar(' ') + data.message);
@@ -45,6 +51,6 @@ PreviewData CsvPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData da
 }
 QWidget *CsvPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const
 {
-    return new SpreadsheetView(data.table, parent);
+    return new SpreadsheetView(data, parent);
 }
 }

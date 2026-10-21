@@ -8,6 +8,10 @@
 #include <QStandardPaths>
 
 namespace dzurkel {
+bool DocumentPreviewProvider::acceptsReader(const QString &reader)
+{
+    return DocumentReader::supportsPortions(reader);
+}
 QString DocumentPreviewProvider::format(const QMimeType &mime, const QString &path, const QByteArray &signature)
 {
     if (signature.startsWith("{\\rtf") || mime.name() == QLatin1String("application/rtf") || mime.name() == QLatin1String("text/rtf")) return QStringLiteral("rtf");
@@ -75,5 +79,5 @@ PreviewData DocumentPreviewProvider::load(std::unique_ptr<QFile> file, PreviewDa
     data.detail = QStringLiteral("Content preview · Formatting simplified");
     return data;
 }
-QWidget *DocumentPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const { return new DocumentView(data.document, parent); }
+QWidget *DocumentPreviewProvider::createWidget(const PreviewData &data, QWidget *parent) const { return new DocumentView(data, parent); }
 }

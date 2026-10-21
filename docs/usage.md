@@ -3,7 +3,7 @@
 ## Open Settings
 
 Open **Dzurkel Settings** from the application menu or run `dzurkel --settings`
-to configure Dolphin’s Space shortcut without opening a file. Repeated requests
+to configure your supported file manager's Space shortcut without opening a file. Repeated requests
 reuse the running service and Settings dialog. Closing Settings leaves the
 service resident; use `dzurkel --quit` to exit fully.
 
@@ -87,6 +87,18 @@ Settings alone changes nothing and needs no sudo.
 
 ## Zoom and browsing files
 
+Text, CSV/TSV, XLSX and supported document/e-book previews load more content
+near the scrolling boundary. Only adjacent portions remain resident; scrolling
+back reloads earlier content within reader budgets. Selection/copy cover resident
+content. Later loading errors keep useful content visible with an explanation.
+No whole-file temporary copy is made. See [preview scope and limits](previews.md).
+
+For plain text, logs and source code, **End** or Ctrl+End opens the actual final
+portion directly, useful for checking the end of an SQL export. **Beginning** or
+Ctrl+Home returns to the start. These jumps reset selection while retaining the
+language, zoom and window. Structured documents retain their own navigation;
+they do not promise direct access to an arbitrarily distant logical end.
+
 Use Ctrl+wheel or `+`/`-` to zoom images and PDFs; `0` or **Fit** restores fit.
 For documents, EPUB, Markdown and plain text these controls adjust font size
 inside the same window; Fit restores the default text size. Plain text retains
@@ -110,10 +122,10 @@ error instead of triggering codec installation. Slow sources show loading,
 seeking or buffering feedback; closing/changing the preview cancels playback.
 See [video previews](video-preview.md) for source policies and remaining limits.
 
-## Preview library foundation
+## Tables
 
-CSV and TSV now use a read-only spreadsheet grid with literal text values,
-quoted/multiline fields, delimiter detection and explicit partial-preview limits.
+CSV and TSV use a read-only spreadsheet grid with literal text values,
+quoted/multiline fields, delimiter detection and progressively loaded row batches.
 XLSX uses the same grid with worksheet tabs and stored values only. Formulas are
 never calculated; missing saved results show `[Result unavailable]`. Formatting and charts are
 omitted. See [reader architecture and table behavior](preview-library.md).

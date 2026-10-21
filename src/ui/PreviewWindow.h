@@ -11,6 +11,7 @@ class QDialog;
 namespace dzurkel {
 struct FileResource;
 struct PreviewData;
+enum class PreviewKind;
 class SettingsDialog;
 class NautilusPreviewService;
 class WindowPlacement;
@@ -36,6 +37,7 @@ public:
     void beginPreviewUpdate();
     void endPreviewUpdate();
     void prepareImage(const QSize &imageSize);
+    void prepareLoading();
     void setInformationMode(bool information);
     QSize previewSize() const;
     void setNavigation(bool previous, bool next, const QString &status);
@@ -64,7 +66,7 @@ private:
     void fitImage(const QSize &natural = {});
     void resizePreview(const QSize &size, const QSize &imageSize = {}, const QSize &chrome = {});
     void restoreDocumentSize();
-    bool selectReadingGeometry(bool reading);
+    bool selectDocumentGeometry(PreviewKind kind);
     void showFileInformation();
     void updateZoomControls();
     void watchScreen(QScreen *screen);
@@ -105,10 +107,15 @@ private:
     QSize previewContentSize_;
     Qt::WindowStates previewWindowState_;
     // Reading previews borrow the existing temporary-mode machinery, but keep
-    // their manual size/state independent of PDFs and spreadsheets.
-    bool readingGeometry_ = false;
+    // their manual size/state independent of PDFs and spreadsheets. Tables
+    // also keep their own geometry so a fitted PDF cannot make them portrait.
+    enum class DocumentGeometry { General, Reading, Table };
+    DocumentGeometry documentGeometry_ = DocumentGeometry::General;
     QSize readingWindowSize_;
     Qt::WindowStates readingWindowState_;
+    QSize tableWindowSize_;
+    QString tableLocation_;
+    Qt::WindowStates tableWindowState_;
     QSize generalWindowSize_;
     Qt::WindowStates generalWindowState_;
     QMetaObject::Connection screenGeometryConnection_;

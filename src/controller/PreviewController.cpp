@@ -1,3 +1,4 @@
+#include "preview/readers/DocumentReader.h"
 #include "PreviewController.h"
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/FileInfoProvider.h"
@@ -9,9 +10,19 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QLayout>
-#include <QPdfDocument>
+#include "preview/pdf/PdfSession.h"
+#include "preview/image/ImageDecodeJob.h"
+#include "preview/StructuredDecodeJob.h"
+#include "preview/lazy/LazyCoordinator.h"
+#include "preview/table/TableRowBatch.h"
+#include "preview/document/DocumentRecords.h"
+#include "preview/document/FormattedDocument.h"
+#include <QFileInfo>
+#include <QStandardPaths>
+#include "preview/pdf/PdfView.h"
 #include <QTimer>
 #include <QSet>
+#include <QJsonArray>
 #include <QtConcurrentRun>
 
 namespace dzurkel {
@@ -68,6 +79,10 @@ PreviewController::~PreviewController()
 {
     delete folderSizeJob_.data();
     window_.stopMedia();
+    stopPdf();
+    stopImage();
+    stopStructured();
+    stopLazy();
     navigation_->cancel();
     if (preparation_) delete preparation_;
     if (cancellation_) cancellation_->store(true);
@@ -81,6 +96,10 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     if (!parseFileResource(url, resource, error, failure)) return false;
     delete folderSizeJob_.data();
     window_.stopMedia();
+    stopPdf();
+    stopImage();
+    stopStructured();
+    stopLazy();
     chooserOwner_ = chooserOwner;
     externalNavigation_ = externalNavigation;
     window_.setExternalNavigation(externalNavigation);
@@ -105,18 +124,19 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     fileUrl_ = resource.url.toString(QUrl::FullyEncoded);
     loading_ = true;
     kind_ = PreviewKind::Cancelled;
-    // GNOME keeps the old content and its identity until the new result is ready.
-    if (!window_.usesGnomePresentation() || !window_.isVisible()) window_.setResource(resource);
+    // Keep the mapped preview's content, geometry and identity until commit.
+    if (!window_.isVisible()) window_.setResource(resource);
     if (!window_.isVisible()) {
         auto *label = new QLabel(QStringLiteral("Loading preview…"));
+        label->setObjectName(QStringLiteral("previewLoading"));
         label->setAlignment(Qt::AlignCenter);
         window_.setContent(label);
     }
-    if (!window_.usesGnomePresentation() || !window_.isVisible()) window_.setStatus({});
+    if (!window_.isVisible()) window_.setStatus({});
     // Wayland placement uses the initial mapped size. Keep the very first
     // surface hidden until a fast result determines its natural window size.
     // Slow loads still present a loading window through the timer below.
-    presentationPending_ = !window_.isVisible() && !loader_;
+    presentationPending_ = !window_.isVisible();
     if (!window_.isVisible()) window_.preparePresentation();
     // Explicit Show requests must reactivate an already mapped preview too.
     // Folder navigation preserves focus and never requests it asynchronously.
@@ -124,12 +144,13 @@ bool PreviewController::show(const QString &url, QString &error, ResourceError *
     window_.layout()->activate();
     pending_ = Job{resource, window_.previewSize(), generation_, activationToken};
     // Preserve compact first-map placement for fast information results, but
-    // show a normal loading window after 150 ms even when the network is slow.
+    // show a compact loading window after 150 ms when the source is slow.
     if (presentationPending_) {
         const auto generation = generation_;
         QTimer::singleShot(150, this, [this, generation, activationToken] {
             if (generation != generation_ || !presentationPending_) return;
             presentationPending_ = false;
+            window_.prepareLoading();
             window_.present(activationToken);
         });
     }
@@ -175,13 +196,7 @@ void PreviewController::startPending()
     watcher->setFuture(QtConcurrent::run(&pool_, [this, loader, job, cancel] {
         try {
             if (loader) return loader(job.resource, job.target, cancel);
-            return PreviewRegistry::load(job.resource, job.target, cancel, {},
-                [this, job, cancel](const QSize &imageSize) {
-                    QMetaObject::invokeMethod(this, [this, job, cancel, imageSize] {
-                        if (job.generation != generation_ || cancel->load() || !isVisible()) return;
-                        if (!window_.usesGnomePresentation()) window_.prepareImage(imageSize);
-                    }, Qt::QueuedConnection);
-                });
+            return PreviewRegistry::load(job.resource, job.target, cancel);
         } catch (...) {
             auto data = FileInfoProvider::describe(job.resource);
             data.message = QStringLiteral("Preview loading failed; file information is shown instead.");
@@ -196,6 +211,153 @@ void PreviewController::commitReadyPreview()
     auto ready = std::move(*ready_);
     ready_.reset();
     auto &data = ready.data;
+    if (data.resource.seekableSource && !data.lazy && (data.kind == PreviewKind::Text
+        || (data.kind == PreviewKind::Table && (data.readerId == QStringLiteral("csv") || data.readerId == QStringLiteral("xlsx")) && !data.table)
+        || (data.kind == PreviewKind::Document && DocumentReader::supportsPortions(data.readerId) && !data.document))) {
+        const bool tsv = data.mimeType == QStringLiteral("text/tab-separated-values")
+            || QFileInfo(data.resource.path).suffix().compare(QStringLiteral("tsv"), Qt::CaseInsensitive) == 0;
+        const auto reader = (data.kind == PreviewKind::Document || data.readerId == QStringLiteral("xlsx")) ? data.readerId : data.kind == PreviewKind::Table ? (tsv ? QStringLiteral("csv-tsv") : QStringLiteral("csv")) : QStringLiteral("text");
+        auto session = std::make_shared<LazyCoordinator>(data.resource, reader);
+        lazyLoading_ = session;
+        connect(session.get(), &LazyCoordinator::ready, this, [this, ready](const LazyPortion &portion) mutable {
+            if (ready.job.generation != generation_ || !lazyLoading_) return;
+            auto session = std::move(lazyLoading_);
+            disconnect(session.get(), nullptr, this, nullptr);
+            ready.data.lazy = session;
+            lazyVisible_ = session;
+            ready.data.detail = portion.content.value("encoding").toString();
+            ready.data.lazyPrevious = portion.previous;
+            ready.data.lazyNext = portion.next;
+            ready.data.truncated = !portion.next.isEmpty();
+            ready.data.message = portion.next.isEmpty() ? QString() : QStringLiteral("Content loads as you scroll; earlier content can be revisited.");
+            TableRowBatch batch;
+            if (portion.content.value("text").isString()) {
+                ready.data.kind = PreviewKind::Text;
+                ready.data.readerId = QStringLiteral("text");
+                ready.data.text = portion.content.value("text").toString();
+                ready.data.textLineCount = ready.data.text.count('\n') + (!ready.data.text.isEmpty() && !ready.data.text.endsWith('\n'));
+                const auto notice = portion.content.value("notice").toString();
+                if (!notice.isEmpty()) ready.data.message = notice + QChar(' ') + ready.data.message;
+            } else if (ready.data.kind == PreviewKind::Document && decodeDocumentPortion(portion.content, ready.data.document)) {
+                ready.data.kind = PreviewKind::Document;
+                ready.data.detail = QStringLiteral("Content preview · Formatting simplified");
+                if (!ready.data.document->notice.isEmpty()) ready.data.message = ready.data.document->notice + QChar(' ') + ready.data.message;
+            } else if (decodeTableRowBatch(portion.content, batch) && !batch.firstRow) {
+                auto table = std::make_shared<TabularDocument>();
+                table->sheets.append(*batch.sheet);
+                const auto sheets = portion.content.value("sheets").toArray();
+                const auto sheetTokens = portion.content.value("sheetTokens").toArray();
+                bool validSheets = sheets.size() <= 32 && (sheets.isEmpty() || sheets.first().toString() == batch.sheet->name);
+                if (ready.data.readerId == QStringLiteral("xlsx")) {
+                    validSheets = validSheets && !sheets.isEmpty() && sheetTokens.size() == sheets.size();
+                    for (int i = 0; i < qMin(32, int(sheetTokens.size())); ++i) {
+                        const auto value = sheetTokens.at(i);
+                        const auto token = value.toString();
+                        if (token.isEmpty() || token.size() > 1024) validSheets = false;
+                        ready.data.lazySheetTokens.append(token);
+                    }
+                }
+                for (int i = 1; i < qMin(32, int(sheets.size())); ++i) {
+                    const auto name = sheets.at(i).toString();
+                    if (name.isEmpty() || name.size() > 255) { validSheets = false; break; }
+                    TabularSheet sheet;
+                    sheet.name = name;
+                    table->sheets.append(sheet);
+                }
+                const auto notice = portion.content.value("notice").toString();
+                if (!notice.isEmpty()) ready.data.message = notice + QChar(' ') + ready.data.message;
+                table->partial = ready.data.truncated;
+                table->notice = ready.data.message;
+                ready.data.table = table;
+                if (!validSheets) {
+                    session->stop();
+                    ready.data.kind = PreviewKind::Information;
+                    ready.data.message = QStringLiteral("Invalid worksheet list.");
+                }
+                if (ready.data.readerId == QStringLiteral("csv"))
+                    ready.data.detail += QStringLiteral(" · %1-separated · Values shown as text").arg(portion.content.value("delimiter").toString());
+            } else {
+                session->stop();
+                ready.data.kind = PreviewKind::Information;
+                ready.data.message = QStringLiteral("Invalid initial content response.");
+            }
+            ready_ = std::move(ready);
+            commitReadyPreview();
+        });
+        connect(session.get(), &LazyCoordinator::failed, this, [this, ready](const QString &error) mutable {
+            if (ready.job.generation != generation_ || !lazyLoading_) return;
+            auto session = std::move(lazyLoading_);
+            disconnect(session.get(), nullptr, this, nullptr);
+            QTimer::singleShot(0, this, [session] {});
+            ready.data.kind = PreviewKind::Information;
+            ready.data.message = error;
+            if (ready.data.readerId == QLatin1String("doc") && QStandardPaths::findExecutable(QStringLiteral("antiword")).isEmpty()) {
+                ready.data.missingLibrary = QStringLiteral("antiword");
+                ready.data.message = QStringLiteral("Legacy DOC preview needs antiword. Check Settings for details!");
+            }
+            ready_ = std::move(ready);
+            commitReadyPreview();
+        });
+        session->request();
+        return;
+    }
+    if ((data.kind == PreviewKind::Table && data.readerId == QStringLiteral("xlsx") && !data.table)
+        || (data.kind == PreviewKind::Document && !data.document)) {
+        auto *job = new StructuredDecodeJob(data, this);
+        structuredLoading_ = job;
+        connect(job, &StructuredDecodeJob::completed, this, [this, job, request = ready.job](const PreviewData &decoded) {
+            structuredLoading_ = nullptr;
+            job->deleteLater();
+            if (request.generation != generation_ || !isVisible()) return;
+            ready_ = ReadyPreview{request, decoded};
+            commitReadyPreview();
+        });
+        return;
+    }
+    if (data.kind == PreviewKind::Image && data.image.isNull()) {
+        auto *job = new ImageDecodeJob(data, this);
+        imageLoading_ = job;
+        connect(job, &ImageDecodeJob::completed, this, [this, job, request = ready.job](const PreviewData &decoded) {
+            imageLoading_ = nullptr;
+            job->deleteLater();
+            if (request.generation != generation_ || !isVisible()) return;
+            ready_ = ReadyPreview{request, decoded};
+            commitReadyPreview();
+        });
+        return;
+    }
+    if (data.kind == PreviewKind::Pdf && !data.pdfSession) {
+        auto session = std::make_shared<PdfSession>(data.resource);
+        pdfLoading_ = session;
+        // Do not capture the session in its own callbacks: the loading owner
+        // is cleared on replacement, cancellation, or the first valid frame.
+        connect(session.get(), &PdfSession::frameReady, this,
+            [this, ready](int, const QSizeF &points, const QImage &image) mutable {
+                if (ready.job.generation != generation_ || !pdfLoading_) return;
+                auto session = std::move(pdfLoading_);
+                disconnect(session.get(), nullptr, this, nullptr);
+                ready.data.pdfSession = session;
+                ready.data.pdfPageCount = session->pageCount();
+                ready.data.pdfFirstPageSize = points;
+                ready.data.detail = QStringLiteral("%1 page(s) — pages load on demand").arg(session->pageCount());
+                ready.data.image = image;
+                ready_ = std::move(ready);
+                commitReadyPreview();
+            });
+        connect(session.get(), &PdfSession::failed, this, [this, ready](const QString &message) mutable {
+            if (ready.job.generation != generation_ || !pdfLoading_) return;
+            // Defer destruction until the sender has returned from its signal.
+            auto session = std::move(pdfLoading_);
+            disconnect(session.get(), nullptr, this, nullptr);
+            QTimer::singleShot(0, this, [session] {});
+            ready.data.kind = PreviewKind::Information;
+            ready.data.message = message;
+            ready_ = std::move(ready);
+            commitReadyPreview();
+        });
+        session->request(0, std::max(1, qRound(ready.job.target.width() * window_.devicePixelRatioF())));
+        return;
+    }
     if (data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video) {
         const auto availability = mediaAvailability();
         if (!availability.available) {
@@ -216,11 +378,8 @@ void PreviewController::commitReadyPreview()
     }
     kind_ = data.kind;
     loading_ = false;
-    // Retain only PDFium's runtime; provider widgets own actual documents.
-    if (data.kind == PreviewKind::Pdf && !pdfRuntime_)
-        pdfRuntime_ = std::make_unique<QPdfDocument>();
     window_.beginPreviewUpdate();
-    if (window_.usesGnomePresentation()) window_.setResource(ready.job.resource);
+    window_.setResource(ready.job.resource);
     window_.setContent(PreviewRegistry::createWidget(data, nullptr));
     QWidget *mediaWidget = window_.findChild<QWidget *>(data.kind == PreviewKind::Video
         ? QStringLiteral("videoPreview") : QStringLiteral("audioPreview"));
@@ -315,11 +474,52 @@ void PreviewController::commitReadyPreview()
     }
     emit stateChanged();
 }
+void PreviewController::stopImage()
+{
+    auto *job = imageLoading_.data();
+    if (!job) return;
+    imageLoading_ = nullptr;
+    disconnect(job, nullptr, this, nullptr);
+    job->stop();
+    job->deleteLater();
+}
+void PreviewController::stopStructured()
+{
+    auto *job = structuredLoading_.data();
+    if (!job) return;
+    structuredLoading_ = nullptr;
+    disconnect(job, nullptr, this, nullptr);
+    job->stop();
+    job->deleteLater();
+}
+void PreviewController::stopPdf()
+{
+    if (pdfLoading_) {
+        disconnect(pdfLoading_.get(), nullptr, this, nullptr);
+        pdfLoading_->stop();
+        pdfLoading_.reset();
+    }
+    if (auto *view = window_.findChild<PdfView *>()) view->stop();
+}
+void PreviewController::stopLazy()
+{
+    if (lazyLoading_) {
+        disconnect(lazyLoading_.get(), nullptr, this, nullptr);
+        lazyLoading_->stop();
+        lazyLoading_.reset();
+    }
+    if (auto session = lazyVisible_.lock()) session->stop();
+    lazyVisible_.reset();
+}
 void PreviewController::cancelAndClear()
 {
     chooserOwner_.clear();
     delete folderSizeJob_.data();
     window_.stopMedia();
+    stopPdf();
+    stopImage();
+    stopStructured();
+    stopLazy();
     navigation_->cancel();
     navigationUrls_.clear();
     navigationNotice_.clear();

@@ -16,6 +16,9 @@ an isolated nested KDE Wayland desktop. The initial preview is opened through
 the CLI; Alt+Right navigates between files. Window placement and size are arranged
 for the recording, and captions are added outside the application windows.
 The MP4 retains the recorded timing; it is not a preview-speed benchmark.
+The recording remains labelled 0.8.0; it does not demonstrate 1.0.0's progressive
+scrolling or text Beginning/End controls. See the [1.0.0 notes](../releases/v1.0.0.md)
+for current behavior and validation.
 
 Dolphin is the file manager shown. Existing Nautilus and Thunar integrations are
 described in their [setup](../gnome-testing.md) and

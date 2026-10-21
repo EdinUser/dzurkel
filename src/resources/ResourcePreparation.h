@@ -6,7 +6,8 @@
 
 namespace dzurkel {
 // Filesystem access is isolated from the GUI and from decoder threads. The
-// helper only reads source files; its bounded snapshot lives with FileResource.
+// helper reads bounded prefixes or resolves paths for isolated readers; no
+// source content is staged in temporary files.
 class ResourcePreparation : public QObject {
     Q_OBJECT
 public:
@@ -19,6 +20,8 @@ signals:
     void ready(const dzurkel::FileResource &resource);
 private:
     void finish(const QString &error = {});
+    void readOutput();
+    QByteArray response_;
     FileResource resource_;
     QProcess *process_ = nullptr;
     QTimer timer_;
@@ -29,5 +32,5 @@ private:
 bool resolveDesktopPath(const FileResource &resource, QString &path, QString &error);
 
 // Internal command-line entry point; no QApplication or preview window needed.
-int prepareResourceSnapshot(const QString &url, const QString &directory);
+int prepareResource(const QString &url);
 } // namespace dzurkel

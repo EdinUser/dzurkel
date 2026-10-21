@@ -2,15 +2,30 @@
 #include "preview/PreviewRegistry.h"
 #include "preview/readers/XlsxReader.h"
 #include "controller/PreviewController.h"
+#include "resources/ResourcePreparation.h"
+#include "resources/ResourceAccessPolicy.h"
+#include "preview/xlsx/XlsxDecodeJob.h"
 #include "preview/table/SpreadsheetView.h"
+#include "preview/lazy/LazyCoordinator.h"
+#include "preview/table/TableRowBatch.h"
+#include <QAbstractItemModelTester>
+#include <QJsonArray>
+#include <QWheelEvent>
 #include <QDBusConnection>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
+#include <QPainter>
+#include <QPdfWriter>
+#include <QScreen>
+#include <QScrollBar>
 #include <QTableView>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QSignalSpy>
+#include <QtEndian>
 #include <zip.h>
 #include <thread>
 
@@ -43,6 +58,7 @@ class XlsxTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void cleanup();
     void storedValuesAndMissingFormulaCaches();
     void formatsDatesAndTimes_data();
     void formatsDatesAndTimes();
@@ -54,21 +70,77 @@ private slots:
     void cancellationStopsLoading();
     void snapshotAndRemoteUseSharedGrid_data();
     void snapshotAndRemoteUseSharedGrid();
+    void tablesKeepGeometryIndependentOfReadingAndPdf_data();
+    void tablesKeepGeometryIndependentOfReadingAndPdf();
+    void tableWidthFollowsColumns_data();
+    void tableWidthFollowsColumns();
+    void directSourceSeeksAcrossLargeSparseArchive();
+    void ignoresUnusedExpandedParts();
+    void boundsConsumedPartsAndArchiveMetadata();
+    void helperPreservesCellsAndLargeReplies();
+    void helperRejectsMalformedResults_data();
+    void helperRejectsMalformedResults();
+    void helperCancellationDeadlineAndConcurrency();
+    void progressiveRowsPassFormerLimitsAndReplay();
+    void progressiveHelperRetainsFormattingAndChunkedReplies();
+    void progressiveSheetsEvictAndKeepGeometry();
+    void progressiveErrorsAndMutation();
     void inspectUserSample();
 private:
     QString write(const QMap<QString, QByteArray> &parts);
     XlsxResult read(const QString &path, const Cancellation &cancel = std::make_shared<std::atomic_bool>(false));
+    FileResource prepare(const QString &path);
+    PreviewData decode(const FileResource &resource);
+    QString script(const QByteArray &body);
     QTemporaryDir directory_;
     XlsxFuse fuse_;
     int serial_ = 0;
 };
 void XlsxTest::initTestCase()
 {
+    qRegisterMetaType<PreviewData>();
     QVERIFY(directory_.isValid());
     qputenv("XDG_CONFIG_HOME", directory_.filePath(QStringLiteral("config")).toUtf8());
     auto bus = QDBusConnection::sessionBus();
     QVERIFY(bus.registerService(QStringLiteral("org.kde.KIOFuse")));
     QVERIFY(bus.registerObject(QStringLiteral("/org/kde/KIOFuse"), &fuse_, QDBusConnection::ExportAllSlots));
+}
+void XlsxTest::cleanup()
+{
+    QTRY_COMPARE(XlsxDecodeJob::runningHelpers(), 0);
+    QTRY_COMPARE(LazyCoordinator::runningHelpers(), 0);
+}
+FileResource XlsxTest::prepare(const QString &path)
+{
+    FileResource resource;
+    QString error;
+    if (!parseFileResource(path, resource, error)) { QTest::qFail(qPrintable(error), __FILE__, __LINE__); return {}; }
+    ResourcePreparation preparation;
+    QSignalSpy ready(&preparation, &ResourcePreparation::ready);
+    preparation.start(resource);
+    if (!ready.wait(5000)) { QTest::qFail("Preparation did not complete", __FILE__, __LINE__); return {}; }
+    return qvariant_cast<FileResource>(ready.first().first());
+}
+PreviewData XlsxTest::decode(const FileResource &resource)
+{
+    auto candidate = PreviewRegistry::load(resource, {}, std::make_shared<std::atomic_bool>(false));
+    if (candidate.kind != PreviewKind::Table || candidate.table) {
+        QTest::qFail("Expected an unloaded XLSX candidate", __FILE__, __LINE__); return {};
+    }
+    XlsxDecodeJob job(candidate);
+    QSignalSpy ready(&job, &XlsxDecodeJob::completed);
+    if (!ready.wait(10000)) { QTest::qFail("XLSX helper did not complete", __FILE__, __LINE__); return {}; }
+    return qvariant_cast<PreviewData>(ready.first().first());
+}
+QString XlsxTest::script(const QByteArray &body)
+{
+    const auto path = directory_.filePath(QStringLiteral("helper-%1.py").arg(++serial_));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) return {};
+    file.write("#!/usr/bin/python3\nimport sys, time\n" + body);
+    file.close();
+    if (!QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner)) return {};
+    return path;
 }
 QString XlsxTest::write(const QMap<QString, QByteArray> &parts)
 {
@@ -183,10 +255,18 @@ void XlsxTest::formatsDatesAndTimes()
             bytes.replace(ns, "http://purl.oclc.org/ooxml/spreadsheetml/main");
             bytes.replace(reltype.chopped(1), "http://purl.oclc.org/ooxml/officeDocument/relationships");
         }
-        const auto result = read(write(parts));
+        const auto path = write(parts);
+        const auto result = read(path);
         QVERIFY2(result.document, qPrintable(result.error));
         QCOMPARE(result.document->sheets.first().value(0, 0).toString(), expected);
         QCOMPARE(result.document->sheets.first().value(0, 1).toString(), expected);
+        XlsxPortionReader progressive(path);
+        const auto reply = progressive.read(QStringLiteral("0"));
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        TableRowBatch batch;
+        QVERIFY(decodeTableRowBatch(reply.value("content").toObject(), batch));
+        QCOMPARE(batch.sheet->value(0, 0).toString(), expected);
+        QCOMPARE(batch.sheet->value(0, 1).toString(), expected);
     }
 }
 void XlsxTest::multipleSheetsAndStrictNamespaces()
@@ -218,9 +298,9 @@ void XlsxTest::multipleSheetsAndStrictNamespaces()
     QTRY_VERIFY(!controller.loading());
     const auto *summary = controller.window()->findChild<QLabel *>(QStringLiteral("previewSummary"));
     QVERIFY(summary);
-    QVERIFY(summary->text().contains(QStringLiteral("1 × 1")));
+    QVERIFY(summary->text().contains(QStringLiteral("Rows 1–1 · 1 columns")));
     controller.window()->findChild<QTabWidget *>()->setCurrentIndex(1);
-    QVERIFY(summary->text().contains(QStringLiteral("1 × 3")));
+    QTRY_VERIFY(summary->text().contains(QStringLiteral("Rows 1–1 · 3 columns")));
 }
 void XlsxTest::actualCellsDetermineExtentAndPartialLimits()
 {
@@ -263,7 +343,7 @@ void XlsxTest::partialAndMissingResultsAreVisible()
 void XlsxTest::rejectsMalformedAndOversized_data()
 {
     QTest::addColumn<QString>("problem");
-    for (const auto &p : {"xml", "dtd", "shared-index", "traversal", "external-sheet", "field", "part", "archive", "entries", "missing", "styles-xml", "styles-format", "styles-field", "date-system"})
+    for (const auto &p : {"xml", "dtd", "shared-index", "traversal", "external-sheet", "field", "part", "entries", "missing", "styles-xml", "styles-format", "styles-field", "date-system"})
         QTest::newRow(p) << QString::fromLatin1(p);
 }
 void XlsxTest::rejectsMalformedAndOversized()
@@ -278,7 +358,6 @@ void XlsxTest::rejectsMalformedAndOversized()
     if (problem == QLatin1String("external-sheet")) parts[QStringLiteral("xl/_rels/workbook.xml.rels")].replace("Target=\"worksheets/data.xml\"", "TargetMode=\"External\" Target=\"https://invalid.example/file.xml\"");
     if (problem == QLatin1String("field")) parts[data] = sheet("<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>" + QByteArray(XlsxReader::FieldLimit + 1, 'a') + "</t></is></c></row>");
     if (problem == QLatin1String("part")) parts[data] = QByteArray(XlsxReader::PartLimit + 1, 'a');
-    if (problem == QLatin1String("archive")) parts[QStringLiteral("ignored.bin")] = QByteArray(XlsxReader::ExpandedLimit + 1, 'a');
     if (problem == QLatin1String("entries")) for (int i = 0; i < XlsxReader::EntryLimit; ++i) parts.insert(QString::number(i), {});
     if (problem == QLatin1String("missing")) parts.remove(data);
     if (problem.startsWith(QLatin1String("styles-"))) {
@@ -317,26 +396,472 @@ void XlsxTest::cancellationStopsLoading()
 }
 void XlsxTest::snapshotAndRemoteUseSharedGrid_data()
 {
-    QTest::addColumn<bool>("remote");
-    QTest::newRow("local") << false;
-    QTest::newRow("smb") << true;
+    QTest::addColumn<QString>("base");
+    QTest::newRow("local") << QString();
+    QTest::newRow("smb") << QStringLiteral("smb://server/share/book.xlsx");
+    QTest::newRow("sftp") << QStringLiteral("sftp://user@server:2222/book.xlsx");
 }
 void XlsxTest::snapshotAndRemoteUseSharedGrid()
 {
-    QFETCH(bool, remote);
+    QFETCH(QString, base);
+    QString policyError;
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError));
     const auto path = write(package());
     fuse_.path = path;
     PreviewController controller;
     QString error;
-    QVERIFY(controller.show(remote ? QStringLiteral("smb://server/share/book.xlsx") : path, error));
+    const auto url = base.isEmpty() ? path : base;
+    const auto resource = prepare(url);
+    QVERIFY(resource.seekableSource);
+    QVERIFY(!resource.backingStore);
+    QCOMPARE(resource.backingPath, path);
+    QVERIFY(controller.show(url, error));
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+    QCOMPARE(controller.fileUrl(), resource.url.toString(QUrl::FullyEncoded));
     auto *window = const_cast<PreviewWindow *>(controller.window());
     auto *view = window->findChild<QTableView *>();
     QVERIFY(view);
     QCOMPARE(view->model()->data(view->model()->index(0, 0)).toString(), QStringLiteral("00123"));
     QTest::keyClick(view, Qt::Key_Escape);
     QVERIFY(!controller.isVisible());
+}
+void XlsxTest::tablesKeepGeometryIndependentOfReadingAndPdf_data()
+{
+    QTest::addColumn<bool>("excel");
+    QTest::newRow("csv") << false;
+    QTest::newRow("excel") << true;
+}
+void XlsxTest::tablesKeepGeometryIndependentOfReadingAndPdf()
+{
+    QFETCH(bool, excel);
+    const auto text = directory_.filePath(QStringLiteral("reading.txt"));
+    const auto csv = directory_.filePath(QStringLiteral("wide-table.csv"));
+    for (const auto &path : {text, csv}) {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(path == csv ? "Name,Value\nFirst,42\n" : "A reading preview.\n");
+    }
+    const auto pdf = directory_.filePath(QStringLiteral("portrait.pdf"));
+    {
+        QPdfWriter writer(pdf);
+        QPainter painter(&writer);
+        painter.drawText(100, 100, QStringLiteral("Portrait PDF"));
+    }
+    const auto table = excel ? write(package()) : csv;
+    PreviewController controller;
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QString error;
+    QVERIFY(controller.show(text, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(window->height() > window->width());
+    QVERIFY(controller.show(pdf, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(window->height() > window->width());
+    QVERIFY(controller.show(table, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+    const auto area = window->screen()->availableGeometry().size();
+    QTRY_VERIFY(window->width() >= 400 && window->width() <= 560);
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTest::qWait(100); // Settle the compositor's table geometry transaction.
+    const auto manual = QSize(760, 540).boundedTo(area - QSize(32, 32));
+    window->resize(manual);
+    QTRY_COMPARE(window->size(), manual);
+    for (const auto &other : {text, pdf}) {
+        QVERIFY(controller.show(other, error));
+        QTRY_VERIFY(!controller.loading());
+        QTRY_VERIFY2(window->height() > window->width(), qPrintable(QStringLiteral("%1, %2x%3, %4")
+            .arg(controller.previewKind()).arg(window->width()).arg(window->height())
+            .arg(window->findChild<QLabel *>(QStringLiteral("previewStatus"))->text())));
+        QVERIFY(controller.show(table, error));
+        QTRY_VERIFY(!controller.loading());
+        QTRY_COMPARE(window->size(), manual);
+    }
+    controller.hide();
+    QVERIFY(controller.show(table, error));
+    QTRY_VERIFY(!controller.loading());
+    QTRY_COMPARE(window->size(), manual);
+}
+void XlsxTest::tableWidthFollowsColumns_data()
+{
+    QTest::addColumn<bool>("excel");
+    QTest::addColumn<int>("columns");
+    for (bool excel : {false, true}) for (int columns : {2, 6, 40})
+        QTest::newRow(qPrintable(QStringLiteral("%1-%2").arg(excel ? "xlsx" : "csv").arg(columns))) << excel << columns;
+}
+void XlsxTest::tableWidthFollowsColumns()
+{
+    QFETCH(bool, excel);
+    QFETCH(int, columns);
+    QString path;
+    if (excel) {
+        QByteArray row("<row r=\"1\">");
+        for (int column = 0; column < columns; ++column) {
+            QString name;
+            for (int value = column + 1; value; value = (value - 1) / 26)
+                name.prepend(QChar('A' + (value - 1) % 26));
+            row += "<c r=\"" + name.toUtf8() + "1\" t=\"inlineStr\"><is><t>Value</t></is></c>";
+        }
+        path = write(package(row + "</row>"));
+    } else {
+        path = directory_.filePath(QStringLiteral("columns-%1.csv").arg(columns));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray("Value,").repeated(columns - 1) + "Value\n");
+    }
+    PreviewController controller;
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QString error;
+    QVERIFY(controller.show(path, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    auto *grid = window->findChild<QTableView *>();
+    QVERIFY(grid);
+    QCOMPARE(grid->model()->columnCount(), columns);
+    const int limit = window->screen()->availableGeometry().width() * 85 / 100;
+    QTRY_VERIFY(window->width() <= limit);
+    if (columns == 2) {
+        QTRY_VERIFY(window->width() >= 400 && window->width() <= 560);
+        QTRY_COMPARE(grid->horizontalScrollBar()->maximum(), 0);
+    } else {
+        QTRY_VERIFY(window->width() >= qMin(columns * 110, limit));
+        if (columns == 40) QTRY_VERIFY(grid->horizontalScrollBar()->maximum() > 0);
+    }
+    if (columns == 6) {
+        QTest::qWait(100);
+        window->resize(400, 480);
+        QTRY_COMPARE(window->size(), QSize(400, 480));
+        const auto next = directory_.filePath(excel ? QStringLiteral("next-table.xlsx") : QStringLiteral("next-table.csv"));
+        QFile::remove(next);
+        QVERIFY(QFile::copy(path, next));
+        QVERIFY(controller.show(next, error));
+        QTRY_VERIFY(!controller.loading());
+        QTRY_VERIFY(window->width() >= qMin(columns * 110, limit));
+        QTRY_COMPARE(window->height(), 480);
+    }
+}
+void XlsxTest::directSourceSeeksAcrossLargeSparseArchive()
+{
+    const auto path = write(package());
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadWrite));
+    const auto bytes = file.readAll();
+    const int end = bytes.size() - 22; // Generated ZIP has no comment or ZIP64 footer.
+    QCOMPARE(bytes.mid(end, 4), QByteArray::fromHex("504b0506"));
+    const auto offset = qFromLittleEndian<quint32>(bytes.constData() + end + 16);
+    auto directory = bytes.mid(offset);
+    constexpr quint32 gap = 256 * 1024 * 1024;
+    qToLittleEndian<quint32>(offset + gap, directory.data() + directory.size() - 22 + 16);
+    QVERIFY(file.resize(offset));
+    QVERIFY(file.seek(offset + gap));
+    QCOMPARE(file.write(directory), directory.size());
+    file.close();
+    QVERIFY(QFileInfo(path).size() > gap);
+    const auto prepared = prepare(path);
+    QVERIFY(prepared.seekableSource);
+    QCOMPARE(prepared.backingPath, path);
+    QVERIFY(!prepared.backingStore);
+    const auto data = decode(prepared);
+    QCOMPARE(data.kind, PreviewKind::Table);
+    QCOMPARE(data.table->sheets.first().value(0, 0).toString(), QStringLiteral("00123"));
+    QCOMPARE(data.resource.path, path);
+    QVERIFY(QFile::remove(path));
+    const auto vanished = decode(prepared);
+    QCOMPARE(vanished.kind, PreviewKind::Information);
+    QVERIFY(!vanished.message.isEmpty());
+}
+void XlsxTest::ignoresUnusedExpandedParts()
+{
+    auto parts = package();
+    parts[QStringLiteral("unused-media.bin")] = QByteArray(XlsxReader::ExpandedLimit + 1, 'a');
+    const auto result = read(write(parts));
+    QVERIFY2(result.document, qPrintable(result.error));
+    QCOMPARE(result.document->sheets.first().value(0, 0).toString(), QStringLiteral("00123"));
+}
+void XlsxTest::boundsConsumedPartsAndArchiveMetadata()
+{
+    auto metadataParts = package();
+    const auto longName = QStringLiteral("unused/") + QString(5000, QChar('n'));
+    for (int i = 0; i < 900; ++i) metadataParts.insert(longName + QString::number(i), {});
+    auto result = read(write(metadataParts));
+    QVERIFY(!result.document);
+    QVERIFY(result.error.contains(QStringLiteral("resource limits")));
+
+    auto parts = package();
+    QByteArray sheets, rels;
+    const auto contents = sheet(QByteArray(15 * 1024 * 1024, ' '));
+    parts.remove(QStringLiteral("xl/worksheets/data.xml"));
+    for (int i = 1; i <= 5; ++i) {
+        const auto id = QByteArray::number(i);
+        sheets += "<sheet name=\"Sheet" + id + "\" sheetId=\"" + id + "\" r:id=\"r" + id + "\"/>";
+        rels += "<Relationship Id=\"r" + id + "\" Type=\"" + reltype + "worksheet\" Target=\"worksheets/" + id + ".xml\"/>";
+        parts.insert(QStringLiteral("xl/worksheets/%1.xml").arg(i), contents);
+    }
+    parts[QStringLiteral("xl/workbook.xml")] = "<workbook xmlns=\"" + ns + "\" xmlns:r=\"" + reltype.chopped(1) + "\"><sheets>" + sheets + "</sheets></workbook>";
+    parts[QStringLiteral("xl/_rels/workbook.xml.rels")] = "<Relationships xmlns=\"" + relns + "\">" + rels + "</Relationships>";
+    result = read(write(parts));
+    QVERIFY(!result.document);
+    QVERIFY(result.error.contains(QStringLiteral("resource limits")));
+}
+void XlsxTest::helperPreservesCellsAndLargeReplies()
+{
+    const QString value = QString(255, QChar(0x03b2)) + QChar('\n');
+    const auto encoded = value.toUtf8();
+    QByteArray rows;
+    for (int row = 1; row <= 600; ++row) {
+        rows += "<row r=\"" + QByteArray::number(row) + "\">";
+        for (int column = 0; column < 10; ++column)
+            rows += "<c r=\"" + QByteArray(1, char('A' + column)) + QByteArray::number(row)
+                + "\" t=\"inlineStr\"><is><t>" + encoded + "</t></is></c>";
+        rows += "</row>";
+    }
+    const auto prepared = prepare(write(package(rows)));
+    const auto data = decode(prepared);
+    QCOMPARE(data.kind, PreviewKind::Table);
+    QVERIFY(!data.truncated);
+    QCOMPARE(data.table->sheets.size(), 1);
+    const auto &sheet = data.table->sheets.first();
+    QCOMPARE(sheet.rowCount, 600);
+    QCOMPARE(sheet.columnCount, 10);
+    QCOMPARE(sheet.cells.size(), 6000);
+    QCOMPARE(sheet.value(0, 0).toString(), value);
+    QCOMPARE(sheet.value(599, 9).toString(), value);
+}
+void XlsxTest::helperRejectsMalformedResults_data()
+{
+    QTest::addColumn<QByteArray>("output");
+    const QByteArray start = "{\"event\":\"begin\",\"partial\":false,\"notice\":\"\"}\n";
+    const QByteArray sheet = "{\"event\":\"sheet\",\"name\":\"A\",\"rows\":1,\"columns\":1}\n";
+    const QByteArray cell = "{\"event\":\"cell\",\"row\":0,\"column\":0,\"value\":\"literal\"}\n";
+    QTest::newRow("json") << QByteArray("bad\n");
+    QTest::newRow("record-budget") << QByteArray(XlsxRecordLimit + 1, 'x');
+    QTest::newRow("truncated") << start + sheet + cell;
+    QTest::newRow("no-sheets") << start + "{\"event\":\"end\",\"detail\":\"\"}\n";
+    QTest::newRow("duplicate-cell") << start + sheet + cell + cell;
+    QTest::newRow("cell-outside-grid") << start + sheet + "{\"event\":\"cell\",\"row\":2,\"column\":0,\"value\":\"x\"}\n";
+    QTest::newRow("grid-budget") << start + "{\"event\":\"sheet\",\"name\":\"A\",\"rows\":10001,\"columns\":256}\n";
+    QTest::newRow("field-budget") << start + sheet + "{\"event\":\"cell\",\"row\":0,\"column\":0,\"value\":\""
+        + QByteArray(XlsxReader::FieldLimit + 1, 'x') + "\"}\n";
+}
+void XlsxTest::helperRejectsMalformedResults()
+{
+    QFETCH(QByteArray, output);
+    const auto program = script("sys.stdout.buffer.write(bytes.fromhex('" + output.toHex() + "'))\nsys.stdout.flush()\n");
+    XlsxDecodeJob job({}, nullptr, program);
+    QSignalSpy done(&job, &XlsxDecodeJob::completed);
+    QVERIFY(done.wait(5000));
+    const auto result = qvariant_cast<PreviewData>(done.first().first());
+    QCOMPARE(result.kind, PreviewKind::Information);
+    QVERIFY(!result.table);
+    QVERIFY(!result.message.isEmpty());
+}
+void XlsxTest::helperCancellationDeadlineAndConcurrency()
+{
+    const auto program = script("time.sleep(10)\n");
+    auto first = std::make_unique<XlsxDecodeJob>(PreviewData{}, nullptr, program);
+    XlsxDecodeJob second({}, nullptr, program, 150);
+    XlsxDecodeJob third({}, nullptr, program);
+    QSignalSpy secondDone(&second, &XlsxDecodeJob::completed);
+    QSignalSpy thirdDone(&third, &XlsxDecodeJob::completed);
+    QCOMPARE(XlsxDecodeJob::runningHelpers(), 2);
+    QVERIFY(thirdDone.wait(5000));
+    QCOMPARE(qvariant_cast<PreviewData>(thirdDone.first().first()).kind, PreviewKind::Information);
+    QElapsedTimer clock;
+    clock.start();
+    first.reset();
+    QVERIFY(clock.elapsed() < 100);
+    QTRY_COMPARE(secondDone.size(), 1);
+    QVERIFY(qvariant_cast<PreviewData>(secondDone.first().first()).message.contains(QStringLiteral("timed out")));
+}
+
+void XlsxTest::progressiveRowsPassFormerLimitsAndReplay()
+{
+    QByteArray rows;
+    const QByteArray field(160, 'x');
+    for (int row = 1; row <= 11000; ++row) {
+        rows += "<row r=\"" + QByteArray::number(row) + "\">";
+        for (int column = 0; column < 10; ++column)
+            rows += "<c t=\"inlineStr\"><is><t>" + QByteArray::number(row) + ':' + field + "</t></is></c>";
+        rows += "</row>";
+    }
+    QVERIFY(rows.size() > XlsxReader::PartLimit);
+    XlsxPortionReader reader(write(package(rows)));
+    QString token = QStringLiteral("0"), previous;
+    qint64 count = 0, lastStart = 0;
+    do {
+        const auto reply = reader.read(token);
+        QVERIFY2(!reply.contains("error"), qPrintable(QStringLiteral("Row %1, %2: %3").arg(count).arg(token, reply.value("error").toString())));
+        TableRowBatch batch;
+        QVERIFY(decodeTableRowBatch(reply.value("content").toObject(), batch));
+        QCOMPARE(batch.firstRow, count);
+        QVERIFY(batch.sheet->rowCount > 0 && batch.sheet->rowCount <= 64);
+        for (int row = 0; row < batch.sheet->rowCount; ++row)
+            QCOMPARE(batch.sheet->value(row, 9).toString(), QString::number(count + row + 1) + ':' + QString::fromLatin1(field));
+        lastStart = count;
+        count += batch.sheet->rowCount;
+        previous = reply.value("previous").toString();
+        token = reply.value("next").toString();
+    } while (!token.isEmpty());
+    QCOMPARE(count, 11000);
+    const auto reply = reader.read(previous); // Deliberate cache miss: compressed-entry replay.
+    QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+    TableRowBatch batch;
+    QVERIFY(decodeTableRowBatch(reply.value("content").toObject(), batch));
+    QCOMPARE(batch.firstRow + batch.sheet->rowCount, lastStart);
+    QVERIFY(!reader.read(QStringLiteral("f:0:1")).value("error").toString().isEmpty());
+}
+void XlsxTest::progressiveHelperRetainsFormattingAndChunkedReplies()
+{
+    const QString field(16384, QChar(0x754c));
+    QByteArray rows;
+    for (int row = 1; row <= 3; ++row) {
+        rows += "<row r=\"" + QByteArray::number(row) + "\">";
+        for (int column = 0; column < 4; ++column) rows += "<c t=\"s\"><v>0</v></c>";
+        rows += "<c s=\"0\"><v>60</v></c><c><f>UNKNOWN()</f></c><c t=\"b\"><v>1</v></c></row>";
+    }
+    auto parts = package(rows);
+    parts[QStringLiteral("xl/_rels/workbook.xml.rels")].replace("</Relationships>",
+        "<Relationship Id=\"s\" Type=\"" + reltype + "sharedStrings\" Target=\"strings.xml\"/>"
+        "<Relationship Id=\"f\" Type=\"" + reltype + "styles\" Target=\"styles.xml\"/></Relationships>");
+    parts[QStringLiteral("xl/strings.xml")] = "<sst xmlns=\"" + ns + "\"><si><r><t>" + field.toUtf8() + "</t></r></si></sst>";
+    parts[QStringLiteral("xl/styles.xml")] = "<styleSheet xmlns=\"" + ns + "\"><cellXfs><xf numFmtId=\"14\"/></cellXfs></styleSheet>";
+    FileResource resource;
+    resource.path = write(parts);
+    LazyCoordinator coordinator(resource, QStringLiteral("xlsx"));
+    QSignalSpy ready(&coordinator, &LazyCoordinator::ready), errors(&coordinator, &LazyCoordinator::failed);
+    coordinator.request();
+    QTRY_COMPARE(ready.size(), 1);
+    auto portion = qvariant_cast<LazyPortion>(ready.last().first());
+    QVERIFY(QFile::remove(resource.path)); // Persistent validated descriptor, no path reopen.
+    for (int row = 0; row < 3; ++row) {
+        TableRowBatch batch;
+        QVERIFY(decodeTableRowBatch(portion.content, batch));
+        QCOMPARE(batch.firstRow, row);
+        QCOMPARE(batch.sheet->rowCount, 1);
+        QCOMPARE(batch.sheet->value(0, 3).toString(), field);
+        QCOMPARE(batch.sheet->value(0, 4).toString(), QStringLiteral("1900-02-29 (Excel)"));
+        QCOMPARE(batch.sheet->value(0, 5).toString(), QStringLiteral("[Result unavailable]"));
+        QCOMPARE(batch.sheet->value(0, 6).toString(), QStringLiteral("TRUE"));
+        QVERIFY(portion.content.value("notice").toString().contains(QStringLiteral("formula")));
+        if (row < 2) {
+            coordinator.request(portion.next);
+            QTRY_COMPARE(ready.size(), row + 2);
+            portion = qvariant_cast<LazyPortion>(ready.last().first());
+        }
+    }
+    QVERIFY(portion.next.isEmpty());
+    QVERIFY(errors.isEmpty());
+    QVERIFY(coordinator.cachedBytes() <= coordinator.cacheBudget());
+    coordinator.stop();
+}
+void XlsxTest::progressiveSheetsEvictAndKeepGeometry()
+{
+    QByteArray rows;
+    for (int row = 1; row <= 1500; ++row)
+        rows += "<row r=\"" + QByteArray::number(row) + "\"><c><v>" + QByteArray::number(row) + "</v></c></row>";
+    auto parts = package(rows);
+    parts[QStringLiteral("xl/workbook.xml")].replace("</sheets>", "<sheet name=\"Second\" sheetId=\"2\" r:id=\"r2\"/></sheets>");
+    parts[QStringLiteral("xl/_rels/workbook.xml.rels")].replace("</Relationships>",
+        "<Relationship Id=\"r2\" Type=\"" + reltype + "worksheet\" Target=\"worksheets/second.xml\"/></Relationships>");
+    parts[QStringLiteral("xl/worksheets/second.xml")] = sheet("<row><c t=\"inlineStr\"><is><t>Second sheet</t></is></c></row>");
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(write(parts), error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+    QVERIFY(QTest::qWaitForWindowExposed(const_cast<PreviewWindow *>(controller.window())));
+    QTest::qWait(200);
+    auto *tabs = controller.window()->findChild<QTabWidget *>();
+    QVERIFY(tabs);
+    QCOMPARE(tabs->count(), 2);
+    auto *grid = qobject_cast<QTableView *>(tabs->widget(0));
+    auto *other = qobject_cast<QTableView *>(tabs->widget(1));
+    QAbstractItemModelTester tester(grid->model(), QAbstractItemModelTester::FailureReportingMode::QtTest);
+    QAbstractItemModelTester otherTester(other->model(), QAbstractItemModelTester::FailureReportingMode::QtTest);
+    QCOMPARE(other->model()->rowCount(), 0);
+    const auto geometry = controller.window()->geometry();
+    const auto wheel = [](QTableView *view, int direction) {
+        QWheelEvent event(QPointF(20, 20), view->viewport()->mapToGlobal(QPoint(20, 20)), {}, QPoint(0, -120 * direction),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(view->viewport(), &event);
+    };
+    for (int load = 0; load < 10; ++load) {
+        grid->verticalScrollBar()->setValue(grid->verticalScrollBar()->maximum());
+        const auto first = grid->model()->headerData(0, Qt::Vertical);
+        const auto count = grid->model()->rowCount();
+        const QPersistentModelIndex anchor(grid->model()->index(qMax(0, grid->rowAt(0)), 0));
+        const auto value = anchor.data();
+        const auto top = grid->visualRect(anchor).top();
+        wheel(grid, 1);
+        QTRY_VERIFY(grid->model()->headerData(0, Qt::Vertical) != first || grid->model()->rowCount() != count);
+        QVERIFY(anchor.isValid());
+        QCOMPARE(anchor.data(), value);
+        QCOMPARE(grid->visualRect(anchor).top(), top);
+        QVERIFY(grid->model()->rowCount() <= 192);
+        QCOMPARE(controller.window()->geometry(), geometry);
+    }
+    QVERIFY(grid->model()->headerData(0, Qt::Vertical).toInt() > 1);
+    for (int load = 0; load < 12 && grid->model()->headerData(0, Qt::Vertical).toInt() > 1; ++load) {
+        grid->verticalScrollBar()->setValue(0);
+        const auto first = grid->model()->headerData(0, Qt::Vertical);
+        wheel(grid, -1);
+        QTRY_VERIFY(grid->model()->headerData(0, Qt::Vertical) != first);
+    }
+    QCOMPARE(grid->model()->headerData(0, Qt::Vertical).toInt(), 1);
+    tabs->setCurrentIndex(1);
+    QTRY_COMPARE(other->model()->rowCount(), 1);
+    QCOMPARE(other->model()->index(0, 0).data().toString(), QStringLiteral("Second sheet"));
+    QCOMPARE(grid->model()->rowCount(), 0);
+    tabs->setCurrentIndex(0);
+    tabs->setCurrentIndex(1);
+    tabs->setCurrentIndex(0); // Replace pending sheet targets; stale replies cannot populate another sheet.
+    QTRY_VERIFY(grid->model()->rowCount() > 0);
+    QCOMPARE(grid->model()->index(0, 0).data().toString(), QStringLiteral("1"));
+    QCOMPARE(other->model()->rowCount(), 0);
+    QCOMPARE(controller.window()->geometry(), geometry);
+    controller.hide();
+}
+void XlsxTest::progressiveErrorsAndMutation()
+{
+    QByteArray rows;
+    for (int row = 1; row <= 64; ++row) rows += "<row><c><v>1</v></c></row>";
+    XlsxPortionReader emptyTail(write(package(rows + "<row r=\"1000000\"><c r=\"A1000000\"/></row>")));
+    const auto complete = emptyTail.read(QStringLiteral("0"));
+    QVERIFY(!complete.contains("error"));
+    QCOMPARE(complete.value("content").toObject().value("rows").toArray().size(), 64);
+    QVERIFY(complete.value("next").toString().isEmpty());
+    XlsxPortionReader sparse(write(package(rows + "<row r=\"200\"><c><v>last</v></c></row>")));
+    QString next = QStringLiteral("0");
+    int total = 0;
+    do {
+        const auto reply = sparse.read(next);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        TableRowBatch batch;
+        QVERIFY(decodeTableRowBatch(reply.value("content").toObject(), batch));
+        QCOMPARE(batch.firstRow, total);
+        total += batch.sheet->rowCount;
+        next = reply.value("next").toString();
+        if (next.isEmpty()) QCOMPARE(batch.sheet->value(batch.sheet->rowCount - 1, 0).toString(), QStringLiteral("last"));
+    } while (!next.isEmpty());
+    QCOMPARE(total, 200);
+    auto parts = package(rows);
+    parts[QStringLiteral("xl/worksheets/data.xml")].replace("</sheetData>", "<row><c t=\"s\"><v>999</v></c></row></sheetData>");
+    XlsxPortionReader reader(write(parts));
+    auto reply = reader.read(QStringLiteral("0"));
+    QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+    QVERIFY(!reply.value("next").toString().isEmpty());
+    QVERIFY(reader.read(reply.value("next").toString()).contains("error"));
+    const auto path = write(package(rows + rows));
+    XlsxPortionReader mutableReader(path);
+    reply = mutableReader.read(QStringLiteral("0"));
+    QVERIFY(!reply.contains("error"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::Append));
+    file.write("changed");
+    file.close();
+    QVERIFY(mutableReader.read(reply.value("next").toString()).value("error").toString().contains(QStringLiteral("changed")));
 }
 void XlsxTest::inspectUserSample()
 {

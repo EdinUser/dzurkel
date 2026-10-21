@@ -4,14 +4,16 @@
 #include <QDateTime>
 #include <QImage>
 #include <QMimeType>
+#include <QStringList>
 #include <atomic>
 #include <memory>
 
 class QFile;
-class QPdfDocument;
 class QWidget;
 
 namespace dzurkel {
+class PdfSession;
+class LazyCoordinator;
 struct TabularDocument;
 struct FormattedDocument;
 using Cancellation = std::shared_ptr<std::atomic_bool>;
@@ -38,11 +40,16 @@ struct PreviewData {
     int animationLoops = 0; // Additional loops; -1 means repeat indefinitely.
     QString text;
     int textLineCount = 0; // Physical lines in the bounded text, excluding a trailing empty paragraph.
+    std::shared_ptr<LazyCoordinator> lazy;
+    QString lazyPrevious;
+    QString lazyNext;
+    QStringList lazySheetTokens; // Reader-owned starts, aligned with table sheet names.
     std::shared_ptr<const TabularDocument> table;
     std::shared_ptr<const FormattedDocument> document;
     bool truncated = false;
-    std::shared_ptr<QPdfDocument> pdf;
-    QList<QSizeF> pdfPageSizes;
+    std::shared_ptr<PdfSession> pdfSession;
+    int pdfPageCount = 0;
+    QSizeF pdfFirstPageSize;
 };
 
 class PreviewProvider {

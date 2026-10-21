@@ -60,4 +60,11 @@ process races, restart cancellation and the Settings flow. It uses temporary
 configuration and an injected process-state check, leaving real Thunar sessions
 alone. Actual key and menu delivery still require a native desktop check.
 
+The progressive-loading implementation was also checked through the installed
+0.9.0 development package on Arch XFCE/X11: real Space/Escape, text/SQL
+Beginning/End and DOCX/Markdown scrolling passed without changing the managed
+action. Native text/document and CSV/XLSX regressions passed separately. This is
+selected desktop evidence, not a claim about every Arch desktop or document.
+See [the validation record](testing.md#arch-xfce-package-and-native-lazy-loading-acceptance-2026-10-21).
+
 Reference: [Thunar Custom Actions](https://docs.xfce.org/xfce/thunar/custom-actions).

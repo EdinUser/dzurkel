@@ -1,4 +1,7 @@
 #include "DocumentReaderInternal.h"
+#include "SeekableZipSource.h"
+#include "ZipEntryDevice.h"
+#include "preview/lazy/TextPortionReader.h"
 #include <QBuffer>
 #include <QDir>
 #include <QFile>
@@ -9,6 +12,11 @@
 #include <zip.h>
 #include <algorithm>
 #include <optional>
+#include <QDateTime>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QFileInfo>
+#include "preview/document/DocumentRecords.h"
 
 namespace dzurkel::document {
 const Node &Node::child(const char *key) const
@@ -76,34 +84,50 @@ Node Context::xml(const QByteArray &bytes, bool xhtml)
     QXmlStreamReader xml(bytes);
     if (xhtml) xml.setEntityResolver(&entities);
     Node root;
-    std::vector<Node *> stack{&root};
     while (!xml.atEnd()) {
-        check();
-        xml.readNext();
-        // Older EPUBs commonly declare XHTML's external DTD. Qt does not fetch
-        // it; only our fixed entity map is used. Internal subsets are rejected.
+        check(); xml.readNext();
         if (xml.isDTD() && (!xhtml || xml.dtdName() != QLatin1String("html") || xml.text().contains(QChar('[')))) invalid();
         if (xml.isEntityReference()) invalid();
+        if (xml.isStartElement()) root.children.push_back(element(xml));
+    }
+    if ((xml.hasError() && !(inputTruncated && xml.error() == QXmlStreamReader::PrematureEndOfDocumentError))
+        || root.children.empty()) invalid();
+    return root;
+}
+Node Context::element(QXmlStreamReader &xml)
+{
+    Node root;
+    std::vector<Node *> stack{&root};
+    qint64 characters = 0;
+    do {
+        check();
+        if (xml.isDTD() || xml.isEntityReference()) invalid();
         if (xml.isStartElement()) {
             if (++nodes > 200000 || stack.size() > 64) limit();
             Node node;
-            node.name = xml.name().toString();
-            node.ns = xml.namespaceUri().toString();
-            for (const auto &a : xml.attributes()) node.attributes.insert(a.name().toString(), a.value().toString());
+            node.name = xml.name().toString(); node.ns = xml.namespaceUri().toString();
+            for (const auto &a : xml.attributes()) {
+                characters += a.value().size();
+                node.attributes.insert(a.name().toString(), a.value().toString());
+            }
             stack.back()->children.push_back(std::move(node));
             stack.push_back(&stack.back()->children.back());
         } else if (xml.isCharacters()) {
             if (++nodes > 200000) limit();
-            Node node;
-            node.text = xml.text().toString();
+            Node node; node.text = xml.text().toString(); characters += node.text.size();
             stack.back()->children.push_back(std::move(node));
         } else if (xml.isEndElement()) {
             if (stack.size() <= 1) invalid();
             stack.pop_back();
+            if (stack.size() == 1) break;
         }
-    }
-    if (xml.hasError() || root.children.empty()) invalid();
-    return root;
+        if (characters > 4 * 1024 * 1024) limit();
+        xml.readNext();
+    } while (!xml.atEnd());
+    if (xml.hasError() && !(inputTruncated && xml.error() == QXmlStreamReader::PrematureEndOfDocumentError)) invalid();
+    if (root.children.empty()) invalid();
+    treeUnits = characters;
+    return std::move(root.children.front());
 }
 
 namespace {
@@ -121,20 +145,20 @@ bool enabled(const Node &n, const char *property)
 struct Relationship { QString path; QString type; };
 class Package {
 public:
-    Package(Context &context, QByteArray bytes) : c(context), bytes_(std::move(bytes))
+    Package(Context &context, QFile &file) : c(context), source_(file, context.cancel, context.clock)
     {
         zip_error_t error;
         zip_error_init(&error);
-        auto *source = zip_source_buffer_create(bytes_.constData(), size_t(bytes_.size()), 0, &error);
+        auto *source = zip_source_function_create(&SeekableZipSource::callback, &source_, &error);
         if (source) archive = zip_open_from_source(source, ZIP_RDONLY, &error);
         if (!archive && source) zip_source_free(source);
         zip_error_fini(&error);
-        if (!archive) c.invalid();
+        if (!archive) { c.check(); if (source_.exceeded) c.limit(); c.invalid(); }
+        source_.remaining = SeekableZipSource::SourceReadLimit;
         // All failure paths after opening must leave the archive owned.
         try {
             const auto count = zip_get_num_entries(archive, 0);
             if (count < 0 || count > 2048) c.limit();
-            quint64 expanded = 0;
             for (zip_int64_t i = 0; i < count; ++i) {
                 c.check();
                 zip_stat_t stat;
@@ -143,8 +167,6 @@ public:
                 const auto name = QString::fromUtf8(stat.name);
                 if (entries.contains(name)) c.invalid();
                 entries.insert(name, zip_uint64_t(i));
-                if (stat.size > 64 * 1024 * 1024 || expanded > 64 * 1024 * 1024 - stat.size) c.limit();
-                expanded += stat.size;
             }
         } catch (...) { zip_discard(archive); archive = nullptr; throw; }
     }
@@ -171,7 +193,7 @@ public:
         for (;;) {
             c.check();
             const auto size = zip_fread(file.get(), buffer, sizeof(buffer));
-            if (size < 0) c.invalid();
+            if (size < 0) { c.check(); if (source_.exceeded) c.limit(); c.invalid(); }
             if (!size) break;
             consumed += size;
             if (data.size() + size > 8 * 1024 * 1024 || consumed > 64 * 1024 * 1024) c.limit();
@@ -179,6 +201,11 @@ public:
         }
         if (zip_fclose(file.release()) || zip_uint64_t(data.size()) != stat.size) c.invalid();
         return data;
+    }
+    std::unique_ptr<ZipEntryDevice> stream(const QString &path) {
+        if (!entries.contains(path)) c.invalid();
+        return std::make_unique<ZipEntryDevice>(archive, entries.value(path), consumed, 64 * 1024 * 1024,
+            [](const QString &message) { throw Stop{message}; });
     }
     QString resolve(const QString &owner, const QString &href) const
     {
@@ -222,7 +249,7 @@ public:
         if (!QList<QByteArray>{"png", "jpeg", "jpg", "gif", "webp", "bmp"}.contains(format)) { placeholder(); return; }
         const auto size = reader.size();
         if (size.width() <= 0 || size.height() <= 0 || qint64(size.width()) * size.height() > 2 * 1024 * 1024
-            || pixels + qint64(size.width()) * size.height() > 8 * 1024 * 1024) { placeholder(); return; }
+            || pixels + qint64(size.width()) * size.height() > pixelLimit) { placeholder(); return; }
         c.check();
         auto image = reader.read();
         if (image.isNull()) { placeholder(); return; }
@@ -234,9 +261,17 @@ public:
         imageNames.insert(path, html);
         c.markup(html);
     }
+    void beginRequest() {
+        c.clock.restart();
+        consumed = 0;
+        source_.remaining = SeekableZipSource::SourceReadLimit;
+        source_.exceeded = false;
+    }
+    void beginPortion() { imageNames.clear(); pixels = 0; }
+    qint64 pixelLimit = 8 * 1024 * 1024;
     Context &c;
 private:
-    QByteArray bytes_;
+    SeekableZipSource source_;
     zip_t *archive = nullptr;
     QHash<QString, zip_uint64_t> entries;
     QHash<QString, QString> imageNames;
@@ -257,10 +292,9 @@ void section(Context &c, const QString &title, const QString &id)
 class WordReader {
 public:
     explicit WordReader(Package &package) : p(package), c(package.c) {}
-    void read()
+    void initialize()
     {
         const auto rootRels = p.relationships({});
-        QString main;
         for (const auto &r : rootRels) if (r.type.endsWith(QLatin1String("/officeDocument"))) main = r.path;
         if (main.isEmpty()) c.invalid();
         rels = p.relationships(main);
@@ -274,6 +308,10 @@ public:
                 numbering = root.child("numbering");
             }
         }
+    }
+    void read()
+    {
+        initialize();
         const auto root = c.xml(p.part(main));
         const auto &document = root.child("document");
         if (!word(document) || document.child("body").name.isEmpty()) c.invalid();
@@ -361,6 +399,7 @@ private:
             const auto key = info->id + QChar(':') + QString::number(info->level);
             const int number = counters.contains(key) ? counters.value(key) + 1 : info->start;
             counters.insert(key, number);
+            if (counters.size() > 4096) c.limit();
             for (int level = info->level + 1; level <= 7; ++level) counters.remove(info->id + QChar(':') + QString::number(level));
             if (lists.size() < depth) {
                 c.markup(QChar('<') + tag + (info->ordered ? QStringLiteral(" start=\"%1\">").arg(number) : QStringLiteral(">")));
@@ -423,9 +462,9 @@ private:
                     : heading >= 1 && heading <= 6 ? QStringLiteral("h%1").arg(heading) : QStringLiteral("p");
                 if (!listItem) c.markup(QChar('<') + tag + QChar('>'));
                 if (!role.isEmpty()) {
-                    section(c, role == QLatin1String("title") ? n.allText() : QString(), QStringLiteral("dzurkel-%1-%2").arg(role).arg(c.blocks));
+                    section(c, role == QLatin1String("title") ? n.allText() : QString(), QStringLiteral("dzurkel-%1-%2").arg(role).arg(++headings_));
                     if (role == QLatin1String("title") && c.doc->title.isEmpty()) c.doc->title = n.allText().simplified().left(500);
-                } else if (tag.startsWith(QChar('h'))) section(c, n.allText(), QStringLiteral("heading%1").arg(c.blocks));
+                } else if (tag.startsWith(QChar('h'))) section(c, n.allText(), QStringLiteral("heading%1").arg(++headings_));
                 const auto previousStyles = paragraphStyles_;
                 paragraphStyles_ = chain;
                 children(n, tableDepth);
@@ -509,12 +548,110 @@ private:
     QHash<QString, int> counters;
     QList<const Node *> paragraphStyles_;
     bool emptyParagraph_ = false;
+    QString main;
+    int headings_ = 0;
+    std::unique_ptr<ZipEntryDevice> entry_;
+    std::unique_ptr<QXmlStreamReader> xml_;
+    QStringList parts_;
+    int part_ = -1, position_ = 0, previous_ = 0;
+    void openPart(int index) {
+        xml_.reset(); entry_.reset();
+        part_ = index;
+        entry_ = p.stream(parts_.at(index));
+        xml_ = std::make_unique<QXmlStreamReader>(entry_.get());
+        if (!nextDocumentElement(c, *xml_)) c.invalid();
+        if (!part_) {
+            Node root; root.name = xml_->name().toString(); root.ns = xml_->namespaceUri().toString();
+            if (!word(root) || root.name != QLatin1String("document") || !nextDocumentElement(c, *xml_)
+                || xml_->name() != QLatin1String("body")) c.invalid();
+        } else if (xml_->name() != QLatin1String("footnotes") && xml_->name() != QLatin1String("endnotes")) c.invalid();
+    }
+    std::optional<Node> nextBlock() {
+        for (;;) {
+            c.check();
+            if (nextDocumentElement(c, *xml_)) {
+                c.nodes = 0;
+                auto node = c.element(*xml_);
+                if (part_ && node.attr("id").toInt() <= 0) continue;
+                if (part_) {
+                    Node run; run.name = QStringLiteral("t"); run.ns = node.ns;
+                    Node text; text.text = QStringLiteral("[%1] ").arg(node.attr("id"));
+                    run.children.push_back(std::move(text)); node.children.insert(node.children.begin(), std::move(run));
+                }
+                return node;
+            }
+            // Complete the root/document, checking trailing damage before EOF.
+            while (!xml_->atEnd()) { xml_->readNext(); if (xml_->isStartElement() || xml_->isDTD()) c.invalid(); }
+            if (xml_->hasError()) c.invalid();
+            if (part_ + 1 >= parts_.size()) return {};
+            openPart(part_ + 1);
+        }
+    }
+public:
+    QJsonObject portion(const QString &token);
+
 };
 
+QJsonObject documentPortion(Context &c, const QString &previous, const QString &next)
+{
+    QJsonArray records;
+    PreviewData data; data.kind = PreviewKind::Document; data.document = c.doc;
+    qint64 bytes = 0;
+    if (!writeDocumentRecords(data, [&](const QJsonObject &record) {
+        bytes += QJsonDocument(record).toJson(QJsonDocument::Compact).size();
+        if (bytes > 15 * 1024 * 1024) return false;
+        records.append(record); return true;
+    })) c.limit();
+    return {{"previous", previous}, {"next", next},
+        {"content", QJsonObject{{"kind", "document"}, {"records", records}, {"navigation", QJsonArray{}}, {"targetAnchor", QString()}}}};
+}
+QJsonObject WordReader::portion(const QString &token)
+{
+    p.beginRequest();
+    bool ok = false;
+    const int requested = token.toInt(&ok);
+    if (!ok || requested < 0 || QString::number(requested) != token) c.invalid();
+    if (parts_.isEmpty()) {
+        initialize(); parts_.append(main);
+        for (const auto &r : rels)
+            if (r.type.endsWith(QLatin1String("/footnotes")) || r.type.endsWith(QLatin1String("/endnotes"))) parts_.append(r.path);
+    }
+    if (!xml_ || requested != position_) {
+        counters.clear(); headings_ = 0; emptyParagraph_ = false;
+        position_ = previous_ = 0; openPart(0);
+    }
+    int first = 0, previous = 0;
+    bool ended = false;
+    do {
+        first = position_; previous = previous_;
+        c.doc = std::make_shared<FormattedDocument>(); c.blocks = 0; p.beginPortion();
+        Node group;
+        int characters = 0, treeNodes = 0;
+        qint64 treeUnits = 0;
+        // Also stop on XML cost: attributes/empty runs need not contribute
+        // visible text. One final bounded subtree can cross these soft targets.
+        for (int count = 0; count < 64 && characters < 8192 && treeNodes < 100000 && treeUnits < 2 * 1024 * 1024; ++count) {
+            auto node = nextBlock();
+            if (!node) { ended = true; break; }
+            characters += node->allText().size();
+            treeNodes += c.nodes; treeUnits += c.treeUnits;
+            group.children.push_back(std::move(*node)); ++position_;
+        }
+        children(group, 0);
+        previous_ = first;
+        if (position_ <= first && first != requested) c.invalid();
+        if (first == requested) break;
+        if (position_ > requested || ended) c.invalid();
+    } while (true);
+    if (c.doc->plainText.trimmed().isEmpty() && c.doc->images.isEmpty()) c.text(QStringLiteral("[Empty section]"));
+    return documentPortion(c, first ? QString::number(previous) : QString(), ended ? QString() : QString::number(position_));
+}
+
+struct NavigationStop { QString message; };
 class EpubReader {
 public:
     explicit EpubReader(Package &package) : p(package), c(package.c) {}
-    void read()
+    void initialize()
     {
         if (p.part(QStringLiteral("mimetype")) != QByteArray("application/epub+zip")) c.invalid();
         const auto container = c.xml(p.part(QStringLiteral("META-INF/container.xml")));
@@ -542,12 +679,24 @@ public:
         for (const auto &n : package.child("metadata").children)
             if (n.name == QLatin1String("meta") && (n.attr("property") == QLatin1String("rendition:layout")) && n.allText() == QLatin1String("pre-paginated"))
                 c.notice(QStringLiteral("Fixed layout simplified; some content may be omitted."));
-        int count = 0;
         for (const auto &n : package.child("spine").children) {
             if (n.name != QLatin1String("itemref") || n.attr("linear") == QLatin1String("no")) continue;
-            if (++count > 128) throw Stop{{}, false, true};
             const auto owner = manifest.value(n.attr("idref"));
             if (owner.isEmpty()) { c.notice(QStringLiteral("Some book content could not be previewed.")); continue; }
+            if (owners_.size() >= 2048) c.limit();
+            owners_.append(owner);
+        }
+        if (owners_.isEmpty()) c.invalid();
+        title_ = c.doc->title;
+        author_ = c.doc->author;
+        notice_ = c.doc->notice;
+    }
+    void read()
+    {
+        initialize();
+        int count = 0;
+        for (const auto &owner : owners_) {
+            if (++count > 128) throw Stop{{}, false, true};
             const auto chapter = c.xml(p.part(owner), true);
             const auto &body = chapter.child("html").child("body");
             if (body.name.isEmpty()) c.invalid();
@@ -559,7 +708,124 @@ public:
         }
         if (!count) c.invalid();
     }
+    QJsonObject portion(const QString &token)
+    {
+        p.beginRequest();
+        int chapter = 0, requested = 0;
+        bool last = false;
+        QString target;
+        if (token.startsWith(QChar('a'))) {
+            const int separator = token.indexOf(QChar('-'));
+            const auto owner = QString::fromUtf8(QByteArray::fromHex(token.mid(1, separator - 1).toLatin1()));
+            const auto fragment = QString::fromUtf8(QByteArray::fromHex(token.mid(separator + 1).toLatin1()));
+            chapter = owners_.indexOf(owner);
+            if (separator < 1 || chapter < 0 || anchor(owner, fragment) != token) throw NavigationStop{QStringLiteral("This link does not target a readable book chapter.")};
+            loadChapter(chapter);
+            if (!fragment.isEmpty()) {
+                bool found = false;
+                for (size_t i = 0; i < units_.size(); ++i) if (units_[i].kind == UnitKind::Content ? hasId(*units_[i].node, fragment)
+                    : units_[i].kind == UnitKind::Open && units_[i].node->attr("id").left(512) == fragment) {
+                    requested = int(i); found = true; break;
+                }
+                if (!found) throw NavigationStop{QStringLiteral("This section could not be located in the book chapter.")};
+            }
+            target = token;
+        } else if (token != QStringLiteral("0")) {
+            const auto parts = token.split(':');
+            bool chapterOk = false, offsetOk = false;
+            if (parts.size() != 3 || (parts[0] != QLatin1String("f") && parts[0] != QLatin1String("b"))) c.invalid();
+            chapter = parts[1].toInt(&chapterOk); requested = parts[2].toInt(&offsetOk);
+            last = parts[0] == QLatin1String("b");
+            if (!chapterOk || !offsetOk || chapter < 0 || chapter >= owners_.size() || requested < 0
+                || (last && requested) || QStringLiteral("%1:%2:%3").arg(parts[0]).arg(chapter).arg(requested) != token) c.invalid();
+        }
+        loadChapter(chapter);
+        if (requested >= int(units_.size()) && requested) c.invalid();
+        int position = !last && target.isEmpty() && requested == nextOffset_ ? requested : 0;
+        int first = 0, previous = 0, previousFirst = position ? previousStart_ : 0;
+        do {
+            first = position;
+            previous = previousFirst;
+            p.beginPortion();
+            c.doc = std::make_shared<FormattedDocument>();
+            c.doc->title = title_; c.doc->author = author_; c.doc->notice = notice_;
+            c.blocks = 0;
+            if (!first) section(c, heading(root_).isEmpty() ? QStringLiteral("Section %1").arg(chapter + 1) : heading(root_), anchor(owners_[chapter]));
+            const auto beginning = position;
+            while (position < int(units_.size())) {
+                const auto &unit = units_[position++];
+                if (unit.kind == UnitKind::Content) render(*unit.node, owners_[chapter]);
+                else boundary(unit, chapter);
+                if (c.doc->plainText.size() >= 8192 || (position - beginning >= 64
+                    && (!c.doc->plainText.trimmed().isEmpty() || !c.doc->images.isEmpty()))) break;
+            }
+            // Consume trailing container closures with their content rather
+            // than publishing an extra empty portion at a chapter boundary.
+            while (position < int(units_.size()) && units_[position].kind == UnitKind::Close) boundary(units_[position++], chapter);
+            previousFirst = first;
+            // Fragment targets use the complete semantic block containing the
+            // anchor. No inline state, list or table is split between portions.
+            if (!last && (first == requested || (!target.isEmpty() && first <= requested && position > requested))) break;
+            if (!last && position > requested) c.invalid();
+        } while (position < int(units_.size()));
+        if (!last && target.isEmpty() && first != requested) c.invalid();
+        nextOffset_ = position; previousStart_ = first;
+        if (c.doc->plainText.trimmed().isEmpty() && c.doc->images.isEmpty()) c.text(QStringLiteral("[Empty section]"));
+        const auto forward = [](int part, int offset) { return QStringLiteral("f:%1:%2").arg(part).arg(offset); };
+        QJsonArray records, navigation;
+        PreviewData data;
+        data.kind = PreviewKind::Document;
+        data.document = c.doc;
+        qint64 bytes = 0;
+        if (!writeDocumentRecords(data, [&](const QJsonObject &record) {
+            bytes += QJsonDocument(record).toJson(QJsonDocument::Compact).size();
+            if (bytes > 15 * 1024 * 1024) return false;
+            records.append(record); return true;
+        })) c.limit();
+        for (int i = 0; i < owners_.size(); ++i)
+            navigation.append(QJsonObject{{"title", QStringLiteral("%1 · %2").arg(i + 1).arg(QFileInfo(owners_[i]).fileName())}, {"anchor", anchor(owners_[i])}});
+        return {{"previous", first ? forward(chapter, previous) : chapter ? QStringLiteral("b:%1:0").arg(chapter - 1) : QString()},
+            {"next", position < int(units_.size()) ? forward(chapter, position) : chapter + 1 < owners_.size() ? forward(chapter + 1, 0) : QString()},
+            {"content", QJsonObject{{"kind", "document"}, {"records", records}, {"navigation", navigation}, {"targetAnchor", target}}}};
+    }
+
 private:
+    enum class UnitKind { Content, Open, Close };
+    struct Unit { const Node *node; UnitKind kind; };
+    void boundary(const Unit &unit, int chapter) {
+        if (unit.node->name != QLatin1String("body")) c.paragraph();
+        if (unit.kind == UnitKind::Open && !unit.node->attr("id").isEmpty())
+            c.markup(QStringLiteral("<a name=\"%1\"></a>").arg(anchor(owners_[chapter], unit.node->attr("id").left(512))));
+    }
+    QStringList owners_;
+    QString title_, author_, notice_;
+    Node root_;
+    std::vector<Unit> units_;
+    int loaded_ = -1;
+    int nextOffset_ = 0, previousStart_ = 0;
+    bool hasId(const Node &node, const QString &id) const {
+        if (node.attr("id").left(512) == id) return true;
+        for (const auto &child : node.children) if (hasId(child, id)) return true;
+        return false;
+    }
+    void flatten(const Node &node) {
+        if (QStringList{"body", "div", "section", "article"}.contains(node.name)) {
+            units_.push_back({&node, UnitKind::Open});
+            for (const auto &child : node.children) flatten(child);
+            units_.push_back({&node, UnitKind::Close});
+        } else if (!node.name.isEmpty() || !node.text.trimmed().isEmpty()) units_.push_back({&node, UnitKind::Content});
+    }
+    void loadChapter(int index) {
+        if (loaded_ == index) return;
+        units_.clear(); root_ = {};
+        c.nodes = 0;
+        root_ = c.xml(p.part(owners_.at(index)), true);
+        const auto &body = root_.child("html").child("body");
+        if (body.name.isEmpty()) c.invalid();
+        flatten(body);
+        loaded_ = index;
+        nextOffset_ = previousStart_ = 0;
+    }
     void checkEncryption(const Node &n)
     {
         if (n.name == QLatin1String("EncryptedData")) {
@@ -624,19 +890,23 @@ DocumentResult DocumentReader::read(QFile &file, const QString &format, const Ca
     document::Context context(cancel);
     try {
         context.check();
-        if (file.size() > ByteLimit) context.limit();
-        const auto bytes = file.read(ByteLimit + 1);
-        if (file.error() != QFileDevice::NoError || bytes.size() > ByteLimit) context.invalid();
-        if (format == QLatin1String("rtf") || bytes.startsWith("{\\rtf")) document::readRtf(context, bytes);
-        else if (format == QLatin1String("doc")) document::readLegacyDoc(context, bytes);
-        else if (format == QLatin1String("fb2")) document::readFb2(context, bytes);
-        else if (format == QLatin1String("sfb")) document::readSfb(context, bytes);
-        else if (format == QLatin1String("mobi")) document::readMobi(context, bytes);
-        else {
-            document::Package package(context, bytes);
+        if (format == QLatin1String("docx") || format == QLatin1String("epub")) {
+            document::Package package(context, file);
             if (format == QLatin1String("docx")) document::WordReader(package).read();
             else if (format == QLatin1String("epub")) document::EpubReader(package).read();
             else context.invalid();
+        } else if (format == QLatin1String("doc")) document::readLegacyDoc(context, file);
+        else if (format == QLatin1String("mobi")) document::readMobi(context, file);
+        else {
+            auto bytes = file.read(InputPrefixLimit + 1);
+            if (file.error() != QFileDevice::NoError) context.invalid();
+            context.inputTruncated = bytes.size() > InputPrefixLimit;
+            bytes.truncate(InputPrefixLimit);
+            if (format == QLatin1String("rtf")) document::readRtf(context, bytes);
+            else if (format == QLatin1String("fb2")) document::readFb2(context, bytes);
+            else if (format == QLatin1String("sfb")) document::readSfb(context, bytes);
+            else context.invalid();
+            if (context.inputTruncated) throw document::Stop{{}, false, true};
         }
     } catch (const document::Stop &stop) {
         if (stop.cancelled) return {{}, {}, true};
@@ -648,4 +918,115 @@ DocumentResult DocumentReader::read(QFile &file, const QString &format, const Ca
         return {{}, QStringLiteral("No readable content could be extracted from this document."), false};
     return {context.doc, {}, false};
 }
+struct RichDocumentPortionReader::State {
+    QFile file;
+    QString error;
+    qint64 size = 0;
+    QDateTime modified;
+    document::Context context{Cancellation{}};
+    std::unique_ptr<document::Package> package;
+    std::unique_ptr<document::EpubReader> reader;
+    std::unique_ptr<document::WordReader> word;
+    QString format;
+    std::unique_ptr<document::DocumentInput> input;
+    std::unique_ptr<document::PortionParser> parser;
+    int next = 0;
+    QString title, author, deferredError, path;
+    std::unique_ptr<TextPortionReader> textFallback;
+    void resetParser() {
+        parser.reset(); input.reset();
+        if (!file.seek(0)) context.invalid();
+        context.doc = std::make_shared<FormattedDocument>();
+        context.sectionSerial = 0;
+        next = 0; title.clear(); author.clear();
+        input = std::make_unique<document::DocumentInput>(context, file);
+        if (format == QLatin1String("rtf")) parser = document::rtfParser(context, *input);
+        else if (format == QLatin1String("fb2")) parser = document::fb2Parser(context, *input);
+        else if (format == QLatin1String("sfb")) parser = document::sfbParser(context, *input);
+        else if (format == QLatin1String("doc")) parser = document::legacyDocParser(context, file);
+        else if (format == QLatin1String("mobi")) parser = document::mobiParser(context, file);
+        else if (format == QLatin1String("markdown")) parser = document::markdownParser(context, *input, file);
+        else context.invalid();
+        title = context.doc->title; author = context.doc->author;
+    }
+    QJsonObject sequential(const QString &token) {
+        if (!deferredError.isEmpty()) throw document::Stop{deferredError};
+        context.clock.restart(); context.sourceRead = 0;
+        bool ok = false;
+        const int requested = token.toInt(&ok);
+        if (!ok || requested < 0 || QString::number(requested) != token) context.invalid();
+        if (!parser || requested != next) resetParser();
+        bool more = true;
+        while (next <= requested) {
+            context.check();
+            context.doc = std::make_shared<FormattedDocument>(); context.blocks = context.nodes = 0;
+            context.doc->title = title; context.doc->author = author;
+            parser->begin();
+            for (int units = 0; units < 64 && context.doc->plainText.size() < 8192; ++units) {
+                const auto before = std::make_shared<FormattedDocument>(*context.doc);
+                try { if (!parser->next()) { more = false; break; } }
+                catch (const document::Stop &stop) {
+                    if (stop.cancelled || before->plainText.trimmed().isEmpty()) throw;
+                    deferredError = stop.partial ? QStringLiteral("A document block exceeds the per-portion content budget.") : stop.error;
+                    context.doc = before; break;
+                }
+            }
+            parser->end();
+            title = context.doc->title; author = context.doc->author;
+            if (next++ == requested) break;
+            if (!more) context.invalid();
+        }
+        if (context.doc->plainText.trimmed().isEmpty() && context.doc->images.isEmpty()) context.text(QStringLiteral("[Empty section]"));
+        return document::documentPortion(context, requested ? QString::number(requested - 1) : QString(), more ? QString::number(next) : QString());
+    }
+    explicit State(const QString &sourcePath, const QString &readerFormat) : format(readerFormat), path(sourcePath) {
+        FileResource resource; resource.path = sourcePath;
+        if (!openPreviewFile(resource, file, error)) return;
+        size = file.size(); modified = file.fileTime(QFileDevice::FileModificationTime);
+    }
+};
+RichDocumentPortionReader::RichDocumentPortionReader(const QString &path, const QString &format) : state_(std::make_unique<State>(path, format)) {}
+RichDocumentPortionReader::~RichDocumentPortionReader() = default;
+QJsonObject RichDocumentPortionReader::read(const QString &token)
+{
+    auto &s = *state_;
+    if (!s.error.isEmpty()) return {{"error", s.error}};
+    const auto changed = [&] { return s.file.size() != s.size || s.file.fileTime(QFileDevice::FileModificationTime) != s.modified; };
+    if (changed()) return {{"error", QStringLiteral("The source changed. Reopen the preview to continue.")}};
+    try {
+        if (s.textFallback) {
+            auto reply = s.textFallback->read(token);
+            auto content = reply.value("content").toObject();
+            content.insert(QStringLiteral("notice"), QStringLiteral("Markdown shown as plain text; table layout exceeds preview limits."));
+            reply.insert(QStringLiteral("content"), content); return reply;
+        }
+        if (s.format != QLatin1String("docx") && s.format != QLatin1String("epub")) {
+            auto reply = s.sequential(token);
+            if (changed()) return {{"error", QStringLiteral("The source changed. Reopen the preview to continue.")}};
+            return reply;
+        }
+        if (!s.package) {
+            s.context.clock.restart();
+            s.package = std::make_unique<document::Package>(s.context, s.file);
+            s.package->pixelLimit = 2 * 1024 * 1024;
+            if (s.format == QLatin1String("docx")) s.word = std::make_unique<document::WordReader>(*s.package);
+            else { s.reader = std::make_unique<document::EpubReader>(*s.package); s.reader->initialize(); }
+        }
+        auto reply = s.word ? s.word->portion(token) : s.reader->portion(token);
+        if (changed()) return {{"error", QStringLiteral("The source changed. Reopen the preview to continue.")}};
+        return reply;
+    } catch (const document::NavigationStop &stop) {
+        return {{"previous", ""}, {"next", ""}, {"content", QJsonObject{{"kind", "navigation-error"}, {"message", stop.message}}}};
+    } catch (const document::Stop &stop) {
+        if (s.format == QLatin1String("markdown") && token == QLatin1String("0")
+            && stop.error.startsWith(QLatin1String("Markdown shown as plain text"))) {
+            s.parser.reset(); s.input.reset();
+            s.textFallback = std::make_unique<TextPortionReader>(s.path);
+            return read(token);
+        }
+        s.error = stop.partial ? QStringLiteral("A document block exceeds the per-portion content budget.") : stop.error;
+        return {{"error", s.error}};
+    }
+}
+
 }

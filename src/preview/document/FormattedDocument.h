@@ -16,6 +16,8 @@ struct FormattedDocument {
     QString author;
     QString notice;
     QList<DocumentSection> sections;
+    QList<DocumentSection> navigation; // Reader-owned unloaded chapter targets.
+    QString targetAnchor;
     QHash<QString, QImage> images;
     bool partial = false;
 };

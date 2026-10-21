@@ -1,3 +1,4 @@
+#include "preview/readers/DocumentReader.h"
 #include "application/CommandLine.h"
 #include "application/InstanceCoordinator.h"
 #include "controller/PreviewController.h"
@@ -8,6 +9,10 @@
 #include "resources/ResourcePreparation.h"
 #include "resources/FolderNavigation.h"
 #include "resources/media/MediaSourceHelper.h"
+#include "preview/pdf/PdfProtocol.h"
+#include "preview/image/ImageDecodeJob.h"
+#include "preview/xlsx/XlsxDecodeJob.h"
+#include "preview/lazy/LazyCoordinator.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -23,6 +28,27 @@ int fail(const QString &error, int code = 1)
 
 int main(int argc, char *argv[])
 {
+    if (argc == 4 && QByteArray(argv[1]) == QByteArrayLiteral("--internal-lazy") && dzurkel::DocumentReader::supportsPortions(QString::fromLocal8Bit(argv[3]))) {
+        // Reuse the document decoder's headless runtime for native raster plugins.
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+        QGuiApplication decoder(argc, argv);
+        return dzurkel::serveLazy(decoder.arguments().at(2), decoder.arguments().at(3));
+    }
+    if (argc >= 2 && QByteArray(argv[1]) == QByteArrayLiteral("--internal-document")) {
+        if (argc != 4) return 2;
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+        QGuiApplication decoder(argc, argv);
+        return dzurkel::serveDocument(decoder.arguments().at(2), decoder.arguments().at(3));
+    }
+    if (argc >= 2 && QByteArray(argv[1]) == QByteArrayLiteral("--internal-image")) {
+        if (argc != 4) return 2;
+        // Some public image plugins (e.g. SVG with text) require a GUI runtime.
+        // The decoder has no window and never connects to the user's display.
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+        QGuiApplication decoder(argc, argv);
+        return dzurkel::serveImage(decoder.arguments().at(2), decoder.arguments().at(3));
+    }
+
     dzurkel::Request request;
     QString error;
     bool kdeActivation = false;
@@ -32,6 +58,18 @@ int main(int argc, char *argv[])
         QCoreApplication commandLine(argc, argv);
         commandLine.setApplicationName(QStringLiteral("dzurkel"));
         commandLine.setApplicationVersion(QStringLiteral(DZURKEL_VERSION));
+        if (commandLine.arguments().value(1) == QStringLiteral("--internal-lazy")) {
+            if (commandLine.arguments().size() != 4) return 2;
+            return dzurkel::serveLazy(commandLine.arguments().at(2), commandLine.arguments().at(3));
+        }
+        if (commandLine.arguments().value(1) == QStringLiteral("--internal-xlsx")) {
+            if (commandLine.arguments().size() != 3) return 2;
+            return dzurkel::serveXlsx(commandLine.arguments().at(2));
+        }
+        if (commandLine.arguments().value(1) == QStringLiteral("--internal-pdf")) {
+            if (commandLine.arguments().size() != 3) return 2;
+            return dzurkel::servePdf(commandLine.arguments().at(2));
+        }
         if (commandLine.arguments().value(1) == QStringLiteral("--internal-media-source")) {
             if (commandLine.arguments().size() != 4 || commandLine.arguments().at(3) != QStringLiteral("0")) return 2;
             return dzurkel::serveMediaSource(commandLine.arguments().at(2));
@@ -41,8 +79,8 @@ int main(int argc, char *argv[])
             return dzurkel::enumerateResourceFolder(commandLine.arguments().at(2), commandLine.arguments().at(3) == QStringLiteral("navigate"));
         }
         if (commandLine.arguments().value(1) == QStringLiteral("--internal-prepare-resource")) {
-            if (commandLine.arguments().size() != 4) return 2;
-            return dzurkel::prepareResourceSnapshot(commandLine.arguments().at(2), commandLine.arguments().at(3));
+            if (commandLine.arguments().size() != 3) return 2;
+            return dzurkel::prepareResource(commandLine.arguments().at(2));
         }
         if (!dzurkel::parseCommandLine(commandLine.arguments(), request, error)) return fail(error, 2);
         request.activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN");

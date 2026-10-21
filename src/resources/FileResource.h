@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QByteArray>
 #include <QUrl>
 #include <QJsonObject>
 #include <memory>
@@ -18,7 +19,13 @@ struct FileResource {
     bool informationOnly = false;
     // A media source is opened on demand by the playback helper, not snapshotted.
     bool streaming = false;
-    // Original identity stays in path/url; decoding uses an owned local snapshot.
+    // A decoder helper reads the resolved local/mounted source directly.
+    bool seekableSource = false;
+    // Bounded source bytes read by the access helper; no temporary file or reopen.
+    bool boundedPrefix = false;
+    QByteArray prefix;
+    // Original identity stays in path/url; file-based decoding uses a snapshot
+    // or resolved source, while boundedPrefix readers use prefix above.
     QString backingPath;
     QJsonObject metadata;
     std::shared_ptr<QTemporaryDir> backingStore;

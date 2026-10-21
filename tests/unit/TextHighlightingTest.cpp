@@ -105,6 +105,44 @@ private slots:
             QVERIFY(highlighter.isNull());
         }
     }
+    void insertingSegmentsUsesExistingIncrementalHighlighter()
+    {
+        if (!expectsBackend()) QSKIP("Optional highlighting adapter unavailable.");
+        QPlainTextEdit editor;
+        const auto initial = QStringLiteral("int resident = 1;\n/* opening comment\n");
+        editor.setPlainText(initial);
+        QVERIFY(highlightText(&editor, QStringLiteral("segments.cpp"), QStringLiteral("text/x-c++src")));
+        auto *highlighter = editor.document()->findChild<QSyntaxHighlighter *>();
+        QVERIFY(highlighter);
+        auto *residentState = editor.document()->begin().userData();
+        QVERIFY(residentState);
+        const auto verify = [&] {
+            QPlainTextEdit reference;
+            reference.setPlainText(editor.toPlainText());
+            if (!highlightText(&reference, QStringLiteral("segments.cpp"), QStringLiteral("text/x-c++src"))) return false;
+            QCoreApplication::processEvents();
+            auto actual = editor.document()->begin();
+            for (auto expected = reference.document()->begin(); expected.isValid(); expected = expected.next(), actual = actual.next()) {
+                if (!actual.isValid() || actual.layout()->formats() != expected.layout()->formats()) return false;
+            }
+            return !actual.isValid();
+        };
+        for (const auto &segment : {QStringLiteral("still a comment: int fake = 42;\n"),
+                                   QStringLiteral("end comment */\nint value = 42;\n")}) {
+            QTextCursor edit(editor.document());
+            edit.movePosition(QTextCursor::End);
+            edit.insertText(segment);
+            QTRY_VERIFY(verify());
+            QCOMPARE(editor.document()->findChild<QSyntaxHighlighter *>(), highlighter);
+            QCOMPARE(editor.document()->begin().userData(), residentState);
+        }
+        // Prepending also lets the existing lexer propagate state through Qt's
+        // affected blocks, without replacing the document or adapter.
+        QTextCursor prepend(editor.document());
+        prepend.insertText(QStringLiteral("// earlier segment\n"));
+        QTRY_VERIFY(verify());
+        QCOMPARE(editor.document()->findChild<QSyntaxHighlighter *>(), highlighter);
+    }
     void unsupportedAndLargeTextStayPlain()
     {
         QPlainTextEdit editor;

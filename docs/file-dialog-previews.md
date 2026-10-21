@@ -5,7 +5,7 @@ and upload dialogs. This covers compatible Qt 6 applications using KDE's
 KFileWidget and applications using the KDE desktop portal file chooser.
 Dolphin and Nautilus integrations keep their existing behavior.
 
-Available in 0.9.0 builds containing the optional adapter, with a
+Introduced in 0.9.0 and retained in 1.0.0 builds containing the optional adapter, with a
 user-reported smoke test on Fedora. Native KDE portal and kdialog checks passed
 on Fedora KDE Wayland. The adapter is not included in the older 0.8.0
 installers. The smoke report does not specify individual applications or

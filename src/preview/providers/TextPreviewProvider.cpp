@@ -7,8 +7,12 @@
 #include <QSettings>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include "preview/lazy/LazyTextWindow.h"
 #include "ui/ZoomPreview.h"
 #include "preview/readers/TextDecoder.h"
+#include "preview/readers/TextCodec.h"
 #include "preview/text/TextHighlighting.h"
 
 namespace dzurkel {
@@ -26,6 +30,7 @@ public:
         layout->setContentsMargins(0, 0, 0, 0);
         editor_->setObjectName(QStringLiteral("textPreview"));
         editor_->setReadOnly(true);
+        editor_->setUndoRedoEnabled(false);
         wrap_ = new QToolButton(this);
         wrap_->setObjectName(QStringLiteral("wrapLines"));
         wrap_->setText(QStringLiteral("Wrap lines"));
@@ -47,11 +52,41 @@ public:
         baseFont_ = QFontDatabase::systemFont(QFontDatabase::FixedFont);
         if (baseFont_.pointSizeF() <= 0) baseFont_.setPointSizeF(11);
         editor_->setFont(baseFont_);
+        toolbar_ = wrap_;
         editor_->setPlainText(data.text);
         QString fileName = data.resource.url.fileName();
         if (fileName.isEmpty()) fileName = QFileInfo(data.resource.path).fileName();
         highlightText(editor_, fileName, data.mimeType);
         layout->addWidget(editor_);
+        if (data.lazy) {
+            auto *status = new QLabel(this);
+            status->setObjectName(QStringLiteral("textLoadingStatus"));
+            status->setTextFormat(Qt::PlainText);
+            status->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+            status->setFixedHeight(status->fontMetrics().height() + 4);
+            layout->addWidget(status);
+            auto *lazy = new LazyTextWindow(editor_, status, data.lazy,
+                LazyPortion{QStringLiteral("0"), data.lazyPrevious, data.lazyNext,
+                    QJsonObject{{"text", data.text}}, 0});
+            toolbar_ = new QWidget(this);
+            auto *tools = new QHBoxLayout(toolbar_);
+            tools->setContentsMargins(0, 0, 0, 0);
+            tools->setSpacing(6);
+            tools->addWidget(wrap_);
+            auto *beginning = new QToolButton(toolbar_);
+            beginning->setObjectName(QStringLiteral("textBeginning"));
+            beginning->setText(QStringLiteral("Beginning"));
+            beginning->setToolTip(QStringLiteral("Show the beginning of the file (Ctrl+Home)"));
+            beginning->setAccessibleName(beginning->text());
+            auto *end = new QToolButton(toolbar_);
+            end->setObjectName(QStringLiteral("textEnd"));
+            end->setText(QStringLiteral("End"));
+            end->setToolTip(QStringLiteral("Show the final portion of the file (Ctrl+End)"));
+            end->setAccessibleName(end->text());
+            tools->addWidget(beginning); tools->addWidget(end);
+            connect(beginning, &QToolButton::clicked, lazy, &LazyTextWindow::showBeginning);
+            connect(end, &QToolButton::clicked, lazy, &LazyTextWindow::showEnd);
+        }
         setFocusProxy(editor_);
     }
     void zoomBy(int steps) override { apply(steppedZoom(steps)); }
@@ -60,7 +95,7 @@ public:
     bool isFit() const override { return factor_ == 1.0; }
     qreal maximumZoom() const override { return 3.0; }
     qreal minimumZoom() const override { return .5; }
-    QWidget *toolbarWidget() const override { return wrap_; }
+    QWidget *toolbarWidget() const override { return toolbar_; }
     QString zoomHint() const override { return QStringLiteral("Text size only; Fit restores the default font size. Whitespace and line wrapping are unchanged."); }
 private:
     void apply(qreal factor)
@@ -75,6 +110,7 @@ private:
     }
     QPlainTextEdit *editor_;
     QToolButton *wrap_;
+    QWidget *toolbar_;
     QFont baseFont_;
     qreal factor_ = 1.0;
 };
@@ -90,7 +126,11 @@ bool TextPreviewProvider::supports(const QMimeType &mime) const
 PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData data,
                                     const QSize &, const Cancellation &cancel) const
 {
-    auto decoded = decodePreviewText(*file, ByteLimit, cancel);
+    return loadFromDevice(*file, std::move(data), cancel);
+}
+PreviewData TextPreviewProvider::loadFromDevice(QIODevice &device, PreviewData data, const Cancellation &cancel) const
+{
+    auto decoded = decodePreviewText(device, ByteLimit, cancel);
     if (decoded.cancelled) { data.kind = PreviewKind::Cancelled; return data; }
     if (!decoded.error.isEmpty()) { data.message = decoded.error; return data; }
     data.truncated = decoded.truncated;
@@ -98,10 +138,7 @@ PreviewData TextPreviewProvider::load(std::unique_ptr<QFile> file, PreviewData d
     QString text = std::move(decoded.text);
     // QPlainTextEdit treats these as paragraph breaks too. Normalize them
     // before applying the line budget, including standalone classic-Mac CR.
-    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    text.replace(QChar('\r'), QChar('\n'));
-    text.replace(QChar::LineSeparator, QChar('\n'));
-    text.replace(QChar::ParagraphSeparator, QChar('\n'));
+    TextCodec::normalizeLines(text);
     QString bounded;
     bounded.reserve(text.size());
     int lines = 1;

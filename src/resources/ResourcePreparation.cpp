@@ -1,6 +1,7 @@
 #include "ResourcePreparation.h"
 #include "preview/providers/FileInfoProvider.h"
 #include "preview/PreviewLibrary.h"
+#include "preview/providers/DocumentPreviewProvider.h"
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -9,9 +10,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QImageIOHandler>
 #include <QJsonDocument>
 #include <QMimeDatabase>
-#include <QTemporaryDir>
 #include <QTextStream>
 
 namespace dzurkel {
@@ -19,12 +20,7 @@ namespace {
 // One current helper plus one cancelled helper being reaped. A kernel-stuck
 // filesystem call must not allow rapid requests to spawn unbounded processes.
 int activeHelpers = 0;
-QString snapshotName(const FileResource &resource)
-{
-    // Some optional readers use the suffix as well as content sniffing.
-    const auto suffix = QFileInfo(resource.path).suffix().left(32);
-    return suffix.isEmpty() ? QStringLiteral("content") : QStringLiteral("content.") + suffix;
-}
+constexpr qint64 ResponseLimit = 4 * 1024 * 1024;
 QJsonObject metadata(const PreviewData &data)
 {
     return {{QStringLiteral("mime"), data.mimeType}, {QStringLiteral("description"), data.description},
@@ -76,16 +72,11 @@ void ResourcePreparation::start(const FileResource &resource)
         QTimer::singleShot(0, this, [this] { finish(QStringLiteral("Previous file access is still stopping. Try again shortly.")); });
         return;
     }
-    resource_.backingStore = std::make_shared<QTemporaryDir>(
-        QDir::tempPath() + QStringLiteral("/dzurkel-resource-XXXXXX"));
-    if (!resource_.backingStore->isValid()) {
-        QTimer::singleShot(0, this, [this] { finish(QStringLiteral("Cannot create a temporary preview directory.")); });
-        return;
-    }
     process_ = new QProcess(this);
     ++activeHelpers;
     connect(process_, &QObject::destroyed, [] { --activeHelpers; });
     process_->setProcessChannelMode(QProcess::SeparateChannels);
+    connect(process_, &QProcess::readyReadStandardOutput, this, &ResourcePreparation::readOutput);
     connect(process_, &QProcess::readyReadStandardError, this, [this] {
         // Helper diagnostics can contain transport details. Errors for users
         // travel through the bounded structured response instead.
@@ -94,37 +85,73 @@ void ResourcePreparation::start(const FileResource &resource)
     // Tests and the installed executable both keep dzurkel in the same bindir.
     process_->setProgram(QCoreApplication::applicationDirPath() + QStringLiteral("/dzurkel"));
     process_->setArguments({QStringLiteral("--internal-prepare-resource"),
-        resource.url.toString(QUrl::FullyEncoded), resource_.backingStore->path()});
+        resource.url.toString(QUrl::FullyEncoded)});
     connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) finish(QStringLiteral("Cannot start the resource preparation helper."));
     });
     connect(process_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int code, QProcess::ExitStatus status) {
         if (finished_) return;
+        readOutput();
+        if (finished_) return;
         if (status != QProcess::NormalExit || code != 0) {
             finish(QStringLiteral("Resource preparation failed. Check that the location is accessible."));
             return;
         }
-        const auto bytes = process_->readAllStandardOutput();
-        const auto object = bytes.size() <= 65536 ? QJsonDocument::fromJson(bytes).object() : QJsonObject();
+        auto object = QJsonDocument::fromJson(response_).object();
+        response_.clear();
         if (object.isEmpty()) { finish(QStringLiteral("Invalid resource preparation response.")); return; }
         if (object.contains(QStringLiteral("error"))) { finish(object.value(QStringLiteral("error")).toString()); return; }
-        resource_.metadata = object;
         resource_.informationOnly = object.value(QStringLiteral("informationOnly")).toBool();
-        resource_.streaming = object.value(QStringLiteral("streaming")).toBool() && !resource_.informationOnly;
-        if (resource_.streaming)
+        resource_.boundedPrefix = object.value(QStringLiteral("boundedPrefix")).toBool() && !resource_.informationOnly;
+        if (resource_.boundedPrefix) {
+            const auto capability = PreviewLibrary::capability(object.value(QStringLiteral("reader")).toString());
+            const auto encoded = object.take(QStringLiteral("prefix"));
+            if (!capability || capability->access != SourceAccess::BoundedPrefix || !encoded.isString()
+                || encoded.toString().size() > (capability->sourceLimit + 2) / 3 * 4) {
+                finish(QStringLiteral("Invalid text prefix response.")); return;
+            }
+            const auto decoded = QByteArray::fromBase64Encoding(encoded.toString().toLatin1(), QByteArray::AbortOnBase64DecodingErrors);
+            if (!decoded || decoded.decoded.size() > capability->sourceLimit) {
+                finish(QStringLiteral("Invalid text prefix response.")); return;
+            }
+            resource_.prefix = decoded.decoded;
             resource_.backingStore.reset();
-        else if (!resource_.informationOnly)
-            resource_.backingPath = resource_.backingStore->filePath(snapshotName(resource_));
+        }
+        resource_.metadata = object;
+        resource_.streaming = object.value(QStringLiteral("streaming")).toBool() && !resource_.informationOnly;
+        resource_.seekableSource = object.value(QStringLiteral("seekableSource")).toBool() && !resource_.informationOnly;
+        if (resource_.seekableSource) {
+            const auto path = object.value(QStringLiteral("sourcePath")).toString();
+            const auto reader = object.value(QStringLiteral("reader")).toString();
+            const auto capability = PreviewLibrary::capability(reader);
+            if (!QDir::isAbsolutePath(path) || !capability || capability->access != SourceAccess::SeekableSource) {
+                finish(QStringLiteral("Invalid direct decoder source response."));
+                return;
+            }
+            resource_.backingPath = path;
+            resource_.backingStore.reset();
+        } else if (resource_.streaming)
+            resource_.backingStore.reset();
         finish();
     });
     timer_.start();
     process_->start();
 }
+void ResourcePreparation::readOutput()
+{
+    if (finished_ || !process_) return;
+    response_ += process_->read(ResponseLimit + 1 - response_.size());
+    if (response_.size() > ResponseLimit)
+        finish(QStringLiteral("Resource preparation response exceeds its budget."));
+}
 void ResourcePreparation::finish(const QString &error)
 {
     if (finished_) return;
+    response_.clear();
     if (!error.isEmpty()) {
+        resource_.prefix.clear();
+        resource_.boundedPrefix = false;
         resource_.informationOnly = true;
         resource_.metadata = {{QStringLiteral("mime"), QStringLiteral("application/octet-stream")},
             {QStringLiteral("description"), QStringLiteral("Preview unavailable")},
@@ -154,7 +181,7 @@ bool resolveDesktopPath(const FileResource &resource, QString &path, QString &er
     return true;
 }
 
-int prepareResourceSnapshot(const QString &url, const QString &directory)
+int prepareResource(const QString &url)
 {
     FileResource original;
     QString error;
@@ -181,31 +208,43 @@ int prepareResourceSnapshot(const QString &url, const QString &directory)
     const auto capability = PreviewLibrary::capability(PreviewLibrary::select(input, mime, original.path));
     input.seek(0);
     if (!capability) return report(object);
+    if (capability->access == SourceAccess::BoundedPrefix) {
+        const auto bytes = input.read(capability->sourceLimit);
+        if (input.error() != QFileDevice::NoError) return failure(QStringLiteral("Could not read the preview source."));
+        object.insert(QStringLiteral("boundedPrefix"), true);
+        object.insert(QStringLiteral("prefix"), QString::fromLatin1(bytes.toBase64()));
+        object.insert(QStringLiteral("reader"), capability->id);
+        object.insert(QStringLiteral("informationOnly"), false);
+        return report(object);
+    }
+    if (capability->access == SourceAccess::SeekableSource) {
+        // Reuse the header reader before the decoder process starts. These
+        // built-in formats need no GUI runtime; font-using plugins such as SVG
+        // publish their dimensions from the image helper instead.
+        const QStringList headerFormats{QStringLiteral("image/png"), QStringLiteral("image/jpeg"),
+            QStringLiteral("image/bmp"), QStringLiteral("image/x-ms-bmp"), QStringLiteral("image/gif")};
+        if (capability->id == QStringLiteral("image") && headerFormats.contains(mime.name())) {
+            QImageReader reader(&input);
+            reader.setAutoTransform(true);
+            auto size = reader.size();
+            if (reader.transformation().testFlag(QImageIOHandler::TransformationRotate90)) size.transpose();
+            if (size.isValid() && !size.isEmpty()) {
+                object.insert(QStringLiteral("imageWidth"), size.width());
+                object.insert(QStringLiteral("imageHeight"), size.height());
+            }
+        }
+        object.insert(QStringLiteral("seekableSource"), true);
+        object.insert(QStringLiteral("sourcePath"), source.path);
+        object.insert(QStringLiteral("reader"), capability->id);
+        object.insert(QStringLiteral("informationOnly"), false);
+        return report(object);
+    }
     if (capability->access == SourceAccess::Streaming) {
         object.insert(QStringLiteral("streaming"), true);
         object.insert(QStringLiteral("informationOnly"), false);
         object.insert(QStringLiteral("reader"), capability->id);
         return report(object);
     }
-    const qint64 limit = capability->sourceLimit;
-    const bool complete = capability->access == SourceAccess::CompleteSnapshot;
-    if (input.size() > limit && complete) {
-        object.insert(QStringLiteral("message"), QStringLiteral("File exceeds the %1 MiB content preview limit.").arg(limit / (1024 * 1024)));
-        return report(object);
-    }
-    QFile output(QDir(directory).filePath(snapshotName(original)));
-    if (!output.open(QIODevice::WriteOnly | QIODevice::NewOnly)) return failure(QStringLiteral("Cannot create preview snapshot."));
-    qint64 copied = 0;
-    while (copied < limit) {
-        const auto bytes = input.read(qMin<qint64>(128 * 1024, limit - copied));
-        if (input.error() != QFileDevice::NoError) return failure(QStringLiteral("Could not read the preview source."));
-        if (bytes.isEmpty()) break;
-        if (output.write(bytes) != bytes.size()) return failure(QStringLiteral("Cannot write the preview snapshot (check temporary disk space)."));
-        copied += bytes.size();
-    }
-    if (complete && !input.atEnd()) return failure(QStringLiteral("File grew beyond the content preview limit."));
-    if (!output.flush()) return failure(QStringLiteral("Cannot finish the preview snapshot."));
-    object.insert(QStringLiteral("informationOnly"), false);
-    return report(object);
+    return failure(QStringLiteral("Unsupported resource access policy."));
 }
 } // namespace dzurkel

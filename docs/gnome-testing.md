@@ -25,6 +25,14 @@ its preview. Restore releases Dzurkel’s provider name without quitting Files.
 
 The adapter implements the Nautilus 50 `org.gnome.NautilusPreviewer2` contract.
 Initial support is for local files and folders; GVfs/network URI integration is not included.
+
+Selected installed-app checks of the progressive-loading implementation passed
+on the Ubuntu GNOME Wayland VM under the 0.9.0 development version: real Files
+Space/Escape, SQL Beginning/End and DOCX/Markdown scrolling. Native text and full
+CSV/XLSX checks passed too. One EPUB continuation check reproducibly differed by
+one pixel in its text anchor; that is not a top-level window-resizing failure.
+See [exact results and limits](testing.md#ubuntu-gnome-vm-lazy-loading-acceptance-2026-10-21).
+These records are distinct from tagged 1.0.0 release validation.
 KDE Settings retains the Dolphin workflow. Detection uses the current desktop
 and installed supported file managers; an ambiguous unsupported desktop shows
 unavailable controls.

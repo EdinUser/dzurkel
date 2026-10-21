@@ -11,6 +11,7 @@
 #include "readers/DocumentReader.h"
 #include "readers/CsvReader.h"
 #include <QFile>
+#include <QBuffer>
 #include <QFileInfo>
 #include <QImageReader>
 #include <algorithm>
@@ -31,43 +32,43 @@ QList<ReaderCapability> PreviewLibrary::readers()
          SourceAccess::Streaming, 0},
         {QStringLiteral("image"), QStringLiteral("Images"), QStringLiteral("image-x-generic"), QStringLiteral("imageInfo"),
          QStringLiteral("Available image readers: %1. Actual support depends on the file and installed Qt plugins. Images fit without enlargement; GIFs play with bounded frames and Pause/Play. Other animations show a static frame.").arg(formats.join(QStringLiteral(", "))),
-         SourceAccess::CompleteSnapshot, 64 * 1024 * 1024},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("pdf"), QStringLiteral("PDF"), QStringLiteral("application-pdf"), QStringLiteral("pdfInfo"),
-         QStringLiteral("Read-only PDF previews with scrolling and zoom. Password-protected, damaged, or oversized documents show file information instead."),
-         SourceAccess::CompleteSnapshot, 64 * 1024 * 1024},
+         QStringLiteral("Read-only PDF previews with pages rendered on demand, scrolling and zoom. Pages load directly from the file without a whole-file copy or a file-size/page-count cap. Password-protected or damaged documents show file information instead."),
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("csv"), QStringLiteral("CSV / TSV tables"), QStringLiteral("x-office-spreadsheet"), QStringLiteral("csvInfo"),
-         QStringLiteral("Read-only tables for CSV and TSV, using comma, semicolon or tab separators. Values remain literal text; no formulas are evaluated. Complete records are shown within byte, row, column and cell limits. Malformed CSV falls back to text."),
-         SourceAccess::PrefixSnapshot, CsvReader::ByteLimit + 1},
+         QStringLiteral("Read-only CSV/TSV tables using comma, semicolon or tab separators. Complete row batches load as you scroll, with bounded memory and backward navigation. Values remain literal text; no formulas are evaluated. Malformed initial CSV falls back to text; field, column and work budgets remain."),
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("xlsx"), QStringLiteral("Excel XLSX tables"), QStringLiteral("x-office-spreadsheet"), QStringLiteral("xlsxInfo"),
-         QStringLiteral("Simple read-only tables and sheet tabs for XLSX. Shows saved values, recognized dates/times and markers for unavailable formula results; never calculates formulas. Saved results may be stale. Other formatting, charts and macros are ignored. Bounded loading with partial-preview notices; legacy XLS is not supported."),
-         SourceAccess::CompleteSnapshot, XlsxReader::ByteLimit},
+         QStringLiteral("Simple read-only tables and sheet tabs for XLSX, read directly without a whole-file copy or file-size admission cap. Shows saved values, recognized dates/times and markers for unavailable formula results; never calculates formulas. Saved results may be stale. Other formatting, charts and macros are ignored. Bounded loading with partial-preview notices; legacy XLS is not supported."),
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("docx"), QStringLiteral("Word DOCX"), QStringLiteral("x-office-document"), QStringLiteral("docxInfo"),
          QStringLiteral("Quick content previews with basic headings, emphasis, lists, tables and images. Unsupported formatting contributes readable text where possible; exact page layout is omitted. Bounded loading; no editing or external content."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("rtf"), QStringLiteral("Rich text RTF"), QStringLiteral("x-office-document"), QStringLiteral("rtfInfo"),
          QStringLiteral("Quick content previews with basic emphasis and readable text. Complex formatting and tables are simplified; embedded objects are placeholders. Bounded loading; no editing."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("epub"), QStringLiteral("EPUB books"), QStringLiteral("application-epub+zip"), QStringLiteral("epubInfo"),
          QStringLiteral("Quick previews of the beginning of DRM-free EPUB books in reading order. Basic formatting, images and a compact Contents menu. Publisher layout is simplified; scripts, remote content and embedded fonts are ignored. No library or reading-progress management."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("doc"), QStringLiteral("Legacy Word DOC"), QStringLiteral("x-office-document"), QStringLiteral("docInfo"),
          QStringLiteral("Bounded text-only previews using the optional antiword extractor. Formatting is omitted. If antiword is unavailable, file information explains the limitation. No office suite or package installation."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("fb2"), QStringLiteral("FictionBook FB2"), QStringLiteral("application-epub+zip"), QStringLiteral("fb2Info"),
          QStringLiteral("Bounded previews of FictionBook XML with headings, emphasis and readable text. Images use placeholders; complex layouts and links are simplified. No editing or external resources."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("sfb"), QStringLiteral("Chitanka SFB"), QStringLiteral("text-x-generic"), QStringLiteral("sfbInfo"),
          QStringLiteral("Bounded UTF-8 previews with basic Chitanka titles, chapter headings and emphasis. Unrecognized formatting remains readable text."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("mobi"), QStringLiteral("Mobipocket MOBI"), QStringLiteral("application-epub+zip"), QStringLiteral("mobiInfo"),
          QStringLiteral("Bounded previews of unencrypted MOBI 6 books using PalmDOC compression or uncompressed text. Basic formatting; images use placeholders. HUFF/CDIC, KF8 and encrypted variants show an explanation. No external converter is required."),
-         SourceAccess::CompleteSnapshot, DocumentReader::ByteLimit},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("markdown"), QStringLiteral("Markdown"), QStringLiteral("text-markdown"), QStringLiteral("markdownInfo"),
          QStringLiteral("Read-only formatted previews for MD and Markdown: headings, lists, emphasis, quotes, code and tables. Embedded HTML and external resources are disabled. Bounded content with partial-preview notices."),
-         SourceAccess::PrefixSnapshot, TextPreviewProvider::ByteLimit + 1},
+         SourceAccess::SeekableSource, 0},
         {QStringLiteral("text"), QStringLiteral("Plain text"), QStringLiteral("text-x-generic"), QStringLiteral("textInfo"),
-         QStringLiteral("Read-only text and source files. Large files are truncated with a notice; binary files show file information instead."),
-         SourceAccess::PrefixSnapshot, TextPreviewProvider::ByteLimit + 1}
+         QStringLiteral("Read-only text and source files. Content loads progressively near the visible boundary, with a bounded cache and backward navigation. Binary files show file information instead."),
+         SourceAccess::SeekableSource, 0}
     };
 }
 std::optional<ReaderCapability> PreviewLibrary::capability(const QString &id)
@@ -80,7 +81,13 @@ QString PreviewLibrary::select(QFile &file, const QMimeType &mime, const QString
     if (PdfPreviewProvider().supports(mime) || file.peek(1024).startsWith("%PDF-")) return QStringLiteral("pdf");
     bool image = false;
     {
-        QImageReader reader(&file);
+        // Some installed image plugins scan far beyond a signature in canRead().
+        // Give Qt a bounded probe, keeping the real direct source for decoding
+        // after selection. Known image MIME types remain an independent route.
+        QBuffer probe;
+        probe.setData(file.peek(16 * 1024));
+        probe.open(QIODevice::ReadOnly);
+        QImageReader reader(&probe);
         image = reader.canRead();
     }
     file.seek(0);

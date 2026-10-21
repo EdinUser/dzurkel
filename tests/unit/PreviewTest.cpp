@@ -21,8 +21,9 @@
 #include <QPushButton>
 #include <QPainter>
 #include <QPdfDocument>
-#include <QPdfPageNavigator>
-#include <QPdfView>
+#include "preview/pdf/PdfView.h"
+#include "preview/pdf/PdfSession.h"
+#include <QEventLoop>
 #include <QPdfWriter>
 #include <QPlainTextEdit>
 #include <QSemaphore>
@@ -46,6 +47,7 @@ public:
     QSize size;
     QList<QSize> mappings;
     bool informationReadyAtFirstShow = false;
+    bool loadingAtFirstShow = false;
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override {
         if (event->type() == QEvent::Show && !event->spontaneous()) {
@@ -53,6 +55,7 @@ protected:
             if (size.isEmpty()) {
                 size = mapped;
                 informationReadyAtFirstShow = watched->findChild<QWidget *>(QStringLiteral("fileInfoPreview")) != nullptr;
+                loadingAtFirstShow = watched->findChild<QLabel *>(QStringLiteral("previewLoading")) != nullptr;
             }
             mappings.append(mapped);
         }
@@ -86,7 +89,7 @@ private slots:
     void shutdownCancelsCooperativeWorker();
     void textAndPdfChildrenDoNotConsumeDismissal();
     void repeatedlyReplacesAndReleasesProviders();
-    void retainedPdfRuntimeStillReleasesEachDocument();
+    void pdfHelpersReleaseEachSession();
     void informationFallbackTemporarilyCompactsWindow();
     void imageWindowsFitContentAndPreserveReadingSize();
     void mappedImageAndTableTransitionsRestoreReadingSize();
@@ -97,6 +100,9 @@ private slots:
     void coldInformationRespectsLoadingGrace();
     void hideBeforeFirstMappingPreventsResurrection();
     void newestRequestBeforeFirstMappingWins();
+    void pendingPreviewKeepsContentGeometryAndIdentity();
+    void slowFirstPreviewUsesCompactLoader();
+    void latestGeometrySurvivesFirstExposureAndCaptionChanges();
     void visiblePreviewReactivatesOnExplicitShow();
     void gnomePresentationKeepsPendingContentAndDismissal();
     void gnomeReopenedImagesFitAfterNativeMaximize();
@@ -421,9 +427,8 @@ void PreviewTest::coldInformationRespectsLoadingGrace()
         QVERIFY(firstShow.size.height() >= 220);
         QVERIFY(firstShow.size.height() < 500);
     } else {
-        const QSize area = window->screen()->availableGeometry().size();
-        QVERIFY(firstShow.size.width() >= area.width() * 80 / 100);
-        QVERIFY(firstShow.size.height() >= area.height() * 80 / 100);
+        QVERIFY(firstShow.size.width() >= 380 && firstShow.size.width() <= 560);
+        QVERIFY(firstShow.size.height() < 400);
     }
     // Both presentation paths must finish at the same compact geometry.
     QTRY_VERIFY(window->width() >= 380 && window->width() <= 560);
@@ -480,6 +485,119 @@ void PreviewTest::newestRequestBeforeFirstMappingWins()
     QVERIFY(firstShow.size.height() <= area.height());
 }
 
+void PreviewTest::pendingPreviewKeepsContentGeometryAndIdentity()
+{
+    const auto first = write(QStringLiteral("steady-first.png"), "fixture");
+    const auto second = write(QStringLiteral("steady-second.png"), "fixture");
+    auto release = std::make_shared<std::atomic_bool>(false);
+    PreviewController controller(false, [first, release](const FileResource &resource, const QSize &, const Cancellation &cancel) {
+        while (resource.path != first && !release->load() && !cancel->load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        PreviewData data;
+        data.resource = resource;
+        data.kind = cancel->load() ? PreviewKind::Cancelled : PreviewKind::Image;
+        data.imageSize = resource.path == first ? QSize(40, 30) : QSize(700, 420);
+        data.image = QImage(data.imageSize, QImage::Format_RGB32);
+        data.image.fill(Qt::blue);
+        return data;
+    });
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    FirstShowSize mappings;
+    window->installEventFilter(&mappings);
+    QString error;
+    QVERIFY(controller.show(first, error));
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTRY_COMPARE(window->size(), QSize(400, 400));
+    auto *canvas = window->findChild<QWidget *>(QStringLiteral("imageCanvas"));
+    QVERIFY(canvas);
+    const auto title = window->windowTitle();
+    const auto count = mappings.mappings.size();
+    QVERIFY(controller.show(second, error));
+    QTest::qWait(200); // An already mapped preview must never become a loader.
+    QVERIFY(controller.loading());
+    QCOMPARE(window->windowTitle(), title);
+    QCOMPARE(window->size(), QSize(400, 400));
+    QCOMPARE(window->findChild<QWidget *>(QStringLiteral("imageCanvas")), canvas);
+    QVERIFY(!window->findChild<QLabel *>(QStringLiteral("previewLoading")));
+    QCOMPARE(mappings.mappings.size(), count);
+    release->store(true);
+    QTRY_VERIFY(!controller.loading());
+    QTRY_VERIFY(window->width() >= 700);
+    QCOMPARE(window->windowTitle(), QFileInfo(second).fileName());
+    if (!window->usesGnomePresentation()) QCOMPARE(mappings.mappings.size(), count);
+}
+void PreviewTest::slowFirstPreviewUsesCompactLoader()
+{
+    auto release = std::make_shared<std::atomic_bool>(false);
+    PreviewController controller(false, [release](const FileResource &resource, const QSize &, const Cancellation &cancel) {
+        while (!release->load() && !cancel->load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        PreviewData data;
+        data.resource = resource;
+        data.kind = cancel->load() ? PreviewKind::Cancelled : PreviewKind::Text;
+        data.text = QStringLiteral("Ready to read.");
+        return data;
+    });
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QString error;
+    QVERIFY(controller.show(write(QStringLiteral("slow-first.txt"), "fixture"), error));
+    QTest::qWait(75);
+    QVERIFY(!window->isVisible());
+    QTRY_VERIFY(window->isVisible());
+    QVERIFY(controller.loading());
+    QVERIFY(window->findChild<QLabel *>(QStringLiteral("previewLoading")));
+    QVERIFY(window->width() >= 380 && window->width() <= 560);
+    QVERIFY(window->height() < 400);
+    release->store(true);
+    QTRY_VERIFY(!controller.loading());
+    QVERIFY(!window->findChild<QLabel *>(QStringLiteral("previewLoading")));
+    QTRY_VERIFY(window->height() > window->width());
+}
+void PreviewTest::latestGeometrySurvivesFirstExposureAndCaptionChanges()
+{
+    PreviewWindow window;
+    FirstShowSize mappings;
+    window.installEventFilter(&mappings);
+    window.preparePresentation();
+    window.setContent(new QLabel(QStringLiteral("Loading preview…")));
+    window.prepareLoading();
+    window.present();
+    // Commit synchronously after show(), before Qt dispatches the first native
+    // exposure. The loader's mapped size must not overwrite the ready preview.
+    PreviewData reading;
+    reading.kind = PreviewKind::Text;
+    FileResource resource;
+    resource.path = write(QStringLiteral("before-exposure.txt"), "Reading");
+    resource.url = QUrl::fromLocalFile(resource.path);
+    window.setResource(resource);
+    window.setContent(new QLabel(QStringLiteral("Ready to read")));
+    window.setPreviewData(reading);
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QTRY_VERIFY(window.height() > window.width());
+    const auto readingSize = window.size();
+    const auto mappingCount = mappings.mappings.size();
+    PreviewData information;
+    information.kind = PreviewKind::Information;
+    // Each commit changes the caption and geometry in the same event-loop turn.
+    // Wayland caption delivery and the KWin D-Bus transaction are independent.
+    for (int cycle = 0; cycle < 6; ++cycle) {
+        resource.path = write(QStringLiteral("caption-information-%1.bin").arg(cycle), "fixture");
+        resource.url = QUrl::fromLocalFile(resource.path);
+        window.setResource(resource);
+        window.setContent(new QLabel(QStringLiteral("Information")));
+        window.setPreviewData(information);
+        QTRY_VERIFY(window.width() <= 560 && window.height() < 400);
+        resource.path = write(QStringLiteral("caption-reading-%1.txt").arg(cycle), "Reading");
+        resource.url = QUrl::fromLocalFile(resource.path);
+        window.setResource(resource);
+        window.setContent(new QLabel(QStringLiteral("Ready to read")));
+        window.setPreviewData(reading);
+        QTRY_COMPARE(window.size(), readingSize);
+    }
+    QCOMPARE(mappings.mappings.size(), mappingCount);
+}
+
 void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
 {
     const QString unsupported = write(QStringLiteral("cold-information.zip"), QByteArray::fromHex("504b030400010203ff"));
@@ -505,21 +623,22 @@ void PreviewTest::coldInformationThenReopenedPdfKeepsContentAndSize()
         // Match user dismissal: allow content teardown before another CLI show.
         QTRY_VERIFY(!window->findChild<QWidget *>(QStringLiteral("fileInfoPreview")));
         QVERIFY(controller.show(pdf, error));
-        // Placement must use the large size before the async provider finishes.
-        // Qt cannot repair the compositor's global position afterward on Wayland.
+        // The loading window restores its general geometry; the first rendered
+        // page then determines the bounded initial PDF size.
         const QSize area = window->screen()->availableGeometry().size();
-        QVERIFY(window->width() >= area.width() * 80 / 100);
-        QVERIFY(window->height() >= area.height() * 80 / 100);
+        QVERIFY(window->width() >= 400);
+        QVERIFY(window->height() >= 400);
         QTRY_VERIFY(!controller.loading());
         QVERIFY(QTest::qWaitForWindowExposed(window));
         QTest::qWait(100);
         QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
-        QTRY_VERIFY(window->width() >= area.width() * 80 / 100);
-        QTRY_VERIFY(window->height() >= area.height() * 80 / 100);
-        QVERIFY(window->findChild<QPdfView *>()->isVisible());
+        QVERIFY(window->width() <= area.width());
+        QVERIFY(window->height() <= area.height());
+        QVERIFY(window->height() >= 400);
+        QVERIFY(window->findChild<PdfView *>()->isVisible());
         if (cycle == 3) QVERIFY(window->grab().save(QStringLiteral("preview-reopened-pdf.png")));
         controller.hide();
-        QTRY_VERIFY(!window->findChild<QPdfView *>());
+        QTRY_VERIFY(!window->findChild<PdfView *>());
     }
 }
 
@@ -663,7 +782,12 @@ void PreviewTest::imageWindowsFitContentAndPreserveReadingSize()
     QTRY_VERIFY(!controller.loading());
     QVERIFY(QTest::qWaitForWindowExposed(window));
     QTRY_COMPARE(window->size(), QSize(400, 400));
-    QCOMPARE(firstShow.size, QSize(400, 400));
+    // A slow decoder may map the compact loader first. A content-first mapping
+    // must already have the final size.
+    if (firstShow.loadingAtFirstShow) {
+        QVERIFY(firstShow.size.width() <= 560);
+        QVERIFY(firstShow.size.height() < 400);
+    } else QCOMPARE(firstShow.size, QSize(400, 400));
     auto *zoom = window->findChild<ZoomPreview *>();
     QVERIFY(zoom);
     QCOMPARE(zoom->zoomFactor(), 1.0);
@@ -831,7 +955,7 @@ void PreviewTest::informationFallbackRestoresMaximizedPreview()
     QTRY_VERIFY(window->isMaximized());
 }
 
-void PreviewTest::retainedPdfRuntimeStillReleasesEachDocument()
+void PreviewTest::pdfHelpersReleaseEachSession()
 {
     const QString file = makePdf();
     PreviewController controller;
@@ -840,13 +964,13 @@ void PreviewTest::retainedPdfRuntimeStillReleasesEachDocument()
         QVERIFY2(controller.show(file, error), qPrintable(error));
         QTRY_VERIFY(!controller.loading());
         QCOMPARE(controller.previewKind(), QStringLiteral("pdf"));
-        auto *view = controller.window()->findChild<QPdfView *>();
+        auto *view = controller.window()->findChild<PdfView *>();
         QVERIFY(view);
-        QPointer<QPdfDocument> previous = view->document();
+        QPointer<PdfSession> previous = view->session();
         QVERIFY(previous);
         controller.hide();
         QTRY_VERIFY(previous.isNull());
-        QVERIFY(!controller.window()->findChild<QPdfView *>());
+        QVERIFY(!controller.window()->findChild<PdfView *>());
     }
 }
 
@@ -873,7 +997,33 @@ PreviewData PreviewTest::load(const QString &path, const QSize &size)
         result.message = error;
         return result;
     }
-    return PreviewRegistry::load(resource, size, std::make_shared<std::atomic_bool>(false));
+    auto data = PreviewRegistry::load(resource, size, std::make_shared<std::atomic_bool>(false));
+    if (data.kind != PreviewKind::Pdf) return data;
+    auto session = std::make_shared<PdfSession>(data.resource);
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    connect(session.get(), &PdfSession::frameReady, &loop, [&](int, const QSizeF &points, const QImage &image) {
+        data.pdfSession = session;
+        data.pdfPageCount = session->pageCount();
+        data.pdfFirstPageSize = points;
+        data.image = image;
+        loop.quit();
+    });
+    connect(session.get(), &PdfSession::failed, &loop, [&](const QString &message) {
+        data.kind = PreviewKind::Information;
+        data.message = message;
+        loop.quit();
+    });
+    session->request(0, size.width());
+    timer.start(5000);
+    loop.exec();
+    if (!data.pdfSession && data.kind == PreviewKind::Pdf) {
+        data.kind = PreviewKind::Information;
+        data.message = QStringLiteral("PDF test timed out.");
+    }
+    return data;
 }
 QString PreviewTest::makePdf()
 {
@@ -1078,21 +1228,21 @@ void PreviewTest::loadsMultipagePdfAndReleasesIt()
     for (int i = 0; i < 5; ++i) {
         auto data = load(path);
         QCOMPARE(data.kind, PreviewKind::Pdf);
-        QVERIFY(data.pdf);
-        QCOMPARE(data.pdf->pageCount(), 2);
-        QVERIFY(!data.pdf->render(0, QSize(160, 200)).isNull());
-        QPointer<QPdfDocument> guard(data.pdf.get());
+        QVERIFY(data.pdfSession);
+        QCOMPARE(data.pdfPageCount, 2);
+        QVERIFY(!data.image.isNull());
+        QPointer<PdfSession> guard(data.pdfSession.get());
         auto *widget = PreviewRegistry::createWidget(data, nullptr);
-        auto *view = widget->findChild<QPdfView *>();
+        auto *view = qobject_cast<PdfView *>(widget);
         QVERIFY(view);
-        QCOMPARE(view->pageMode(), QPdfView::PageMode::MultiPage);
-        QCOMPARE(view->zoomMode(), QPdfView::ZoomMode::FitToWidth);
-        QCOMPARE(view->pageNavigator()->currentPage(), 0);
+        QVERIFY(view->isFit());
+        QCOMPARE(view->currentPage(), 0);
         widget->resize(400, 400);
         widget->show();
         QCoreApplication::processEvents();
         delete widget;
-        data.pdf.reset();
+        data.pdfSession.reset();
+        QTRY_COMPARE(PdfSession::runningHelpers(), 0);
         QVERIFY(guard.isNull());
     }
 }
@@ -1108,14 +1258,7 @@ void PreviewTest::handlesInvalidAndProtectedPdf()
     decrypted.setPassword(QStringLiteral("secret"));
     QCOMPARE(decrypted.load(QStringLiteral(DZURKEL_FIXTURES) + QStringLiteral("/password-protected.pdf")), QPdfDocument::Error::None);
     QCOMPARE(decrypted.pageCount(), 1);
-    const QString large = write(QStringLiteral("large.pdf"), "%PDF-1.7\n");
-    QFile sparse(large);
-    QVERIFY(sparse.open(QIODevice::WriteOnly | QIODevice::Append));
-    QVERIFY(sparse.resize(65 * 1024 * 1024));
-    sparse.close();
-    const auto tooLarge = load(large);
-    QCOMPARE(tooLarge.kind, PreviewKind::Information);
-    QVERIFY(tooLarge.message.contains(QStringLiteral("64 MiB")));
+
 }
 void PreviewTest::describesDirectoriesLinksAndFifos()
 {
@@ -1264,7 +1407,7 @@ void PreviewTest::textAndPdfChildrenDoNotConsumeDismissal()
         QTRY_VERIFY_WITH_TIMEOUT(!controller.loading(), 5000);
         auto *target = path == text
             ? static_cast<QWidget *>(controller.window()->findChild<QPlainTextEdit *>())
-            : static_cast<QWidget *>(controller.window()->findChild<QPdfView *>());
+            : static_cast<QWidget *>(controller.window()->findChild<PdfView *>());
         QVERIFY(target);
         target->window()->activateWindow();
         QTRY_VERIFY(controller.window()->isActiveWindow());
@@ -1301,12 +1444,12 @@ void PreviewTest::repeatedlyReplacesAndReleasesProviders()
             QCOMPARE(controller.previewKind(), sample.second);
             auto *status = controller.window()->findChild<QLabel *>(QStringLiteral("previewStatus"));
             QVERIFY(status);
-            QVERIFY(!status->text().contains(QStringLiteral("unavailable")));
+            QVERIFY2(!status->text().contains(QStringLiteral("unavailable")), qPrintable(sample.second + QStringLiteral(": ") + status->text()));
             const QString name = sample.second == QStringLiteral("information") ? QStringLiteral("fileInfoPreview") : sample.second + QStringLiteral("Preview");
             QPointer<QWidget> content = controller.window()->findChild<QWidget *>(name);
             QVERIFY(content);
-            QPointer<QPdfDocument> document;
-            if (auto *view = content->findChild<QPdfView *>()) document = view->document();
+            QPointer<PdfSession> document;
+            if (auto *view = qobject_cast<PdfView *>(content.data())) document = view->session();
             if (cycle == 0) content->window()->grab().save(QStringLiteral("preview-%1.png").arg(sample.second));
             controller.hide();
             QTRY_VERIFY(content.isNull());

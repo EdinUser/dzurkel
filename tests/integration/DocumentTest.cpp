@@ -2,7 +2,14 @@
 #include "preview/PreviewRegistry.h"
 #include "preview/readers/DocumentReader.h"
 #include "preview/document/DocumentView.h"
+#include "preview/document/DocumentRecords.h"
+#include "preview/lazy/LazyCoordinator.h"
+#include <QWheelEvent>
+#include <QJsonArray>
 #include "controller/PreviewController.h"
+#include "preview/StructuredDecodeJob.h"
+#include "resources/ResourcePreparation.h"
+#include "resources/ResourceAccessPolicy.h"
 #include <QBuffer>
 #include <QDBusConnection>
 #include <QDirIterator>
@@ -17,6 +24,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextTable>
+#include <QTextImageFormat>
 #include <QTextBlock>
 #include <QTextList>
 #include <QTextLayout>
@@ -27,8 +35,13 @@
 #include <QScreen>
 #include <QToolButton>
 #include <QTest>
+#include <QSignalSpy>
+#include <QColorSpace>
+#include <QScopeGuard>
+#include <QFileInfo>
 #include <zip.h>
 #include <QtEndian>
+#include <signal.h>
 
 using namespace dzurkel;
 namespace {
@@ -89,6 +102,7 @@ class DocumentTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase();
+    void cleanup();
     void selectsFormatsWithoutOverridingStrongSignatures();
     void wordPreservesContentAndSimplifiesUnsupportedFormatting();
     void epubUsesSpineOrderAndSanitizesContent();
@@ -115,21 +129,75 @@ private slots:
     void localAndRemoteControllerUseDocument_data();
     void localAndRemoteControllerUseDocument();
     void optionalPrivateSamples();
+    void allFormatsUseSharedHelper_data();
+    void allFormatsUseSharedHelper();
+    void packagesSeekAcrossSparseGap_data();
+    void packagesSeekAcrossSparseGap();
+    void sequentialPrefixesRetainBeginning_data();
+    void sequentialPrefixesRetainBeginning();
+    void mobiSkipsLargeUnusedRecords();
+    void helperPreservesEmbeddedImage();
+    void legacyExtractorReadsValidatedDescriptor();
+    void helperRejectsIncompleteDocument();
+    void helperRejectsIncompleteDocument_data();
+    void cancellationStopsExtractorDescendants();
+    void markdownFallbackSurvivesHelperTransfer();
+    void epubPortionsContinueAndReplaySemanticBlocks();
+    void epubDefersChaptersAndKeepsImagesAndLinks();
+    void epubWindowEvictsAndNavigatesWithStableGeometry();
+    void epubFormatsOnlyInsertedPortion();
+    void wordPortionsStreamAndReplayWithNumbering();
+    void wordWindowEvictsWithStableSelectionAndGeometry();
+    void remainingDocumentPortionsContinueAndReplay_data();
+    void remainingDocumentPortionsContinueAndReplay();
+    void documentWindowsContinueAndEvict_data();
+    void documentWindowsContinueAndEvict();
+    void legacyPortionsBackpressureAndReplay();
+    void markdownKeepsStructuresAndForwardReferences();
+    void documentContinuationKeepsEncodingAndLateErrors();
 private:
     QString write(const QString &name, const QByteArray &bytes);
     QString archive(const QString &suffix, const Parts &parts);
     DocumentResult read(const QString &path, const QString &format);
+    FileResource prepare(const QString &path);
+    PreviewData loadPrepared(const FileResource &resource, const QString &program = {});
     QTemporaryDir directory_;
     DocumentFuse fuse_;
     int serial_ = 0;
 };
 void DocumentTest::initTestCase()
 {
+    qRegisterMetaType<PreviewData>();
     QVERIFY(directory_.isValid());
     qputenv("XDG_CONFIG_HOME", directory_.filePath("config").toUtf8());
     auto bus = QDBusConnection::sessionBus();
     QVERIFY(bus.registerService(QStringLiteral("org.kde.KIOFuse")));
     QVERIFY(bus.registerObject(QStringLiteral("/org/kde/KIOFuse"), &fuse_, QDBusConnection::ExportAllSlots));
+}
+void DocumentTest::cleanup()
+{
+    QTRY_COMPARE(StructuredDecodeJob::runningHelpers(), 0);
+    QTRY_COMPARE(LazyCoordinator::runningHelpers(), 0);
+}
+FileResource DocumentTest::prepare(const QString &path)
+{
+    FileResource resource;
+    QString error;
+    if (!parseFileResource(path, resource, error)) { QTest::qFail(qPrintable(error), __FILE__, __LINE__); return {}; }
+    ResourcePreparation preparation;
+    QSignalSpy ready(&preparation, &ResourcePreparation::ready);
+    preparation.start(resource);
+    if (!ready.wait(5000)) { QTest::qFail("Preparation did not complete", __FILE__, __LINE__); return {}; }
+    return qvariant_cast<FileResource>(ready.first().first());
+}
+PreviewData DocumentTest::loadPrepared(const FileResource &resource, const QString &program)
+{
+    const auto candidate = PreviewRegistry::load(resource, {}, std::make_shared<std::atomic_bool>(false));
+    if (candidate.kind != PreviewKind::Document || candidate.document) { QTest::qFail("Expected an unloaded document candidate", __FILE__, __LINE__); return {}; }
+    StructuredDecodeJob job(candidate, nullptr, program);
+    QSignalSpy ready(&job, &StructuredDecodeJob::completed);
+    if (!ready.wait(10000)) { QTest::qFail("Document helper did not complete", __FILE__, __LINE__); return {}; }
+    return qvariant_cast<PreviewData>(ready.first().first());
 }
 QString DocumentTest::write(const QString &name, const QByteArray &bytes)
 {
@@ -169,7 +237,8 @@ void DocumentTest::selectsFormatsWithoutOverridingStrongSignatures()
         QCOMPARE(PreviewLibrary::select(file, mime, path), QLatin1String(suffix));
         QCOMPARE(file.pos(), 0);
         QVERIFY(PreviewLibrary::createReader(QLatin1String(suffix)));
-        QCOMPARE(PreviewLibrary::capability(QLatin1String(suffix))->sourceLimit, DocumentReader::ByteLimit);
+        QCOMPARE(PreviewLibrary::capability(QLatin1String(suffix))->access, SourceAccess::SeekableSource);
+        QCOMPARE(PreviewLibrary::capability(QLatin1String(suffix))->sourceLimit, 0);
     }
     QFile file(write("misleading.docx", "%PDF-1.7\n")); QVERIFY(file.open(QIODevice::ReadOnly));
     QCOMPARE(PreviewLibrary::select(file, {}, file.fileName()), QStringLiteral("pdf"));
@@ -426,11 +495,11 @@ void DocumentTest::resourceLimitsAndCancellation()
     QFile file(write("cancelled.rtf", "{\\rtf1 example}")); QVERIFY(file.open(QIODevice::ReadOnly));
     result = DocumentReader::read(file, "rtf", std::make_shared<std::atomic_bool>(true));
     QVERIFY(result.cancelled); QVERIFY(!result.document);
-    result = read(write("large.rtf", QByteArray(DocumentReader::ByteLimit + 1, 'x')), "rtf");
+    result = read(write("large.rtf", QByteArray(DocumentReader::InputPrefixLimit + 1, 'x')), "rtf");
     QVERIFY(!result.document);
     auto parts = epub("<p>early</p>");
     parts.insert("ignored.bin", QByteArray(65 * 1024 * 1024, 'x'));
-    QVERIFY(!read(archive("epub", parts), "epub").document);
+    QVERIFY(read(archive("epub", parts), "epub").document);
 }
 void DocumentTest::viewIsReadOnlyAndBlocksResourceLoading()
 {
@@ -662,9 +731,10 @@ void DocumentTest::readingGeometryDoesNotReplaceOtherPreviewSizes()
     PreviewData table; table.kind = PreviewKind::Table; show(table);
     QTRY_COMPARE(window.size(), generalDefault);
     window.resize(740, 520); QTRY_COMPARE(window.size(), QSize(740, 520));
-    const auto generalSize = window.size();
+    const auto tableSize = window.size();
     show(data); QTRY_COMPARE(window.size(), readingSize);
-    PreviewData pdf; pdf.kind = PreviewKind::Pdf; show(pdf); QTRY_COMPARE(window.size(), generalSize);
+    PreviewData pdf; pdf.kind = PreviewKind::Pdf; show(pdf); QTRY_COMPARE(window.size(), generalDefault);
+    show(table); QTRY_COMPARE(window.size(), tableSize);
     PreviewData text; text.kind = PreviewKind::Text; text.text = "Plain text keeps its whitespace.";
     show(text); QTRY_COMPARE(window.size(), readingSize);
     auto *plain = window.findChild<QPlainTextEdit *>(); QVERIFY(plain);
@@ -687,7 +757,7 @@ void DocumentTest::readingGeometryDoesNotReplaceOtherPreviewSizes()
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     QTest::qWait(100); // Complete the compositor's new mapping before switching profiles.
     QTRY_COMPARE(window.size(), readingSize);
-    show(table); QTRY_COMPARE(window.size(), generalSize);
+    show(table); QTRY_COMPARE(window.size(), tableSize);
 }
 void DocumentTest::docFooterKeepsWarningsSeparate()
 {
@@ -724,6 +794,844 @@ void DocumentTest::localAndRemoteControllerUseDocument()
     QTest::keyClick(text, Qt::Key_Space);
     QTRY_VERIFY(!controller.isVisible());
     QTRY_VERIFY(!window->findChild<QTextBrowser *>());
+}
+void DocumentTest::allFormatsUseSharedHelper_data()
+{
+    QTest::addColumn<QString>("format");
+    QTest::addColumn<QString>("base");
+    for (const auto &format : {"docx", "epub", "rtf", "fb2", "sfb", "mobi", "markdown"})
+        for (const auto &base : {QString(), QStringLiteral("smb://server/share/"), QStringLiteral("sftp://user@server:2222/")})
+            QTest::newRow(qPrintable(QString::fromLatin1(format) + QChar('-') + (base.isEmpty() ? "local" : base.left(base.indexOf(':')))))
+                << QString::fromLatin1(format) << base;
+}
+void DocumentTest::allFormatsUseSharedHelper()
+{
+    QFETCH(QString, format);
+    QFETCH(QString, base);
+    QString path;
+    if (format == "docx") path = archive(format, docx("<w:p><w:r><w:t>Readable beginning</w:t></w:r></w:p>"));
+    else if (format == "epub") path = archive(format, epub("<h1>Chapter</h1><p>Readable beginning</p>"));
+    else if (format == "rtf") path = write("shared.rtf", "{\\rtf1 Readable beginning}");
+    else if (format == "fb2") path = write("shared.fb2", "<FictionBook><body><section><title><p>Chapter</p></title><p>Readable beginning</p></section></body></FictionBook>");
+    else if (format == "sfb") path = write("shared.sfb", ">\tChapter\nReadable beginning\n");
+    else if (format == "mobi") path = write("shared.mobi", mobi({"<h1>Chapter</h1><p>Readable beginning</p>"}));
+    else path = write("shared.md", "# Chapter\n\nReadable beginning\n");
+    QString error;
+    QVERIFY(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith("sftp:"), error));
+    fuse_.path = path;
+    const auto url = base.isEmpty() ? path : base + QFileInfo(path).fileName();
+    const auto resource = prepare(url);
+    QVERIFY(resource.seekableSource);
+    QVERIFY(!resource.backingStore);
+    QCOMPARE(resource.backingPath, path);
+    const auto data = loadPrepared(resource);
+    QCOMPARE(data.kind, PreviewKind::Document);
+    QVERIFY(data.document->plainText.contains("Readable beginning"));
+    QCOMPARE(data.resource.url, resource.url);
+    PreviewController controller;
+    QVERIFY(controller.show(url, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("document"));
+    auto *text = controller.window()->findChild<QTextBrowser *>();
+    QVERIFY(text);
+    QVERIFY(text->toPlainText().contains("Readable beginning"));
+    QCOMPARE(controller.fileUrl(), resource.url.toString(QUrl::FullyEncoded));
+}
+void DocumentTest::packagesSeekAcrossSparseGap_data()
+{
+    QTest::addColumn<QString>("format");
+    QTest::newRow("docx") << QStringLiteral("docx");
+    QTest::newRow("epub") << QStringLiteral("epub");
+}
+void DocumentTest::packagesSeekAcrossSparseGap()
+{
+    QFETCH(QString, format);
+    const auto path = archive(format, format == "docx" ? docx("<w:p><w:r><w:t>Early content</w:t></w:r></w:p>") : epub("<p>Early content</p>"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadWrite));
+    const auto bytes = file.readAll();
+    const auto end = bytes.size() - 22;
+    QCOMPARE(bytes.mid(end, 4), QByteArray::fromHex("504b0506"));
+    const auto offset = qFromLittleEndian<quint32>(bytes.constData() + end + 16);
+    auto directory = bytes.mid(offset);
+    constexpr quint32 gap = 256 * 1024 * 1024;
+    qToLittleEndian<quint32>(offset + gap, directory.data() + directory.size() - 22 + 16);
+    QVERIFY(file.resize(offset));
+    QVERIFY(file.seek(offset + gap));
+    QCOMPARE(file.write(directory), directory.size());
+    file.close();
+    const auto resource = prepare(path);
+    QVERIFY(!resource.backingStore);
+    const auto data = loadPrepared(resource);
+    QCOMPARE(data.kind, PreviewKind::Document);
+    QVERIFY(data.document->plainText.contains("Early content"));
+    QVERIFY(QFile::remove(path));
+    QCOMPARE(loadPrepared(resource).kind, PreviewKind::Information);
+}
+void DocumentTest::sequentialPrefixesRetainBeginning_data()
+{
+    QTest::addColumn<QString>("format");
+    for (const auto &format : {"rtf", "fb2", "sfb", "markdown"}) QTest::newRow(format) << QString::fromLatin1(format);
+}
+void DocumentTest::sequentialPrefixesRetainBeginning()
+{
+    QFETCH(QString, format);
+    QByteArray bytes;
+    if (format == "rtf") bytes = "{\\rtf1 Early content {\\pict\\bin16778240 " + QByteArray(16778240, '\0') + "}}";
+    else if (format == "fb2") bytes = "<FictionBook><body><p>Early content</p></body><binary>" + QByteArray(DocumentReader::InputPrefixLimit + 1024, 'Q') + "</binary></FictionBook>";
+    else if (format == "sfb") bytes = "Early content\n" + QByteArray(DocumentReader::InputPrefixLimit + 1024, 'x');
+    else bytes = "Early content\n\n" + QByteArray(2 * 1024 * 1024 + 1024, 'x');
+    const auto path = write(format == "markdown" ? "prefix.md" : "prefix." + format, bytes);
+    const auto result = loadPrepared(prepare(path));
+    QCOMPARE(result.kind, PreviewKind::Document);
+    QVERIFY(result.document->partial);
+    QVERIFY(result.document->plainText.contains("Early content"));
+    QVERIFY(result.document->notice.contains("Partial"));
+}
+void DocumentTest::mobiSkipsLargeUnusedRecords()
+{
+    auto bytes = mobi({"<p>Early content</p>", "unused"});
+    const auto header = qFromBigEndian<quint32>(bytes.constData() + 78);
+    qToBigEndian<quint16>(1, bytes.data() + header + 8);
+    qToBigEndian<quint32>(20, bytes.data() + header + 4);
+    const auto path = write("large-unused.mobi", bytes);
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadWrite));
+    QVERIFY(file.resize(256 * 1024 * 1024));
+    file.close();
+    const auto data = loadPrepared(prepare(path));
+    QCOMPARE(data.kind, PreviewKind::Document);
+    QVERIFY(data.document->plainText.contains("Early content"));
+}
+void DocumentTest::helperPreservesEmbeddedImage()
+{
+    QImage image(30, 20, QImage::Format_RGBA64);
+    image.fill(QColor(30, 110, 200, 128));
+    image.setColorSpace(QColorSpace(QColorSpace::DisplayP3));
+    QByteArray bytes;
+    QBuffer buffer(&bytes);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QVERIFY(image.save(&buffer, "PNG"));
+    auto parts = epub("<h1>Chapter</h1><p>Early content</p><img src=\"image.png\"/>");
+    parts.insert("OPS/image.png", bytes);
+    const auto data = loadPrepared(prepare(archive("epub", parts)));
+    QCOMPARE(data.kind, PreviewKind::Document);
+    QCOMPARE(data.document->images.size(), 1);
+    const auto actual = data.document->images.value("dzurkel-image:0");
+    QCOMPARE(actual.size(), image.size());
+    QCOMPARE(actual.format(), image.format());
+    QCOMPARE(actual.pixelColor(0, 0), image.pixelColor(0, 0));
+    QCOMPARE(actual.colorSpace(), image.colorSpace());
+    QVERIFY(!data.document->sections.isEmpty());
+    QVERIFY(data.document->html.contains("dzurkel-image:0"));
+}
+void DocumentTest::legacyExtractorReadsValidatedDescriptor()
+{
+    const auto program = directory_.filePath("antiword");
+    QFile script(program);
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write("#!/usr/bin/python3\nimport os,sys\nassert sys.argv[-1] == '/proc/self/fd/0'\nwith open(sys.argv[-1], 'rb') as f:\n assert f.read(8) == bytes.fromhex('d0cf11e0a1b11ae1')\n assert os.fstat(f.fileno()).st_size > 16000000\nprint('Validated descriptor text')\n");
+    script.close();
+    QVERIFY(QFile::setPermissions(program, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const auto saved = qgetenv("PATH");
+    const auto restore = qScopeGuard([saved] { qputenv("PATH", saved); });
+    qputenv("PATH", directory_.path().toUtf8());
+    const auto path = write("large.doc", QByteArray::fromHex("d0cf11e0a1b11ae1"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadWrite));
+    QVERIFY(file.resize(256 * 1024 * 1024));
+    file.close();
+    const auto data = loadPrepared(prepare(path));
+    QCOMPARE(data.kind, PreviewKind::Document);
+    QVERIFY(data.document->plainText.contains("Validated descriptor text"));
+    QVERIFY(data.message.contains("Text-only"));
+    QVERIFY(QFile::remove(program));
+    const auto missing = loadPrepared(prepare(path));
+    QCOMPARE(missing.kind, PreviewKind::Information);
+    QCOMPARE(missing.missingLibrary, QStringLiteral("antiword"));
+}
+void DocumentTest::cancellationStopsExtractorDescendants()
+{
+    const auto program = directory_.filePath("antiword");
+    QFile script(program);
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write("#!/usr/bin/python3\nimport os,sys,subprocess,time\np=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'])\nwith open(os.environ['DZURKEL_TEST_CHILD_PID'],'w') as f: f.write(str(p.pid))\ntime.sleep(30)\n");
+    script.close();
+    QVERIFY(QFile::setPermissions(program, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const auto saved = qgetenv("PATH");
+    const auto pidFile = directory_.filePath("extractor-child.pid");
+    const auto restore = qScopeGuard([saved] { qputenv("PATH", saved); qunsetenv("DZURKEL_TEST_CHILD_PID"); });
+    qputenv("PATH", directory_.path().toUtf8());
+    qputenv("DZURKEL_TEST_CHILD_PID", pidFile.toUtf8());
+    const auto resource = prepare(write("cancel-extractor.doc", QByteArray::fromHex("d0cf11e0a1b11ae1")));
+    const auto candidate = PreviewRegistry::load(resource, {}, std::make_shared<std::atomic_bool>(false));
+    StructuredDecodeJob job(candidate);
+    QTRY_VERIFY(QFileInfo::exists(pidFile));
+    QFile pidInput(pidFile);
+    QVERIFY(pidInput.open(QIODevice::ReadOnly));
+    const auto pid = pidInput.readAll().toLongLong();
+    QVERIFY(pid > 0);
+    QElapsedTimer elapsed;
+    elapsed.start();
+    job.stop();
+    QVERIFY(elapsed.elapsed() < 100);
+    const auto stopped = [pid] {
+        QFile status(QStringLiteral("/proc/%1/stat").arg(pid));
+        if (!status.open(QIODevice::ReadOnly)) return true;
+        const auto bytes = status.readAll();
+        return bytes.mid(bytes.lastIndexOf(')') + 2, 1) == "Z";
+    };
+    QTRY_VERIFY(stopped());
+}
+void DocumentTest::markdownFallbackSurvivesHelperTransfer()
+{
+    const auto path = write("wide-markdown.md", QByteArray("a|").repeated(300) + "\n\nReadable beginning\n");
+    const auto data = loadPrepared(prepare(path));
+    QCOMPARE(data.kind, PreviewKind::Text);
+    QVERIFY(data.text.contains("Readable beginning"));
+    QVERIFY(data.message.contains("Markdown shown as plain text"));
+}
+void DocumentTest::helperRejectsIncompleteDocument_data()
+{
+    QTest::addColumn<QByteArray>("output");
+    const QByteArray begin = "{\"event\":\"document\",\"partial\":false,\"text\":false}\n";
+    QTest::newRow("incomplete") << begin + "{\"event\":\"field\",\"name\":\"plainText\",\"value\":\"Incomplete\"}\n";
+    QTest::newRow("unknown-field") << begin + "{\"event\":\"field\",\"name\":\"unbounded\",\"value\":\"x\"}\n";
+    QTest::newRow("wrong-payload") << QByteArray("{\"event\":\"begin\",\"partial\":false,\"notice\":\"\"}\n");
+    QTest::newRow("image-budget") << begin + "{\"event\":\"image\",\"id\":\"dzurkel-image:0\",\"width\":5000,\"height\":5000,\"format\":5,\"bytes\":100000000,\"profileBytes\":0}\n";
+    QTest::newRow("missing-image-data") << begin + "{\"event\":\"image\",\"id\":\"dzurkel-image:0\",\"width\":1,\"height\":1,\"format\":5,\"bytes\":4,\"profileBytes\":0}\n{\"event\":\"image-end\"}\n";
+    QTest::newRow("external-dependency") << QByteArray("{\"event\":\"error\",\"message\":\"x\",\"missingLibrary\":\"unknown\"}\n");
+}
+void DocumentTest::helperRejectsIncompleteDocument()
+{
+    QFETCH(QByteArray, output);
+    const auto program = directory_.filePath("incomplete.py");
+    QFile script(program);
+    QVERIFY(script.open(QIODevice::WriteOnly));
+    script.write("#!/usr/bin/python3\nimport sys\nsys.stdout.buffer.write(bytes.fromhex('" + output.toHex() + "'))\nsys.stdout.flush()\n");
+    script.close();
+    QVERIFY(QFile::setPermissions(program, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const auto resource = prepare(write("incomplete.rtf", "{\\rtf1 Early}"));
+    const auto result = loadPrepared(resource, program);
+    QCOMPARE(result.kind, PreviewKind::Information);
+    QVERIFY(!result.document);
+}
+
+void DocumentTest::epubPortionsContinueAndReplaySemanticBlocks()
+{
+    QByteArray body("<div id=\"whole\"><h1>Long chapter</h1>");
+    for (int i = 0; i < 1800; ++i)
+        body += "<p id=\"p" + QByteArray::number(i) + "\">Paragraph " + QByteArray::number(i) + " <b>" + QByteArray(180, 'x') + "</b> café 世界😀</p>";
+    body += "</div>";
+    const auto path = archive("epub", epub(body));
+    EpubPortionReader reader(path);
+    QString token = QStringLiteral("0"), previous;
+    QString text;
+    int portions = 0;
+    do {
+        const auto reply = reader.read(token);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        std::shared_ptr<const FormattedDocument> document;
+        QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), document));
+        QVERIFY(document->plainText.size() < 20000);
+        QVERIFY(!document->partial);
+        text += document->plainText;
+        previous = reply.value("previous").toString();
+        token = reply.value("next").toString();
+        ++portions;
+    } while (!token.isEmpty());
+    QVERIFY(text.size() > DocumentReader::CharacterLimit);
+    QCOMPARE(text.count(QStringLiteral("Paragraph ")), 1800);
+    QVERIFY(text.contains(QString::fromUtf8("café 世界😀")));
+    QVERIFY(portions > 20);
+    for (int count = 0; count < 3; ++count) {
+        const auto reply = reader.read(previous);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        previous = reply.value("previous").toString();
+    }
+    const auto target = QStringLiteral("a") + QString::fromLatin1(QByteArray("OPS/z.xhtml").toHex()) + '-' + QString::fromLatin1(QByteArray("p1500").toHex());
+    auto reply = reader.read(target);
+    QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+    std::shared_ptr<const FormattedDocument> document;
+    QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), document));
+    QVERIFY(document->plainText.contains(QStringLiteral("Paragraph 1500 ")));
+    QCOMPARE(document->targetAnchor, target);
+    QVERIFY(QFile::remove(path));
+    QVERIFY(!reader.read(reply.value("previous").toString()).contains("error"));
+    auto many = epub("<p>0</p>");
+    for (int i = 1; i < 140; ++i) {
+        const auto number = QByteArray::number(i);
+        many["OPS/book.opf"].replace("</manifest>", "<item id=\"c" + number + "\" href=\"c" + number + ".xhtml\" media-type=\"application/xhtml+xml\"/></manifest>");
+        many["OPS/book.opf"].replace("</spine>", "<itemref idref=\"c" + number + "\"/></spine>");
+        many[QStringLiteral("OPS/c%1.xhtml").arg(i)] = "<html><body><p>" + number + "</p></body></html>";
+    }
+    EpubPortionReader chapters(archive("epub", many));
+    token = QStringLiteral("0");
+    for (int i = 0; i < 140; ++i) {
+        reply = chapters.read(token);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), document));
+        QCOMPARE(document->plainText.trimmed(), QString::number(i));
+        token = reply.value("next").toString();
+    }
+    QVERIFY(token.isEmpty());
+}
+void DocumentTest::epubDefersChaptersAndKeepsImagesAndLinks()
+{
+    QByteArray png;
+    QBuffer buffer(&png);
+    QVERIFY(buffer.open(QIODevice::WriteOnly));
+    QImage image(16, 16, QImage::Format_ARGB32);
+    image.fill(Qt::red);
+    QVERIFY(image.save(&buffer, "PNG"));
+    auto parts = epub("<h1>First</h1><p>Hello <b>bold</b> <a href=\"second.xhtml#destination\">Next</a></p><img src=\"red.png\"/>",
+        "<item id=\"two\" href=\"second.xhtml\" media-type=\"application/xhtml+xml\"/>", "<itemref idref=\"two\"/>");
+    parts["OPS/red.png"] = png;
+    const auto longId = QString(QChar(0x754c)).repeated(200);
+    parts["OPS/second.xhtml"] = "<html><body><h1 id=\"destination\">Second</h1><p id=\"" + longId.toUtf8() + "\">Target</p><img src=\"red.png\"/></body></html>";
+    FileResource resource;
+    resource.path = archive("epub", parts);
+    LazyCoordinator coordinator(resource, QStringLiteral("epub"));
+    QSignalSpy ready(&coordinator, &LazyCoordinator::ready), failed(&coordinator, &LazyCoordinator::failed);
+    coordinator.request();
+    QTRY_COMPARE(ready.size(), 1);
+    auto portion = qvariant_cast<LazyPortion>(ready.last().first());
+    std::shared_ptr<const FormattedDocument> document;
+    QVERIFY(decodeDocumentPortion(portion.content, document));
+    QCOMPARE(document->navigation.size(), 2);
+    QCOMPARE(document->images.size(), 1);
+    QCOMPARE(document->images.cbegin().value().pixelColor(0, 0), QColor(Qt::red));
+    QVERIFY(document->html.contains(QStringLiteral("<b>bold</b>")));
+    QVERIFY(!document->plainText.contains(QStringLiteral("Second")));
+    coordinator.request(portion.next);
+    QTRY_COMPARE(ready.size(), 2);
+    portion = qvariant_cast<LazyPortion>(ready.last().first());
+    QVERIFY(decodeDocumentPortion(portion.content, document));
+    QVERIFY(document->plainText.contains(QStringLiteral("Second")));
+    QCOMPARE(document->images.cbegin().value().pixelColor(0, 0), QColor(Qt::red));
+    const auto longAnchor = QStringLiteral("a") + QString::fromLatin1(QByteArray("OPS/second.xhtml").toHex()) + '-' + QString::fromLatin1(longId.toUtf8().toHex());
+    QVERIFY(longAnchor.size() > 1024);
+    coordinator.request(longAnchor);
+    QTRY_COMPARE(ready.size(), 3);
+    portion = qvariant_cast<LazyPortion>(ready.last().first());
+    QVERIFY(decodeDocumentPortion(portion.content, document));
+    QCOMPARE(document->targetAnchor, longAnchor);
+    QVERIFY(failed.isEmpty());
+    QVERIFY(coordinator.cachedBytes() <= coordinator.cacheBudget());
+    coordinator.stop();
+    parts["OPS/second.xhtml"] = "<html><broken";
+    EpubPortionReader excessive(archive("epub", epub("<p>" + QByteArray(DocumentReader::CharacterLimit + 1, 'x') + "</p>")));
+    QVERIFY(excessive.read(QStringLiteral("0")).value("error").toString().contains(QStringLiteral("per-portion")));
+    EpubPortionReader malformed(archive("epub", parts));
+    const auto first = malformed.read(QStringLiteral("0"));
+    QVERIFY(!first.contains("error"));
+    QVERIFY(malformed.read(first.value("next").toString()).contains("error"));
+    EpubPortionReader mutableReader(resource.path);
+    auto reply = mutableReader.read(QStringLiteral("0"));
+    QVERIFY(!reply.contains("error"));
+    QFile file(resource.path);
+    QVERIFY(file.open(QIODevice::Append));
+    file.write("changed"); file.close();
+    QVERIFY(mutableReader.read(reply.value("next").toString()).value("error").toString().contains(QStringLiteral("changed")));
+}
+void DocumentTest::remainingDocumentPortionsContinueAndReplay_data()
+{
+    QTest::addColumn<QString>("format");
+    for (const auto *format : {"rtf", "fb2", "sfb", "mobi", "markdown"}) QTest::newRow(format) << QString::fromLatin1(format);
+}
+void DocumentTest::remainingDocumentPortionsContinueAndReplay()
+{
+    QFETCH(QString, format);
+    QByteArray content;
+    for (int i = 0; i < 1600; ++i) {
+        const auto text = "Paragraph " + QByteArray::number(i) + " " + QByteArray(200, 'x');
+        if (format == "rtf") content += text + "\\par ";
+        else if (format == "fb2") content += "<p><strong>" + text + "</strong></p>";
+        else if (format == "sfb") content += "__" + text + "__\n";
+        else if (format == "mobi") content += "<p><b>" + text + "</b></p>";
+        else content += "**" + text + "**\n\n";
+    }
+    if (format == "rtf") content = "{\\rtf1\\ansi\\b " + content + "}";
+    if (format == "fb2") content = "<FictionBook><body><section>" + content + "</section></body></FictionBook>";
+    if (format == "mobi") {
+        QList<QByteArray> records;
+        for (qsizetype i = 0; i < content.size(); i += 4096) records.append(content.mid(i, 4096));
+        content = mobi(records);
+    }
+    const auto path = write("progressive." + (format == "markdown" ? QStringLiteral("md") : format), content);
+    RichDocumentPortionReader reader(path, format);
+    QString token = QStringLiteral("0"), replayToken, reconstructed;
+    QJsonObject saved;
+    int count = 0;
+    do {
+        const auto reply = reader.read(token);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        std::shared_ptr<const FormattedDocument> document;
+        QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), document));
+        QVERIFY(document->plainText.size() < 40000);
+        reconstructed += document->plainText;
+        QTextDocument rendered; rendered.setHtml(document->html);
+        const auto formatted = rendered.find(QStringLiteral("Paragraph"));
+        if (!formatted.isNull()) QVERIFY(formatted.charFormat().fontWeight() >= QFont::Bold);
+        if (++count == 3) { saved = reply; replayToken = token; }
+        token = reply.value("next").toString();
+    } while (!token.isEmpty() && count < 150);
+    QVERIFY(count > 20); QVERIFY(count < 150);
+    QVERIFY(reconstructed.size() > DocumentReader::CharacterLimit);
+    for (int i = 0; i < 1600; ++i) QVERIFY2(reconstructed.contains(QStringLiteral("Paragraph %1 ").arg(i)), qPrintable(QString::number(i)));
+    QCOMPARE(reader.read(replayToken), saved);
+    RichDocumentPortionReader unlinked(path, format);
+    const auto first = unlinked.read(QStringLiteral("0"));
+    QVERIFY(!first.contains("error")); QVERIFY(QFile::remove(path));
+    QVERIFY(!unlinked.read(first.value("next").toString()).contains("error"));
+}
+void DocumentTest::documentWindowsContinueAndEvict_data()
+{
+    remainingDocumentPortionsContinueAndReplay_data();
+}
+void DocumentTest::documentWindowsContinueAndEvict()
+{
+    QFETCH(QString, format);
+    QByteArray content;
+    for (int i = 0; i < 1200; ++i) {
+        const auto text = "Visible " + QByteArray::number(i) + " " + QByteArray(200, 'x');
+        if (format == "rtf") content += text + "\\par ";
+        else if (format == "fb2") content += "<p>" + text + "</p>";
+        else if (format == "sfb") content += text + "\n";
+        else if (format == "mobi") content += "<p>" + text + "</p>";
+        else content += text + "\n\n";
+    }
+    if (format == "rtf") content = "{\\rtf1 " + content + "}";
+    if (format == "fb2") content = "<FictionBook><body>" + content + "</body></FictionBook>";
+    if (format == "mobi") {
+        QList<QByteArray> records;
+        for (qsizetype i = 0; i < content.size(); i += 4096) records.append(content.mid(i, 4096));
+        content = mobi(records);
+    }
+    PreviewController controller; QString error;
+    QVERIFY(controller.show(write("window." + (format == "markdown" ? QStringLiteral("md") : format), content), error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("document"));
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(window)); QTest::qWait(200);
+    auto *browser = window->findChild<QTextBrowser *>(QStringLiteral("documentText")); QVERIFY(browser);
+    const auto geometry = window->geometry();
+    for (int direction : {1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1}) {
+        browser->verticalScrollBar()->setValue(direction > 0 ? browser->verticalScrollBar()->maximum() : 0);
+        const auto old = browser->toPlainText();
+        auto block = browser->cursorForPosition(QPoint(30, 30)).block();
+        while (block.isValid() && block.text().size() < 5) block = block.next();
+        QVERIFY(block.isValid());
+        auto anchor = QTextCursor(block);
+        anchor.setPosition(block.position() + 1);
+        anchor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, 3);
+        const auto selected = anchor.selectedText(); browser->setTextCursor(anchor);
+        QWheelEvent wheel(QPointF(30, 30), browser->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, -120 * direction), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(browser->viewport(), &wheel);
+        QTRY_VERIFY(browser->toPlainText() != old);
+        QCOMPARE(browser->textCursor().selectedText(), selected);
+        QVERIFY(browser->document()->rootFrame()->childFrames().size() <= 3);
+        QVERIFY(browser->document()->characterCount() < 60000);
+        QCOMPARE(window->geometry(), geometry);
+    }
+    controller.hide();
+}
+void DocumentTest::legacyPortionsBackpressureAndReplay()
+{
+    const auto oldPath = qgetenv("PATH");
+    const auto restore = qScopeGuard([&] { qputenv("PATH", oldPath); });
+    const auto bin = directory_.filePath("lazy-bin"); QVERIFY(QDir().mkpath(bin));
+    const auto program = bin + QStringLiteral("/antiword");
+    const auto script = QByteArray("#!/usr/bin/python3\nimport os,sys\nassert open(sys.argv[-1], 'rb').read(8).hex() == 'd0cf11e0a1b11ae1'\nfor i in range(18000):\n sys.stdout.write('Legacy %d '%i + 'x'*100 + '\\n')\n");
+    QFile executable(program); QVERIFY(executable.open(QIODevice::WriteOnly)); executable.write(script); executable.close();
+    QVERIFY(executable.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+    qputenv("PATH", bin.toUtf8() + ':' + oldPath);
+    const auto path = write("lazy.doc", QByteArray::fromHex("d0cf11e0a1b11ae1"));
+    RichDocumentPortionReader reader(path, QStringLiteral("doc"));
+    QString token = QStringLiteral("0"), replayToken, all;
+    QJsonObject saved;
+    for (int i = 0; !token.isEmpty() && i < 400; ++i) {
+        const auto reply = reader.read(token);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        std::shared_ptr<const FormattedDocument> document; QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), document));
+        all += document->plainText;
+        if (i == 2) { saved = reply; replayToken = token; }
+        token = reply.value("next").toString();
+        if (i == 6) QTest::qWait(50); // Let the extractor fill its bounded kernel pipe.
+    }
+    QVERIFY(token.isEmpty()); QVERIFY(all.size() > 1024 * 1024);
+    QVERIFY(all.contains(QStringLiteral("Legacy 17999 ")));
+    QCOMPARE(reader.read(replayToken), saved);
+    PreviewController controller; QString error;
+    QVERIFY(controller.show(path, error)); QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("document"));
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(window)); QTest::qWait(200);
+    auto *browser = window->findChild<QTextBrowser *>(QStringLiteral("documentText")); QVERIFY(browser);
+    const auto geometry = window->geometry();
+    for (int i = 0; i < 8; ++i) {
+        browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+        const auto old = browser->toPlainText();
+        QWheelEvent wheel(QPointF(30, 30), browser->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(browser->viewport(), &wheel); QTRY_VERIFY(browser->toPlainText() != old);
+        QVERIFY(browser->document()->rootFrame()->childFrames().size() <= 3);
+        QVERIFY(browser->document()->characterCount() < 40000); QCOMPARE(window->geometry(), geometry);
+    }
+    controller.hide(); QTRY_COMPARE(LazyCoordinator::runningHelpers(), 0);
+}
+void DocumentTest::documentContinuationKeepsEncodingAndLateErrors()
+{
+    const auto text = QString(4095, QChar('a')) + QStringLiteral("€ Кирилица 日本語 ").repeated(20000);
+    for (const auto &format : {QStringLiteral("rtf"), QStringLiteral("mobi")}) {
+        QByteArray bytes;
+        if (format == "rtf") bytes = "{\\rtf1\\ansi\\ansicpg65001\\b " + text.toUtf8() + "}";
+        else {
+            const auto html = "<p><b>" + text.toUtf8() + "</b></p>";
+            QList<QByteArray> records;
+            for (qsizetype i = 0; i < html.size(); i += 4096) records.append(html.mid(i, 4096));
+            bytes = mobi(records);
+        }
+        RichDocumentPortionReader reader(write("unicode." + format, bytes), format);
+        QString token = QStringLiteral("0"), all;
+        do {
+            const auto reply = reader.read(token); QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+            std::shared_ptr<const FormattedDocument> portion; QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), portion));
+            if (!portion->plainText.contains(QStringLiteral("[Empty section]"))) all += portion->plainText;
+            token = reply.value("next").toString();
+        } while (!token.isEmpty());
+        all.remove(QChar('\n'));
+        QCOMPARE(all, text);
+    }
+    RichDocumentPortionReader unsafe(write("dtd.fb2", "<!DOCTYPE FictionBook [<!ENTITY bad 'bad'>]><FictionBook><body><p>&bad;</p></body></FictionBook>"), QStringLiteral("fb2"));
+    QVERIFY(unsafe.read(QStringLiteral("0")).contains("error"));
+    QByteArray content("<FictionBook><body>");
+    for (int i = 0; i < 100; ++i) content += "<p>Useful " + QByteArray::number(i) + " " + QByteArray(200, 'x') + "</p>";
+    content += "<broken";
+    PreviewController controller; QString error;
+    QVERIFY(controller.show(write("late.fb2", content), error)); QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("document"));
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    auto *browser = window->findChild<QTextBrowser *>(QStringLiteral("documentText")); QVERIFY(browser);
+    auto *status = window->findChild<QLabel *>(QStringLiteral("documentLoadingStatus")); QVERIFY(status);
+    for (int i = 0; i < 4 && !status->text().contains(QStringLiteral("unsupported")); ++i) {
+        browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+        QWheelEvent wheel(QPointF(30, 30), browser->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(browser->viewport(), &wheel);
+        QTest::qWait(100);
+    }
+    QTRY_VERIFY(status->text().contains(QStringLiteral("unsupported")));
+    QVERIFY(browser->toPlainText().contains(QStringLiteral("Useful")));
+    QCOMPARE(controller.previewKind(), QStringLiteral("document")); controller.hide();
+}
+
+void DocumentTest::markdownKeepsStructuresAndForwardReferences()
+{
+    QByteArray source("# Beginning\n\n[Forward][target]\n\n");
+    for (int i = 0; i < 40; ++i) source += "```cpp\n" + QByteArray(300, 'x') + "\n\n# still code\n```\n\n1. First\n2. Second\n\n    nested paragraph\n\n| A | B |\n|---|---|\n| cell | value |\n\n";
+    source += "# Next\n\n[target]: https://example.test/forward \"title\"\n\nEnd\n";
+    RichDocumentPortionReader reader(write("structures.md", source), QStringLiteral("markdown"));
+    QString token = QStringLiteral("0"); QString all;
+    int tables = 0, lists = 0, code = 0; bool reference = false;
+    do {
+        const auto reply = reader.read(token);
+        QVERIFY2(!reply.contains("error"), qPrintable(reply.value("error").toString()));
+        std::shared_ptr<const FormattedDocument> portion; QVERIFY(decodeDocumentPortion(reply.value("content").toObject(), portion));
+        QTextDocument document; document.setHtml(portion->html);
+        for (auto *frame : document.rootFrame()->childFrames()) tables += qobject_cast<QTextTable *>(frame) != nullptr;
+        for (auto block = document.begin(); block.isValid(); block = block.next()) {
+            if (block.text() == QStringLiteral("First")) { QVERIFY(block.textList()); ++lists; }
+            if (block.text() == QStringLiteral("# still code")) { QCOMPARE(block.blockFormat().headingLevel(), 0); ++code; }
+        }
+        auto link = document.find(QStringLiteral("Forward"));
+        if (!link.isNull()) { QCOMPARE(link.charFormat().anchorHref(), QStringLiteral("https://example.test/forward")); reference = true; }
+        all += portion->plainText;
+        token = reply.value("next").toString();
+    } while (!token.isEmpty());
+    QCOMPARE(tables, 40); QCOMPARE(lists, 40); QCOMPARE(code, 40); QVERIFY(reference); QVERIFY(all.contains(QStringLiteral("End")));
+}
+
+void DocumentTest::wordPortionsStreamAndReplayWithNumbering()
+{
+    QByteArray body;
+    for (int i = 0; i < 1800; ++i) {
+        const auto text = QStringLiteral("Item %1 ").arg(i) + QString(200, QChar('x'));
+        body += "<w:p pad=\"" + QByteArray(6000, 'a') + "\"><w:pPr><w:pStyle w:val=\"List\"/></w:pPr><w:r><w:t>"
+            + text.toUtf8() + "</w:t></w:r></w:p>";
+    }
+    auto parts = docx(body);
+    parts["word/_rels/content.xml.rels"] = "<Relationships><Relationship Id=\"s\" Type=\"" + officeNs
+        + "styles\" Target=\"styles.xml\"/><Relationship Id=\"n\" Type=\"" + officeNs + "numbering\" Target=\"numbering.xml\"/></Relationships>";
+    parts["word/styles.xml"] = "<w:styles xmlns:w=\"" + wordNs + "\"><w:style w:styleId=\"List\"><w:pPr><w:numPr><w:numId w:val=\"1\"/></w:numPr></w:pPr><w:rPr><w:b/></w:rPr></w:style></w:styles>";
+    parts["word/numbering.xml"] = "<w:numbering xmlns:w=\"" + wordNs + "\"><w:abstractNum w:abstractNumId=\"0\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"7\"/><w:numFmt w:val=\"decimal\"/></w:lvl></w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>";
+    QVERIFY(parts["word/content.xml"].size() > 8 * 1024 * 1024);
+    const auto path = archive("docx", parts);
+    RichDocumentPortionReader reader(path, QStringLiteral("docx"));
+    QString token = QStringLiteral("0"), reconstructed;
+    QJsonObject saved;
+    QString savedToken;
+    int items = 0, loads = 0;
+    do {
+        const auto response = reader.read(token);
+        QVERIFY2(!response.contains("error"), qPrintable(response.value("error").toString()));
+        std::shared_ptr<const FormattedDocument> document;
+        QVERIFY(decodeDocumentPortion(response.value("content").toObject(), document));
+        QVERIFY(document->plainText.size() < 20000);
+        if (!document->plainText.contains(QStringLiteral("[Empty section]"))) {
+            QVERIFY(document->html.contains(QStringLiteral("start=\"%1\"").arg(items + 7)));
+            QVERIFY(document->html.contains(QStringLiteral("<b>")));
+            items += document->plainText.count(QStringLiteral("Item "));
+            reconstructed += document->plainText.trimmed() + QChar('\n');
+        }
+        if (++loads == 3) { saved = response; savedToken = token; }
+        token = response.value("next").toString();
+    } while (!token.isEmpty() && loads < 100);
+    QCOMPARE(items, 1800);
+    QVERIFY(reconstructed.size() > DocumentReader::CharacterLimit);
+    QVERIFY(loads > 30);
+    const auto replay = reader.read(savedToken);
+    QCOMPARE(replay, saved);
+    auto broken = parts;
+    broken["word/content.xml"].chop(20);
+    RichDocumentPortionReader damaged(archive("docx", broken), QStringLiteral("docx"));
+    token = QStringLiteral("0"); loads = 0;
+    while (!token.isEmpty() && ++loads < 100) {
+        const auto reply = damaged.read(token);
+        if (reply.contains("error")) break;
+        token = reply.value("next").toString();
+    }
+    QVERIFY(loads > 2); QVERIFY(loads < 100); QVERIFY(!token.isEmpty());
+    QByteArray costly;
+    for (int i = 0; i < 48; ++i) costly += "<w:p cost=\"" + QByteArray(100000, 'x')
+        + "\"><w:r><w:t>Small visible text " + QByteArray::number(i) + "</w:t></w:r></w:p>";
+    RichDocumentPortionReader budgeted(archive("docx", docx(costly)), QStringLiteral("docx"));
+    const auto bounded = budgeted.read(QStringLiteral("0"));
+    QVERIFY(!bounded.contains("error"));
+    const auto boundary = bounded.value("next").toString();
+    QVERIFY(!boundary.isEmpty()); QVERIFY(boundary.toInt() < 48);
+    QVERIFY(!budgeted.read(boundary).contains("error"));
+    QCOMPARE(budgeted.read(QStringLiteral("0")), bounded);
+    RichDocumentPortionReader changed(path, QStringLiteral("docx"));
+    const auto initial = changed.read(QStringLiteral("0"));
+    QVERIFY(!initial.contains("error"));
+    QFile file(path); QVERIFY(file.open(QIODevice::Append)); file.write("changed"); file.close();
+    QVERIFY(changed.read(initial.value("next").toString()).value("error").toString().contains(QStringLiteral("changed")));
+}
+void DocumentTest::wordWindowEvictsWithStableSelectionAndGeometry()
+{
+    QByteArray body;
+    for (int i = 0; i < 1500; ++i)
+        body += "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Paragraph " + QByteArray::number(i) + " " + QByteArray(200, 'x') + "</w:t></w:r></w:p>";
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(archive("docx", docx(body)), error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("document"));
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTest::qWait(200);
+    auto *browser = window->findChild<QTextBrowser *>(QStringLiteral("documentText"));
+    QVERIFY(browser);
+    const auto geometry = window->geometry();
+    for (int load = 0; load < 14; ++load) {
+        browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+        const auto old = browser->toPlainText();
+        auto anchor = browser->cursorForPosition(QPoint(30, 30));
+        anchor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, 3);
+        const auto selected = anchor.selectedText();
+        const auto block = anchor.block().text();
+        const auto top = browser->cursorRect(anchor).top();
+        const auto offset = anchor.positionInBlock();
+        browser->setTextCursor(anchor);
+        QWheelEvent wheel(QPointF(30, 30), browser->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(browser->viewport(), &wheel);
+        QTRY_VERIFY(browser->toPlainText() != old);
+        auto restored = browser->document()->find(block); QVERIFY(!restored.isNull());
+        restored.setPosition(restored.selectionStart() + offset);
+        QTRY_COMPARE(browser->cursorRect(restored).top(), top);
+        QCOMPARE(browser->textCursor().selectedText(), selected);
+        QVERIFY(browser->document()->rootFrame()->childFrames().size() <= 3);
+        QVERIFY(browser->document()->characterCount() < 40000);
+        QCOMPARE(window->geometry(), geometry);
+    }
+    for (int load = 0; load < 5; ++load) {
+        browser->verticalScrollBar()->setValue(0);
+        const auto old = browser->toPlainText();
+        QWheelEvent wheel(QPointF(30, 30), browser->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(browser->viewport(), &wheel);
+        QTRY_VERIFY(browser->toPlainText() != old);
+        QCOMPARE(window->geometry(), geometry);
+    }
+    controller.hide();
+}
+
+void DocumentTest::epubFormatsOnlyInsertedPortion()
+{
+    QByteArray body("<h1>Resident heading</h1><p>Resident color</p>");
+    for (int i = 0; i < 180; ++i)
+        body += "<h2>Heading " + QByteArray::number(i) + "</h2><p>Body "
+            + QByteArray::number(i) + " <b>" + QByteArray(180, 'x') + "</b></p>";
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(archive("epub", epub(body)), error));
+    QTRY_VERIFY(!controller.loading());
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    auto *browser = window->findChild<QTextBrowser *>(QStringLiteral("documentText"));
+    auto *view = window->findChild<DocumentView *>();
+    QVERIFY(browser); QVERIFY(view);
+    auto palette = view->palette();
+    palette.setColor(QPalette::Base, QColor("#121212"));
+    palette.setColor(QPalette::Text, Qt::white);
+    view->setPalette(palette);
+    view->zoomBy(2);
+    auto *document = browser->document();
+    document->documentLayout()->documentSize();
+    const auto oldText = browser->toPlainText();
+    const auto resident = document->find(QStringLiteral("Resident heading"));
+    const auto residentFormat = resident.charFormat();
+    const auto bodySize = document->find(QStringLiteral("Body 0")).charFormat().fontPointSize();
+    QPointer<QTextFrame> frame = document->rootFrame()->childFrames().first();
+    // QTextDocument reports text and format changes through the same public
+    // signal. A continuation must not reformat the resident heading at the top.
+    QSignalSpy changes(document, &QTextDocument::contentsChange);
+    browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+    QWheelEvent wheel(QPointF(30, 30), browser->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, -120),
+        Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(browser->viewport(), &wheel);
+    QTRY_VERIFY(browser->toPlainText() != oldText);
+    QCOMPARE(document->rootFrame()->childFrames().size(), 2);
+    QVERIFY(frame);
+    QCOMPARE(document->find(QStringLiteral("Resident heading")).charFormat(), residentFormat);
+    QVERIFY(!changes.isEmpty());
+    for (const auto &change : changes) QVERIFY(change.at(0).toInt() > resident.selectionEnd());
+    auto *added = document->rootFrame()->childFrames().last();
+    bool heading = false, bodyFormatted = false;
+    for (auto block = added->firstCursorPosition().block(); block.isValid() && block.position() <= added->lastPosition(); block = block.next()) {
+        auto cursor = QTextCursor(block);
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+        if (block.text().startsWith(QStringLiteral("Heading "))) {
+            QVERIFY(cursor.charFormat().fontPointSize() > bodySize);
+            heading = true;
+        } else if (block.text().startsWith(QStringLiteral("Body "))) {
+            QCOMPARE(cursor.charFormat().fontPointSize(), bodySize);
+            bodyFormatted = true;
+        }
+    }
+    QVERIFY(heading); QVERIFY(bodyFormatted);
+    // Explicit theme/zoom changes still update all resident portions.
+    palette.setColor(QPalette::Base, Qt::white); palette.setColor(QPalette::Text, Qt::black);
+    view->setPalette(palette);
+    view->fit();
+    QVERIFY(document->find(QStringLiteral("Resident heading")).charFormat().fontPointSize() < residentFormat.fontPointSize());
+    controller.hide();
+}
+
+void DocumentTest::epubWindowEvictsAndNavigatesWithStableGeometry()
+{
+    QByteArray body("<h1>First chapter</h1>");
+    for (int i = 0; i < 2000; ++i) {
+        const auto number = QByteArray::number(i);
+        body += "<p id=\"p" + number + "\">Paragraph " + number + " <b>" + QByteArray(180, 'x') + "</b>";
+        for (int run = 0; run < 5; ++run) body += "<span id=\"r" + number + '-' + QByteArray::number(run) + "\">x</span>";
+        body += "</p>";
+        if (i % 40 == 0) body += "<table><tr><th>Header " + number + "</th></tr><tr><td>Cell " + number + "</td></tr></table><ul><li>List item " + number + "</li></ul><p>Image " + number + "<img src=\"red.png\"/></p>";
+    }
+    auto parts = epub(body, "<item id=\"two\" href=\"next.xhtml\" media-type=\"application/xhtml+xml\"/>", "<itemref idref=\"two\"/>");
+    parts["OPS/next.xhtml"] = "<html><body><h1>Second chapter</h1><p>Loaded by navigation</p></body></html>";
+    QByteArray png;
+    QBuffer imageBuffer(&png);
+    QVERIFY(imageBuffer.open(QIODevice::WriteOnly));
+    QImage image(16, 16, QImage::Format_ARGB32); image.fill(Qt::red);
+    QVERIFY(image.save(&imageBuffer, "PNG"));
+    parts["OPS/red.png"] = png;
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(archive("epub", parts), error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("document"));
+    auto *window = const_cast<PreviewWindow *>(controller.window());
+    QVERIFY(QTest::qWaitForWindowExposed(window));
+    QTest::qWait(200);
+    auto *browser = window->findChild<QTextBrowser *>(QStringLiteral("documentText"));
+    QVERIFY(browser);
+    auto *status = window->findChild<QLabel *>(QStringLiteral("documentLoadingStatus"));
+    QVERIFY(status);
+    const auto geometry = window->geometry();
+    const auto wheel = [](QTextBrowser *view, int direction) {
+        QWheelEvent event(QPointF(30, 30), view->viewport()->mapToGlobal(QPoint(30, 30)), {}, QPoint(0, -120 * direction),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(view->viewport(), &event);
+    };
+    bool compacted = false;
+    int previousFormats = 0;
+    for (int load = 0; load < 24; ++load) {
+        browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+        const auto old = browser->toPlainText();
+        QTextCursor anchor = browser->cursorForPosition(QPoint(30, 30));
+        anchor.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor, 3);
+        const auto top = browser->cursorRect(anchor).top();
+        const auto block = anchor.block().text();
+        const int offset = anchor.positionInBlock();
+        const auto selected = anchor.selectedText();
+        browser->setTextCursor(anchor);
+        wheel(browser, 1);
+        QTRY_VERIFY2(browser->toPlainText() != old, qPrintable(status->text()));
+        auto restored = browser->document()->find(block);
+        QVERIFY(!restored.isNull());
+        restored.setPosition(restored.selectionStart() + offset);
+        QTRY_COMPARE(browser->cursorRect(restored).top(), top);
+        QCOMPARE(browser->textCursor().selectedText(), selected);
+        const int formats = int(browser->document()->allFormats().size());
+        compacted |= formats < previousFormats;
+        previousFormats = formats;
+        QVERIFY(formats < 10000);
+        QVERIFY(browser->document()->rootFrame()->childFrames().size() <= 3);
+        QVERIFY(browser->document()->characterCount() < 40000);
+        bool bold = false, imageFound = false, tableFound = false;
+        QList<QTextFrame *> frames{browser->document()->rootFrame()};
+        while (!frames.isEmpty()) {
+            auto *frame = frames.takeLast(); frames.append(frame->childFrames());
+            tableFound |= qobject_cast<QTextTable *>(frame) != nullptr;
+        }
+        for (auto block = browser->document()->begin(); block.isValid(); block = block.next())
+            for (auto fragment = block.begin(); !fragment.atEnd(); ++fragment) {
+                const auto format = fragment.fragment().charFormat();
+                bold |= format.fontWeight() >= QFont::Bold;
+                if (format.isImageFormat()) {
+                    const auto resource = browser->document()->resource(QTextDocument::ImageResource, QUrl(format.toImageFormat().name()));
+                    QVERIFY(resource.canConvert<QImage>());
+                    QCOMPARE(qvariant_cast<QImage>(resource).pixelColor(0, 0), QColor(Qt::red));
+                    imageFound = true;
+                }
+            }
+        QVERIFY(bold); QVERIFY(tableFound); QVERIFY(imageFound);
+        QCOMPARE(window->geometry(), geometry);
+    }
+    QVERIFY(compacted);
+    QVERIFY(!browser->toPlainText().contains(QStringLiteral("First chapter")));
+    for (int load = 0; load < 30 && !browser->toPlainText().contains(QStringLiteral("First chapter")); ++load) {
+        browser->verticalScrollBar()->setValue(0);
+        const auto old = browser->toPlainText();
+        wheel(browser, -1);
+        QTRY_VERIFY2(browser->toPlainText() != old, qPrintable(status->text()));
+    }
+    QVERIFY(browser->toPlainText().contains(QStringLiteral("First chapter")));
+    auto *contents = window->findChild<QToolButton *>(QStringLiteral("documentContents"));
+    QVERIFY(contents);
+    QVERIFY(contents->menu()->actions().size() >= 2);
+    const auto broken = QStringLiteral("a") + QString::fromLatin1(QByteArray("OPS/next.xhtml").toHex()) + '-' + QString::fromLatin1(QByteArray("missing").toHex());
+    QVERIFY(QMetaObject::invokeMethod(browser, "anchorClicked", Q_ARG(QUrl, QUrl(QChar('#') + broken))));
+    QTRY_VERIFY(status->text().contains(QStringLiteral("could not be located")));
+    QVERIFY(browser->toPlainText().contains(QStringLiteral("First chapter")));
+    contents->menu()->actions().at(1)->trigger();
+    QTRY_VERIFY2(browser->toPlainText().contains(QStringLiteral("Loaded by navigation")), qPrintable(status->text()));
+    QVERIFY(!browser->toPlainText().contains(QStringLiteral("First chapter")));
+    QCOMPARE(window->geometry(), geometry);
+    contents->menu()->actions().first()->trigger();
+    QTRY_VERIFY(browser->toPlainText().contains(QStringLiteral("First chapter")));
+    QCOMPARE(window->geometry(), geometry);
+    controller.hide();
 }
 void DocumentTest::optionalPrivateSamples()
 {

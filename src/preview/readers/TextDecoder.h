@@ -1,6 +1,6 @@
 #pragma once
 #include "preview/PreviewProvider.h"
-class QFile;
+class QIODevice;
 namespace dzurkel {
 struct DecodedText {
     QString text;
@@ -9,5 +9,5 @@ struct DecodedText {
     bool truncated = false;
     bool cancelled = false;
 };
-DecodedText decodePreviewText(QFile &file, qint64 byteLimit, const Cancellation &cancel);
+DecodedText decodePreviewText(QIODevice &device, qint64 byteLimit, const Cancellation &cancel);
 }

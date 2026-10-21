@@ -4,6 +4,9 @@ Dzurkel integrates with Dolphin, Nautilus and Thunar. Native package targets are
 Fedora 44, Debian 13 and current Arch Linux; Fedora KDE Wayland is the primary
 development environment. Dolphin Space setup requires 26.04 or newer. See
 [testing](testing.md) for exact environments and remaining desktop checks.
+The current source version is **1.0.0**, prepared for release; download examples
+below describe its package names, not a claim that installers are already
+published. Use an installer actually attached to a validated release.
 The Fedora source installer builds the checked-out
 source using installed Fedora packages. It does not download source, install
 packages, assign shortcuts, or change file associations. The RPM route below
@@ -28,8 +31,8 @@ for your user. RPM installation does not open a GUI or change shortcut files.
 The package uses system Qt/KDE libraries; optional KIO services enable direct
 network URLs as described below.
 
-Version 0.9.0 adds an optional KDE file-dialog adapter, separate from
-Dolphin shortcut setup. It is not included in the older 0.8.0 installers.
+An optional KDE file-dialog adapter is available separately from
+Dolphin shortcut setup (introduced in 0.9.0).
 With a build containing the adapter, enable **Space previews in KDE file
 dialogs** in Settings and sign out/in. Disable it and sign out/in before
 uninstalling to clean up the managed session environment. See
@@ -77,7 +80,7 @@ checksums are not signatures. There is no automatic Dzurkel update repository.
 On Debian 13, install the binary (not the optional debug package):
 
 ```bash
-sudo apt install ./dzurkel_0.9.0-1_amd64.deb
+sudo apt install ./dzurkel_1.0.0-1_amd64.deb
 dzurkel --settings
 ```
 
@@ -85,7 +88,7 @@ On current Arch Linux:
 
 ```bash
 sudo pacman -Syu
-sudo pacman -U ./dzurkel-0.9.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./dzurkel-1.0.0-1-x86_64.pkg.tar.zst
 dzurkel --settings
 ```
 

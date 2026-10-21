@@ -1,5 +1,5 @@
 pkgname=dzurkel
-pkgver=0.9.0
+pkgver=1.0.0
 pkgrel=1
 pkgdesc='Quick file previews for Dolphin, Nautilus and Thunar'
 arch=('x86_64')

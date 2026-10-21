@@ -1,5 +1,704 @@
 # Validation
 
+## 1.0.0 version and documentation preparation (2026-10-21)
+
+Bumped the source version, RPM Version, Debian changelog and Arch pkgver to
+1.0.0, with package release 1. The release-specific desktop adapter ID is also
+1.0.0; independently versioned media/highlighting/folder interfaces are unchanged.
+The full local build passed and all 34 configured CTest suites passed (123.48 s),
+including preview/document/table/media regressions, optional-adapter recovery,
+CLI/D-Bus behavior and staged installation. The built executable reports
+`dzurkel 1.0.0`; its generated compatibility report and all package source version
+fields agree.
+
+README, current guides, architecture, contributor/repository guidance, installer
+examples and release instructions now describe the completed direct-source
+progressive-preview scope. Added [1.0.0 release notes](releases/v1.0.0.md), corrected
+stale copy/prefix/pending-continuation descriptions, and retained accepted reader
+budgets, lexer-context limits and the Ubuntu one-pixel EPUB observation. Local
+Markdown file/anchor checks and `git diff --check` passed. Historical notes,
+recordings and measured results keep the versions they actually describe.
+
+The earlier Fedora sanitizer and Ubuntu/Arch desktop runs below used the 0.9.0
+development version. They were not rerun or relabelled as 1.0.0 package/sanitizer
+acceptance. This change builds locally but does not install on the host or VMs,
+commit, tag, publish a release or run tagged release CI. Release publication,
+native package gates and asset upload remain the documented release process.
+
+## Arch XFCE package and native lazy-loading acceptance (2026-10-21)
+
+Ran `helpers/vm-arch-vm-dev.sh --stage-only` against the booted Arch VM.
+The existing workflow exported the active uncommitted public sources, built
+Dzurkel 0.9.0-1 in a disposable Arch container and passed all 34 configured
+CTest suites (92.87 s). The package contains all five optional adapters without
+making their backends mandatory dependencies. A fresh runtime container passed
+baseline/reader recovery, GIO nested-folder/error/cancellation and missing-module
+fallback checks (7, 4 and 3 results respectively) with the optional Qt Multimedia,
+KSyntaxHighlighting, KWindowSystem, antiword and KIO/CoreAddons packages absent.
+Build/runtime evidence remains under
+`build-arch-vm/package.fNBmjo8t/{container-build.log,artifacts/}`.
+
+The tested package was staged in the VM at
+`~/Dzurkel-packages/package.fNBmjo8t/`. The installer ran in a VM terminal so the
+user could enter sudo authentication there. It completed successfully; pacman
+reports `dzurkel 0.9.0-1`, 56 files and none missing. The installed executable and
+GIO adapter SHA-256 values match their entries in the tested package. The VM
+remains an XFCE/Thunar runtime system; no development SDK was installed there.
+Its existing Thunar action already targets `/usr/bin/dzurkel` and was preserved.
+
+With `LockedHint=no`, native X11/XTest input exercised that installed app through
+the normal managed Thunar Space action. Generated fixtures live in
+`~/Dzurkel-test/lazy-acceptance-20261021/`. Framebuffer screenshots confirm:
+
+- The sparse 3 GiB SQL fixture opened at its beginning; Ctrl+End displayed its
+  actual final export-completed marker with `End of file` status. Ctrl+Home
+  returned to the beginning with `Beginning of file` status. KSyntaxHighlighting
+  is absent in this VM, so this checks readable plain-code fallback, not syntax
+  colors. No highlighting backend was installed for the test.
+- DOCX scrolled beyond the initial portion to paragraphs 104–108 and back to
+  paragraphs 83–87, retaining bold formatting and stable reading dimensions.
+- Markdown scrolled beyond the initial portion to sections 105–108, retaining
+  headings, bold text, visible links, lists and fenced code text. Links were not
+  activated.
+- Escape dismissed each preview, confirmed by the live service's `Visible`
+  property; Thunar opened the next selected fixture through Space. The final
+  Thunar window was left at the generated sample directory.
+
+Three already-built test executables were temporarily copied into the VM and
+used the installed `/usr/bin/dzurkel` helper. With Qt 6.12.0, GCC 16.2.1,
+`QT_QPA_PLATFORM=xcb`, the unlocked real display and isolated application buses,
+the native checks passed: focused text EOF/error/anchor/replacement/dismissal
+(7 results, 3.01 s), focused DOCX/RTF/FB2/SFB/MOBI/Markdown/EPUB continuation,
+eviction, selection/geometry and portion-local formatting (10 results, 7.24 s),
+and the full CSV/XLSX suite (70 passed, one optional private sample skipped,
+7.80 s). The exact EPUB anchor assertion passed on Arch; this does not resolve
+the separately reproduced one-pixel Ubuntu GNOME mismatch below.
+
+Generated-sample screenshots, live-state observations, native logs and the
+desktop-check helper are retained privately under
+`helpers/work/arch-lazy-desktop-20261021/`. Private-bus portal/GVfs/RealtimeKit
+warnings did not fail these tests and establish no real-share support. These
+checks cover this Arch XFCE/X11 snapshot, not Arch KDE/Wayland, mixed-DPI/themes,
+all real document variants or network shares. No application code, shortcut,
+authorization policy, host installation, branch, worktree or commit was changed
+for this validation; existing checkout changes were preserved.
+
+## Ubuntu GNOME VM lazy-loading acceptance (2026-10-21)
+
+Ran the existing private `helpers/vm-ubuntu-vm-dev.sh` workflow against the
+running Ubuntu 26.04.1 VM. It synchronized the active checkout, including new
+public sources, retained overwritten VM sources in its backup directory, built
+the Debug configuration and passed all 31 configured CTest suites (92.43 s).
+This is the VM's configured suite set, not the host's 34-suite configuration.
+The helper installed Dzurkel 0.9.0 under the VM user's `~/.local`, checked its
+four runtime adapters and refreshed the executable Nautilus script. The installed
+binary compares identical to the tested build. Required SDKs were already present;
+no dependency packages were installed. Desktop-file validation passed with the
+existing informational hint about multiple Settings menu categories.
+
+Native checks used GNOME Shell 50.1, Qt 6.10.2 and `QT_QPA_PLATFORM=wayland`
+against the existing `wayland-0` display, with isolated application buses. The
+GNOME screensaver reported inactive before both runs. The focused text checks
+passed (7 results, 2.92 s): sparse 3 GiB SQL EOF, failed EOF retaining content,
+wrapped/unwrapped anchor and geometry preservation, replacement and dismissal.
+The full native XLSX/CSV suite passed (70 passed, one optional private sample
+skipped, 8.93 s).
+
+The focused rich-document run had 9 passes and one failure (20.07 s). DOCX,
+RTF, FB2, SFB, MOBI and Markdown view continuation/eviction checks passed, as did
+EPUB portion-local formatting. `epubWindowEvictsAndNavigatesWithStableGeometry`
+failed its exact cursor-top comparison at DocumentTest.cpp:1583: actual 33 px,
+expected 32 px. An isolated rerun reproduced the same one-pixel mismatch (2
+passes including setup/cleanup, one failure, 15.78 s). Its later assertions were
+therefore not reached. The cause has not been established; the test assertion
+and application code were not changed to conceal it. Native Ubuntu document
+acceptance is not entirely green, despite the complete offscreen pass.
+
+Private-bus portal/app-ID and GVfs warnings were present; they are not evidence
+of real remote-share support. These automated runs do not establish manual
+Nautilus Space/menu delivery, compositor focus, themes/scaling or packaged
+installation acceptance for this update. The VM development installation is
+ready for those manual checks. Arch was not changed.
+
+### Installed-app GNOME desktop smoke checks
+
+Subsequently exercised the installed app on the unlocked VM through real
+libvirt keyboard input and inspected VM framebuffer screenshots, rather than
+Qt-generated key events or an offscreen backend. Files selected each generated
+local fixture and Space opened the expected URI and preview kind, as confirmed
+by the live application's D-Bus properties and displayed content.
+
+- Sparse 3 GiB SQL: the beginning displayed highlighted SQL; Ctrl+End displayed
+  the actual final `EXPORT COMPLETED SUCCESSFULLY; ACTUAL END OF FILE` marker and
+  `End of file` status. Page Up followed by Ctrl+Home returned to the beginning
+  with `Beginning of file` status. The window dimensions stayed visually stable.
+- DOCX: twenty Page Down presses reached paragraph 108 beyond the initial
+  portion; four Page Up presses returned to paragraph 87. Bold text remained
+  visible and the reading window stayed stable.
+- Markdown: twenty-five Page Down presses reached sections 98–100 beyond the
+  initial portion. Headings, bold text, link appearance, list items and fenced
+  code text remained visible. Links were not activated.
+- Escape dismissed each preview and the live service reported `Visible=false`
+  and `PreviewKind=none`; Files could open the next fixture through Space.
+
+Generated samples remain in the VM's
+`~/Dzurkel-test/lazy-acceptance-20261021/`; screenshots were retained privately
+under `helpers/work/ubuntu-lazy-desktop-20261021/`. The final Files window was
+left at that sample directory. No GNOME setting, authorization policy, app code
+or dependency package was changed. Initial per-action VM connections caused
+repeated host libvirt authorization prompts; the remaining checks were batched
+under one connection. These selected live desktop checks do not resolve the
+repeatable one-pixel EPUB assertion above or establish every format's desktop
+appearance, scaling/themes, menu invocation or real network-share behavior.
+
+## Agreed preview scope and practical text EOF (2026-10-21)
+
+The completion agreement keeps lazy loading and direct sources and accepts reader
+work/metadata/indivisible-block limits. Dzurkel provides a useful peek and ordinary
+scrolling. Unlimited distant traversal, a full-file index, exhaustive visual search
+and perfect lexer-state recovery after eviction are not required. The language
+selection and bounded document style metadata remain attached for the preview's
+lifetime; lost multiline highlighting context is an accepted fidelity limitation.
+Comparative benchmarking and broader real-share/distribution testing remain
+optional follow-ups, without being claimed complete here.
+
+Text/log/code/SQL previews now expose Beginning/End buttons and Ctrl+Home/Ctrl+End.
+The existing TextPortionReader resolves a reader-owned EOF token using TextSource's
+bounded QFile seeks and Qt Unicode decoding. It selects the last useful interval
+when line-boundary lookahead would otherwise produce an empty EOF portion. No
+intervening-content scan, growing index or whole-source copy is needed. The shared
+coordinator handles cancellation/stale targets and the shared window replaces only
+resident text when a jump succeeds. The editor, highlighter/language, zoom and
+native window persist; explicit jumps reset selection. Status confirms Beginning
+of file/End of file. Ordinary backward scrolling works from EOF. Failed jumps
+retain useful text and a clear error. Structured readers keep best-effort logical
+navigation within their existing budgets.
+
+The sparse 3 GiB SQL integration fixture contains valid beginning/end regions and
+binary zeroes in the middle. It verifies that opening/jumping does not read through
+that middle; the actual final text without a terminating newline is displayed.
+It checks keyboard/buttons, returning to the beginning, backward scrolling,
+resident-text bounds, zoom/window/highlighter identity and superseded jumps.
+Other cases cover UTF-8/16/32 and Latin-1, CRLF, empty/small files, exact intervals,
+empty final nominal portions and encoding damage at EOF retaining visible content.
+
+That fixture exposed an existing image-selection issue: a local public-Qt probe
+measured ~1.7 GiB read by QImageReader::canRead() while installed image plugins
+rejected the 3 GiB SQL file (~4.9 s); MIME detection itself was fast. Image selection
+now reuses QImageReader on a 16 KiB header QBuffer. Known-image MIME selection and
+direct-source image decoding remain. A counting-QFile test checks at most 32 KiB
+of source reads (allowing Qt buffering) and PNG signature precedence over a .sql
+suffix. This is bounded signature probing, not a replacement image parser.
+The initial EOF test failed its five-second opening wait before this fix; it
+passes without raising that wait after the probe is bounded.
+
+The full build and all 34 registered suites passed (137.98 s), including PDF,
+images, media, documents, tables, highlighting and integration/installation checks.
+All five affected ASan/UBSan suites (text lazy, CSV lazy, library, documents, XLSX)
+passed with leak detection (85.69 s), using only the existing Qt PDF suppression
+and producing no sanitizer diagnostics. Both focused text/library suites also
+passed separately (7.66 s). With the physical screen unlocked, four focused methods passed on native KDE Wayland
+(7 results including wrap data/setup/cleanup, 3.25 s), using the existing isolated
+application bus/real-KWin override. They exercise EOF, failed EOF, ordinary
+forward/backward eviction, geometry and session replacement/dismissal. The full
+physical KDE Wayland XLSX/CSV suite also passed (70 passed, one optional private
+sample skipped, 11.45 s), including text/PDF/table transitions and resize/reopen
+checks with the new toolbar. `git diff --check` passed.
+This completes the agreed preview scope; the accepted best-effort limits above
+are not unfinished unlimited-reader requirements.
+No packages, branches, worktrees or commits were created, and accumulated changes
+were preserved. No lexer checkpoint engine or unlimited structured-reader work
+was added.
+
+## Progressive DOCX, DOC, RTF, FB2, SFB, MOBI and Markdown (2026-10-21)
+
+All seven production readers now fetch source content beyond their initial
+preview, using the existing LazyCoordinator/window/document-record/rich-frame
+path. DOCX shares the extracted XLSX libzip QIODevice and existing WordReader
+styles, numbering, tables and images. Qt owns XML parsing. RTF retains its
+existing parser state; FB2 streams section boundaries and bounded subtrees; SFB
+retains line/heading state; MOBI retains PalmDOC/encoding/markup carry. DOC reuses
+antiword process setup and the inherited descriptor, with a bounded stdout pipe
+for idle backpressure. Markdown uses Qt's HTML-disabled importer for rendering,
+structural boundary checks and bounded reference discovery. Existing Markdown
+table normalization is shared between compatibility and progressive callers.
+No parser/rendering dependency, package installation, source copy, branch,
+worktree, commit or connector/geometry replacement was added.
+
+New tests reconstruct DOCX beyond both 200,000 displayed characters and 8 MiB
+main-part XML, retaining inherited bold and list numbering across portions and
+backward replay. An attribute-heavy DOCX fixture also checks portion boundaries
+by XML cost when visible text is small. Other readers reconstruct all 1,600 paragraphs beyond the old
+text limit and replay earlier portions exactly. Tests cover retained descriptors
+after unlink, source mutation, malformed trailing XML, denied DTDs, multibyte UTF-8
+across RTF drains/MOBI records, and Markdown fences, nested list content, tables
+and forward reference definitions. The synthetic antiword wrapper verifies the
+inherited descriptor, emits more than the old 1 MiB cutoff, fills the pipe while
+idle, supports replay, and runs through actual controller/view eviction and
+helper cancellation. This proves the integration contract, not antiword's own
+allocation behavior on arbitrary real DOC files.
+
+Actual views browse forward and backward with three-frame/content bounds,
+nonempty retained text selections and stable geometry. Existing EPUB long-window
+format-history refresh, selection/viewport anchoring, portion-local formatting,
+images, typography/list/theme and compatibility-helper tests remain included.
+A late FB2 failure leaves useful document content visible with an explicit state.
+
+The full build passed. All 34 suites passed in the clean rerun (134.74 s).
+A preliminary broad run overlapped executable relinking and had helper-startup
+failures; it is superseded by that build-complete run. The standalone document
+suite also passed (23.19 s).
+Document/text/CSV/XLSX ASan/UBSan suites passed with leak detection (85.08 s), using
+only the existing Qt PDF suppression and producing no sanitizer diagnostics.
+After sharing Markdown normalization/title handling, the document sanitizer
+suite passed again (50.35 s). A final DOCX XML-cost bound prevents attribute-heavy
+or invisible markup from accumulating 64 expensive blocks despite little text.
+After that change, the full build and all four affected suites passed (50.30 s;
+documents 29.74 s), and the document sanitizer suite passed again (49.27 s).
+The other three sanitizer suites were not rerun for those document-only changes.
+The 34-suite run predates this final DOCX cost-bound adjustment.
+
+With ScreenSaver.GetActive returning false, ten focused methods passed on the
+physical KDE Wayland desktop (20 results including data rows/setup/cleanup,
+15.53 s), including the final DOCX cost-bound adjustment, using an isolated application bus and the existing real-KWin override.
+They cover DOCX continuation/numbering, every other new reader, backward eviction,
+text selection, window geometry, late errors, Markdown structures/references,
+DOC backpressure/cancellation, and existing EPUB/typography behavior. Portal and
+image-plugin diagnostics did not fail these checks. This is generated-fixture
+native validation; physical scrolling feel and real shares/distribution behavior
+are not established. Earlier geometry frame/focus probes remain separate evidence.
+
+Remaining limits are explicit: eager DOCX metadata, bounded XML subtrees,
+indivisible paragraphs/tables/lists/fences, MOBI variants/record metadata,
+reference discovery and distant replay can exceed reader budgets. Markdown
+reference discovery can delay initial content and is limited to 2,048 definitions/
+64 KiB with the request's read/time budget. The stdout pipe does not bound
+antiword's own internal allocations. These are application budgets, not an OS
+memory sandbox. Comparative first-paint/RSS benchmarks and real remote acceptance
+remain outstanding. KSyntaxHighlighting can still lose multiline lexer context
+when its opening construct is evicted; this increment does not solve that issue.
+
+## Formatting only the newly loaded portion (2026-10-21)
+
+Rich-document continuation now applies typography and theme-safe source colors
+to the inserted QTextFrame only, using the current zoom and palette. Retained
+frames are not passed through those formatting loops on each load. Explicit
+zoom/theme changes still update the resident document. The existing occasional
+format-history compaction remains bounded to resident portions and formats each
+reimported frame through this same path.
+
+The new real-helper EPUB test watches QTextDocument::contentsChange and confirms
+that loading another portion does not send text/format changes through the
+resident heading. It checks that the old frame survives, the new headings/body
+use the current zoom, and an explicit zoom reset still updates retained text.
+The existing long EPUB test continues through forward/backward eviction and the
+format-history refresh, checking selection, visible position, images, lists,
+tables and unchanged window geometry. Existing DOCX typography/source-color
+checks still pass, including light/dark palette restoration.
+
+The existing KSyntaxHighlighting adapter already updates affected Qt text blocks.
+A new test compares append/prepend highlight ranges with a fresh library result,
+including a multiline comment spanning inserted segments, and confirms that the
+same adapter and earlier block's lexer data survive appends. No lexer or second
+formatting backend was added. This does not resolve lexer state whose opening
+construct has already been evicted; that remains explicitly outstanding.
+
+The full build passed. All five affected CTest suites passed (23.26 s): documents,
+highlighting, optional highlighting fallback, lazy text and CSV. Three focused
+native KDE Wayland document methods passed (5 results including setup/cleanup,
+3.85 s): segment-local formatting, long rich-window eviction/refresh, and
+DOCX typography/list/theme behavior. `git diff --check` passed. No packages,
+branches, worktrees or commits were created.
+
+## Window geometry completion for progressive previews (2026-10-21)
+
+Stable first opening, switching and restored manual sizes are requirements of
+the lazy-loading work. The existing WindowPlacement helper now tolerates a
+filename caption still travelling over Wayland: it prefers an exact caption,
+otherwise selects only the sole eligible normal window of this process. Dialogs,
+hidden/deleted windows, other processes and ambiguous candidates remain excluded.
+Qt visibility precedes native exposure, so first-map requests retain the latest
+target until Qt has dispatched the expose event. Later mapped requests continue
+to use KWin even when Qt temporarily reports the window as unexposed. No second
+placement service, compositor replacement or remapping path was introduced.
+
+A new regression commits reading content synchronously after showing a compact
+loader, before native exposure, then changes caption and information/reading
+geometry six times. It checks the final reading size and absence of remapping.
+The existing CSV/XLSX checks cover column fitting, text/PDF transitions, restored
+760×540 manual table size and hide/reopen. Existing image/maximized transitions
+and the read-only KWin frame observer provide broader placement coverage.
+
+The rebuilt checkout passed all 34 registered suites (115.30 s). An isolated
+session of the already installed KWin, using its `--virtual` framebuffer at
+1920×1080, a private D-Bus session and temporary runtime/config directories,
+passed the complete XLSX/CSV suite (70 passed, one optional private sample
+skipped, 8.61 s), eight focused preview methods (10 results, 8.91 s), and all
+11 existing compositor placement checks with `--initial small --activate`.
+The observer confirms frame containment, one native window, continuous focus,
+no unmapping, restored reading size and rapid replacement. Its report is
+`build/wayland-placement-geometry-small.json`.
+
+The physical desktop became locked during validation: ScreenSaver.GetActive
+returned true, and native windows stopped becoming exposed. Runs in that state
+are not valid desktop acceptance results. After the user unlocked the desktop,
+ScreenSaver.GetActive returned false and the complete physical KDE Wayland
+XLSX/CSV suite passed (70 passed, one optional sample skipped, 9.29 s). The eight
+focused preview methods also passed (10 results, 11.71 s), including the new
+first-exposure/caption regression, cold loader and PDF opens, pending-preview
+identity, and manual/maximized image/table transitions. The physical KWin frame
+observer passed both `--initial small --activate` and `--initial large --activate`
+(11 checks each): all frames stayed inside the actual 1920×1036 work area,
+keyboard focus and a single native window were retained, no unmapping occurred,
+and reading size was restored after temporary previews. Reports are
+`build/wayland-placement-geometry-physical-small.json` and
+`build/wayland-placement-geometry-physical-large.json`. This closes the recorded
+cold/open/transition/reopen geometry follow-up. No desktop lock settings
+were changed. No new packages, branches, worktrees or commits were made.
+
+## Progressive EPUB on existing document/helper infrastructure (2026-10-21)
+
+EPUB now reuses Package/SeekableZipSource, the existing spine/HTML/image renderer,
+LazyCoordinator/LazyWindow/boundary/status policy, and the document-record writer
+and StructuredDecodeJob validator. No new ZIP/XML parser, transport, image codec,
+extractor or dependency is introduced. The installed Qt 6.11.2 public text-frame,
+resource, cursor and layout APIs supply the rich view; libzip remains 1.11.4.
+The helper uses the existing headless document runtime for image plugins.
+
+Initial/continuing portions target 8,192 text units or 64 semantic units, retaining
+complete inline/list/table content and transparent container boundaries. Only
+one bounded chapter tree and next block cursor are retained; older cache misses
+replay the same renderer. The existing 8 MiB XML-part/200,000-node/depth budgets
+remain, as do per-portion content and image limits. Books can continue beyond the
+old total 200,000 characters and 128 chapters; spine metadata is capped at 2,048.
+An excessive indivisible block fails its content budget instead of silently
+truncating a supposedly complete continuation. Images have a 2 Mi-pixel portion
+budget and use the existing validated native pixel/profile transfer.
+
+The rich view retains three Qt frames, the existing five-entry/64 MiB charged
+cache and four reusable resource slots. A public-API probe demonstrated that Qt
+retains unique formats after text deletion (1,004 formats for five characters
+after 1,000 anchor edits); clear reduced this to two. Above a 4,096-format refresh
+trigger, only the resident sanitized portions are reimported through Qt's clear
+API. The widget, zoom, visible text position, selection, and window are retained.
+The trigger does not cap formats actually needed by resident content.
+
+Tests reconstruct a long chapter past the old text budget, read 140 spine entries,
+replay evicted blocks, jump to unloaded fragments (including >1,024-character
+existing anchor names), and check source unlink/mutation and late malformed XML.
+The actual view browses through forward/backward eviction and format refresh,
+checking character/format/frame bounds, selection, a visible text anchor,
+window geometry, bold text, nested tables/lists and validated image resources.
+Broken links retain useful content and later valid navigation still works.
+Existing document-helper tests continue to validate record framing, images,
+read-only resource behavior, other formats, extractors and cancellation.
+
+The build passed all 34 registered suites (122.95 s). Document, plain-text,
+CSV and XLSX suites passed ASan/UBSan with leak detection (64.96 s), using only
+the existing Qt PDF suppression and producing no sanitizer diagnostics. Six
+focused document cases passed native KDE Wayland with the real KWin bus override
+(8 results including setup/cleanup, 4.02 s): new EPUB continuation/replay and
+rich-window checks, resource denial, typography/list behavior, and shared image
+transfer. The EPUB window test crossed the format-refresh threshold while
+preserving a nonempty text selection and the visible line through 24 forward
+loads, backward reloads and chapter navigation.
+At this checkpoint the cold-text/CSV native geometry follow-up remained open;
+see the later geometry completion above for its fix and validation. This EPUB
+increment does not claim complete phase acceptance or measured RSS/first-paint improvement.
+Other document formats remain bounded and need their own reader continuation.
+No branch/worktree, installation or commit is part of this increment.
+
+## Progressive XLSX worksheets on the shared table path (2026-10-21)
+
+Production XLSX now uses the existing LazyCoordinator/helper record protocol,
+TableRowBatch, LazyWindow and LazyTableWindow/SpreadsheetModel path used by CSV.
+The existing package/cell/number-format parser is shared with bounded callers.
+The capability assessment used installed Qt 6.11.2 and libzip 1.11.4: Qt accepts
+an input QIODevice, while libzip's zip_fseek manual restricts seeking to stored,
+unencrypted entries. A small read-only device wraps libzip entry reads; one Qt
+XML cursor serves forward batches, and older cache misses use bounded replay.
+No new ZIP/XML parser, extractor, dependency, source copy or growing index exists.
+
+Initial loads target 64 rows/16,384 characters; three rendered batches (at most
+192 rows), five charged cache entries/64 MiB, and the existing 16 MiB logical
+reply/128 KiB record bounds apply. Unselected worksheets stay unloaded. Switching
+releases the old row window and remembers one reader-owned region token per
+sheet. The footer reports resident source rows. Insertion/eviction retains the
+visible row anchor, persistent selection, widths and window geometry using Qt.
+
+New XLSX regressions browse 11,000 rows/110,000 cells and more than 16 MiB of
+worksheet XML/8 Mi retained-value characters over time, then replay an evicted
+older batch. Shared strings, rich text, wide Unicode chunked replies, booleans,
+missing formula caches, source unlink/mutation, sparse rows, trailing empty cells,
+late errors, sheet switching and stale targets are covered. All existing date/time
+cases also run through the progressive reader for transitional and Strict OOXML.
+Qt's model tester checks the real grid during eviction and sheet changes.
+
+Metadata/styles/shared strings still use bounded eager parsing. Distant compressed
+entry replay can exceed its per-request work budget; exact cross-sheet pixel
+restoration and jumps over huge sparse ranges remain open. Document/book
+continuation and evicted text highlighting context remain separate increments.
+Physical scrolling feel, real shares, other distributions, and comparative
+first-paint/peak-memory benchmarks are not claimed by these generated tests.
+
+The all-adapters build passed all 34 registered suites (121.90 s). After
+rebuilding all PreviewData consumers to remove stale development objects, XLSX
+and both shared lazy suites passed ASan/UBSan with leak detection (32.07 s),
+using only the existing Qt PDF suppression and producing no sanitizer diagnostics.
+The rebuilt normal XLSX/CSV/text continuation suites passed again (18.24 s).
+Native KDE Wayland with the real KWin bus override passed the four new XLSX
+checks (6 results including setup/cleanup, 2.08 s), all 30 CSV lazy results
+(2.79 s), and all 20 text lazy results (6.07 s).
+
+At this checkpoint the complete native XLSX suite was **not fully green** (see
+the later geometry completion above for current results): its CSV
+`tablesKeepGeometryIndependentOfReadingAndPdf` case failed at differing cold-text,
+transition or reopen size assertions; `tableWidthFollowsColumns:csv-40` also
+failed once. A sequential rerun without competing jobs reproduced failures,
+and an isolated run failed on the initial text aspect-ratio assertion before
+opening a table. The new XLSX row/sheet geometry checks passed throughout.
+These failures were recorded as unresolved desktop geometry follow-up; their
+differing failure stages alone did not establish a root cause.
+No native geometry implementation was changed in this increment.
+
+No installation, commit, branch or worktree was created. Accumulated checkout
+changes were preserved.
+
+## Shared text/table reuse and progressive CSV/TSV (2026-10-20)
+
+The OS/library-first requirement is explicit in `docs/architecture.md` and the
+active task note. Text and CSV share `TextCodec` (Qt conversion/validation),
+`TextSource` (validated QFile/OS seek access and mutation checks), `LazyWindow`,
+`LazyBoundaryWatcher`, and loading/error binding. The existing CSV parser was
+extracted as a stateful `CsvRecordParser` and retained for bounded callers.
+The existing record writer handles larger logical replies in bounded chunks.
+`TableRowBatch` plus the existing `SpreadsheetModel`/QTableView use Qt row
+notifications and persistent indexes, ready for future XLSX continuation.
+
+Production CSV/TSV now opens a direct persistent source, initially loads at most
+64 complete rows with a soft 16,384-character target, and browses adjacent batches
+in both directions. Three rendered batches (at most 192 rows), a five-entry/
+64 MiB charged cache, 16 MiB logical replies, 128 KiB wire records, and existing
+field/column/work budgets bound retained state. Reverse reads use bounded OS
+seeks and quote parity from known record boundaries; no growing index or source
+copy is created. Initial malformed input falls back to progressive text through
+the already-open source; later errors retain useful content. A resident-row range
+replaces a misleading initial-only row count during long browsing.
+
+`dzurkel_csv_lazy` checks all splits of a quoted/escaped/multiline CRLF fixture,
+then forward and backward reconstruction for six encodings and three separators.
+It reads 18,000 rows beyond the former 2 MiB and 10,000-row cutoffs, transfers wide
+Unicode records through the shared chunk framing, revisits records after source
+unlink, and checks malformed initial/later records and fallback. A Qt
+`QAbstractItemModelTester` checks the actual model through eviction; persistent
+selection, visible row anchors, horizontal scrolling, manual column widths,
+source row labels, resident row count and window geometry are preserved through
+forward browsing and return to the beginning. Invalid multipart sizes, offsets,
+base64, truncation and unterminated maximum-size wire records are rejected.
+Resource tests retain simulated SMB/SFTP identity and now assert uncopied direct
+CSV/TSV handoff. Existing plain-text tests exercise the extracted common policy.
+
+The all-adapters build passed all 34 registered suites (106.60 s). Native KDE
+Wayland passed all 30 CSV results (3.01 s) and all 20 text results (5.92 s), using
+the actual KWin geometry path. Both lazy suites passed ASan/UBSan with leak
+detection (15.11 s), with no new suppression or sanitizer diagnostics. Physical
+mouse/trackpad feel, real remote-share acceptance, other distributions and measured
+first-paint/peak-memory comparisons remain separate. No installation, commit,
+branch or worktree was created; accumulated checkout changes were preserved.
+
+The overall phase still needs XLSX worksheet streaming, document/book
+continuation and syntax-highlighting context across evicted text. Their existing
+bounded readers remain in place; the shared table/window infrastructure does not
+make their parsers incremental by itself. PDF, media, images and adapters retain
+their existing behavior.
+
+## Shared lazy coordination and progressive plain text (2026-10-20)
+
+This is the first increment of the shared lazy-loading phase. Production plain
+text now opens a persistent direct-source helper and loads nominal 4 KiB
+portions. Near-boundary scrolling loads adjacent portions; the view retains three
+and can revisit evicted content in either direction. The coordinator owns
+request IDs/generations, deduplication, one coalesced foreground target, one
+lookahead, a five-entry/384 KiB charged cache, deadlines and non-waiting
+cancellation. No lifetime content cutoff or growing offset index is introduced.
+
+`dzurkel_lazy` checks UTF-8, UTF-16LE/BE, UTF-32LE/BE and Latin-1 reconstruction,
+CRLF/Unicode boundaries, long lines, interior BOMs, backward reads, source
+mutation and binary rejection. Helper/controller coverage includes reads beyond
+the former 2 MiB cutoff, backward cache misses, unlinking an open source, bounded
+cache state, duplicate/pending/stale requests, wrong IDs, cyclic/oversized/
+truncated replies, timeouts and cancellation without waiting. Wrapped and
+unwrapped views browse forward through eviction and back to the beginning while
+checking a live text anchor, resident content and window geometry. A later source
+error preserves useful text and geometry; replacement/dismissal release helpers.
+Native viewport checks wait for initial exposure/configure before measuring.
+
+The all-adapters build passed all 33 registered suites (105.69 s). After the
+final fixed-size status/error presentation refinement, all five affected suites
+(highlighting, previews, lazy loading, resources and interactions) passed again
+(39.40 s). The final lazy suite passed ASan/UBSan with leak detection (7.21 s),
+without a new suppression or sanitizer diagnostics. Its full native KDE Wayland
+run passed all 20 results (6.15 s), including the real KWin geometry path.
+These are synthetic Qt input and generated local fixtures; physical scroll feel,
+real remote shares, other distributions and comparative first-paint/peak-memory
+benchmarks remain separate acceptance work. Nothing was installed or committed.
+
+The overall lazy-loading phase remains incomplete: CSV/XLSX and formatted
+text/document/book readers still return their bounded initial previews and do
+not fetch further content while scrolling. Their parser-specific continuation
+work is recorded in `helpers/features/preview-resource-pipeline.md`. The existing
+optional highlighting adapter is unchanged; lexer state spanning evicted text is
+not yet checkpointed. Selection/copy/search covers resident text. PDF, media,
+images and connectors/adapters retain their existing behavior.
+
+## Shared document and book source access (2026-10-20)
+
+DOCX, EPUB, RTF, FB2, SFB, MOBI, Markdown and legacy DOC now share the structured
+helper lifecycle with XLSX. DOCX/EPUB reuse its public libzip seekable-source
+bridge; sequential readers retain bounded beginning-of-file content. MOBI seeks
+only required records. Optional antiword reads the validated descriptor without
+a temporary source copy. Preparation no longer creates source snapshots.
+
+Tests cover every document format through local and simulated SMB/opt-in SFTP
+resolution, sparse sources over 256 MiB, unused ZIP parts, bounded prefixes,
+Markdown text fallback, embedded image pixels/colour profiles, malformed helper
+records, missing antiword and cancellation of extractor descendants. Existing
+parser, document navigation and XLSX checks remain in place.
+
+The all-adapters build and all 32 registered suites passed (126.99 s). Document
+and XLSX suites passed ASan/UBSan with leak detection (35.24 s), with no sanitizer
+diagnostics in the test log. The rebuilt native KDE Wayland selection passed all
+32 results (12.37 s), including the actual KWin geometry path and extractor
+cancellation. Fixtures simulate remote resolution; real-share and other-distro
+acceptance remain separate. No installation or connector/adapter changes were
+performed. Bounded preview content remains intentional; this does not introduce
+on-demand navigation through complete books or documents.
+
+## Direct-source XLSX (2026-10-20)
+
+XLSX now opens the resolved source through libzip's public seekable-source API
+inside an isolated helper. The resource/decoder worker hands off a candidate
+without reopening it. The XLSX suite covers a valid sparse ZIP larger than
+256 MiB with its central directory beyond that gap, no backing-store copy,
+vanished-source fallback, ignored unused expanded parts, archive metadata and
+consumed-part expansion budgets, and a multi-megabyte Unicode cell reply.
+Malformed/oversized/truncated protocol records, duplicate/out-of-range cells,
+timeouts, non-waiting cancellation and the two-helper cap are checked.
+Existing saved-value/date/formula-marker, partial-table, sheet, geometry and
+horizontal-scroll tests continue through the helper/controller path. Local,
+simulated SMB and opt-in SFTP routes preserve the original URL and shared grid.
+
+The all-adapters build passed all 32 registered suites (105.89 s). The full XLSX
+target passed ASan/UBSan with leak detection (12.24 s); no new suppression was
+needed. The native KDE Wayland run through the actual KWin geometry path passed
+15 results, including sparse-source loading, large cell transfer, local/remote
+handoff, column-based widths and manual geometry restoration. These use generated
+fixtures and simulated remote resolution; real-share/other-distribution acceptance
+remains separate. No installation or connector/adapter changes were performed.
+
+## Stable replacement and table widths (2026-10-20)
+
+Mapped previews now retain their content, geometry and filename until the
+replacement payload is ready. Image header/metadata callbacks no longer resize
+the window ahead of decoded pixels. Painting is suspended during the paired
+widget/identity/geometry commit. A slow first open maps a compact loader after
+150 ms; cancellation and generation guards still prevent stale presentation.
+
+New table widths use column counts and fixed header/style metrics, with a
+400-pixel minimum and 85%-of-work-area maximum. Overflow scrolls horizontally.
+Manual height survives opening another table; returning through reading previews
+retains the current table's manually chosen size. Sheet changes do not refit.
+Tests cover delayed replacement without content/title/size changes, compact first
+loading, CSV/XLSX with 2/6/40 columns, horizontal overflow and manual-height
+preservation. All 32 registered suites passed across focused and remaining
+regression runs. Native Wayland checks passed both ordinary Qt resizing and
+the actual KWin geometry path: five preview results and ten table results on
+the latter. The final table-height follow-up passed the full spreadsheet suite
+again (4.73 s). No installation was performed.
+
+## In-memory text and CSV prefixes (2026-10-20)
+
+The resource suite now checks uncopied text/CSV/TSV prefixes through simulated
+SMB and opt-in SFTP KIO-FUSE resolution, preserving original URLs and rendering
+through the controller. Sparse 256 MiB text and CSV sources produce at most
+2 MiB plus one detection byte without a backing file. A CSV whose final record
+crosses the prefix boundary retains only complete records. Source removal after
+preparation still permits decoding, proving the worker does not reopen it.
+Empty/UTF-8/UTF-16/Latin-1 text, binary rejection, malformed-CSV text fallback and
+cancelled jobs are covered. The focused native KDE Wayland run passed all 11
+results. All 32 registered suites passed across the five focused suites (30.39 s)
+and the 27 remaining regressions (53.47 s).
+These are bounded beginning-of-file previews; scrolling does not fetch later
+source content. Markdown retains its existing temporary prefix snapshot.
+No connector changes or installation were performed.
+
+## Independent spreadsheet window sizing (2026-10-20)
+
+CSV and Excel grids now retain a separate size/state, initially 85% of the
+available screen in each dimension. Fitting a portrait PDF cannot overwrite
+their saved width. The data-driven
+`tablesKeepGeometryIndependentOfReadingAndPdf` regression opens text, a portrait
+PDF and a real CSV/XLSX, verifies the wide initial grid, then checks manual-size
+restoration after both reading formats and hide/reopen. Both format cases passed
+on native KDE Wayland. Preview, interaction, spreadsheet and document suites
+passed; the document test now verifies separate PDF/table sizes instead of the
+previous shared size. This change has not been installed.
+
+## Direct-source images and GIFs (2026-10-20)
+
+`dzurkel_images` covers a valid sparse BMP larger than 128 MiB whose pixels start
+beyond the former source limit, no backing-store copy, vanished-source handoff,
+16-bit PNG alpha/Display-P3 profile round trips, JPEG EXIF orientation, a font-using
+SVG reader when available, GIF timing/loops and budget fallbacks. It also checks
+oversized/invalid/truncated replies, a stalled helper, deadlines and concurrency.
+Existing preview/interaction suites exercise first-map dimensions, zoom, fit,
+GIF Pause/Play/Replay, replacement and dismissal through the new helper path.
+Remote-resource tests assert direct image/PDF paths and original URL identity
+through simulated SMB and opt-in SFTP KIO-FUSE responses. No new connector is used.
+
+The all-adapters build passed all 32 registered suites (83.19 s). The image
+target passed ASan/UBSan with leak detection and all 12 native KDE Wayland test
+results. Native small-image fitting, zoom/scroll/fit/reset and GIF playback checks
+also passed. The native window-sizing regression passed twice in isolation; one
+earlier run alongside another native window test failed its manual-resize check.
+Run native geometry checks serially and retain that concurrent timing limitation.
+These checks use the build-tree executable; no installation was performed.
+
+## PDF pages and helper lifecycle (2026-10-20)
+
+`dzurkel_pdf` checks first-page publication, requested-page rendering, mixed page
+sizes inside a fixed window, edge scrolling in both directions, fully visible
+pages, PageUp/PageDown, Ctrl+wheel, touchpad momentum and phase-less fine-wheel
+idle boundaries. It also checks internal links, malformed/oversized/truncated
+pipe replies, deadlines, cancellation without a waiting destructor, staged-file
+retention, a two-helper cap, and coalescing obsolete page requests.
+
+A new regression opens a valid sparse PDF larger than 256 MiB with 10,001 pages,
+checks that preparation returns the original path with no backing store, and
+renders both its first and last page. Resource tests check uncopied PDF paths,
+original URL identity and successful rendering through simulated SMB/SFTP
+KIO-FUSE resolution; other formats retain their existing snapshot behavior.
+
+The navigation/lifecycle checks pass offscreen and on native KDE Wayland with synthetic
+input. The offscreen suite also passed three consecutive runs. Mouse tests use
+an explicit device identity, since Wayland's primary device can be a touchpad.
+The PDF target passed ASan/UBSan with leak detection; this run needs no new
+sanitizer suppression. Existing preview tests retain encrypted/damaged
+PDF fallbacks, dismissal, repeated replacement, window-state restoration and
+session release. The interaction suite checks zoom, visible raster content and
+file-navigation shortcuts.
+
+```bash
+ctest --test-dir build --output-on-failure -R 'dzurkel_(pdf|previews|interactions)'
+QT_QPA_PLATFORM=wayland dbus-run-session -- ./build/dzurkel_pdf_tests
+```
+
+Physical mouse/trackpad feel, real remote shares and other desktop/distribution
+combinations still need acceptance. Direct PDF sources have no whole-file snapshot
+or application byte/page-count cap. These checks do not establish decoder sandboxing, lower total
+memory, or faster first paint. Historical retained-PDFium measurements below
+precede this implementation.
+
 ## Document and e-book checks
 
 `dzurkel_documents` covers DOCX structure and text fallback, EPUB spine order and
@@ -317,7 +1016,7 @@ binary. Milestone 3 remains the desktop integration acceptance phase.
 
 The resource suite uses an isolated fake KIO-FUSE service and real helper
 processes. It verifies exact URL delivery, username/Unicode handling, image/PDF/
-text snapshots, source mutation after copying, bounded text and oversized PDF
+text snapshots, source mutation after copying, bounded text and uncopied large PDF
 handling, directory/link/FIFO information views, authentication failure, missing
 local files, responsive dismissal/replacement, stale-result rejection, timeout
 and backing-directory cleanup. It does not contact a real SMB server.
@@ -560,7 +1259,8 @@ area and a wide preview extending past the right edge. Qt's global coordinates
 and estimated available geometry were insufficient for this check.
 
 `WaylandPlacementTest.py` is an opt-in regression check on a real KDE Wayland
-session. It creates generated images, text and an unsupported resource, runs its
+session with the screen unlocked (check `org.freedesktop.ScreenSaver.GetActive`
+before interpreting exposure failures). It creates generated images, text and an unsupported resource, runs its
 own Dzurkel process on a private bus, and uses a temporary KWin observer filtered
 to that PID to read actual frame/work-area rectangles. It never calls the user's
 resident Dzurkel service or changes persistent KWin configuration. `--activate`

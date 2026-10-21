@@ -1,24 +1,31 @@
 # Preview library and reader boundaries
 
-The first library increment supplies a compiled-in reader catalog and a shared
-read-only spreadsheet view. It does not download readers, install packages, load
-third-party plugins. Audio and video use the shared optional media adapter.
-XLSX supplies a separate bounded
-reader for the same table view. DOCX/RTF/EPUB/FB2/SFB/MOBI and text-only legacy DOC share a
-separate bounded document view.
+The compiled-in reader catalog supplies shared read-only table, text and rich
+document views. It does not download readers, install packages or load arbitrary
+third-party readers. Audio and video use the shared optional media adapter.
+XLSX supplies a progressive worksheet
+reader for the same table view. DOCX/RTF/EPUB/FB2/SFB/MOBI/Markdown and text-only legacy DOC share a
+formatted document view and progressively loaded, bounded portions.
 
 ## Current pipeline
 
 1. The resource helper inspects the source and asks `PreviewLibrary` to select
    a reader. PDF signatures and actual Qt image readers retain priority over a
    misleading CSV/text extension.
-2. The selected capability supplies a complete-snapshot, bounded-prefix or streaming source
-   policy and byte limit. Image/PDF snapshots remain capped at 64 MiB; CSV/text
-   prefixes at 2 MiB plus one truncation-detection byte.
-   Audio/video retain their original identity and use helper-backed range reads, with
-   no media snapshot or total source-size limit.
-3. The existing single decoder worker creates `PreviewData`. Each result names
-   its reader. Cancellation and request-generation checks remain in the controller.
+2. The selected capability supplies the direct seekable-source or streaming
+   policy for the implemented file readers. The resolved source path and original
+   URL remain separate, with no whole-file copy or source-size admission cap.
+   Decoder helpers open and read/seek within their content/parsing budgets.
+   Plain text, CSV/TSV, XLSX and all supported rich documents/books use persistent
+   lazy sessions. Images decode bounded pixels and PDF renders requested pages.
+   Audio/video use
+   helper-backed range reads without a media snapshot.
+3. The existing single decoder worker creates `PreviewData`. Direct text/image/PDF/table/document results are
+   candidates; the controller waits for a valid first frame from the isolated
+   decoder session before committing the view.
+   Each result names its reader. Cancellation and request-generation checks remain in the controller.
+   Plain text, CSV/TSV, XLSX and all supported rich documents/books open a persistent lazy session and commit its first
+   small portion. Later portions use the same coordinator/helper session.
 4. The GUI chooses a view from the result kind. A table payload goes to
    `SpreadsheetView`, independently of the reader that produced it.
 5. Settings gets the implemented support list/descriptions from the same catalog.
@@ -34,9 +41,10 @@ to display tables.
 
 ## CSV / TSV
 
-CSV uses a dedicated bounded parser and the shared table view. TSV explicitly
+CSV reuses its existing parser through `CsvRecordParser`, the shared lazy
+coordinator/window policy, and the existing Qt table model/view. TSV explicitly
 uses tabs. CSV considers comma, semicolon and tab separators using consistent
-field counts across up to 32 complete sample records from at most 64 KiB.
+field counts across up to 32 complete sample records from a 64 KiB source sample plus Unicode boundary alignment.
 Ties prefer comma, then semicolon, then tab. Ambiguous data cannot always be
 identified correctly; the selected separator is shown in the preview status.
 A delimiter override control is not implemented in this increment.
@@ -52,19 +60,45 @@ the initial grid uses single-line cells.
 
 UTF-8 and BOM-identified UTF-16/UTF-32 follow the existing text decoding policy;
 invalid UTF-8 can use a labelled Latin-1 fallback. Binary/control-heavy input
-gets file information. CSV structure errors fall back to the bounded text view
-with an explanation. Single-column and empty CSV files remain valid tables.
+gets file information. Initial CSV structure errors or records that do not fit
+field/column budgets fall back to progressive plain text with an explanation.
+Errors discovered later preserve the useful table and show an error. Single-column
+and empty CSV files remain valid tables.
 
-Limits: 2 MiB input, 10,000 records, 256 columns, 100,000 field positions (including
-empty ones), 16,384 characters per field, and five seconds of cooperative parsing
-work. Only complete records within the limits are retained. A byte-truncated last
-record is discarded even if unquoted. Limit notices distinguish a partial table
-from a complete workbook. If no complete record fits, the bounded text fallback
-is used. These are application limits, not an OS process-memory sandbox.
+Batches target 64 complete records or 16,384 retained UTF-16 characters. One
+complete record may exceed the character target, within 256 columns and 16,384
+characters per field. Parsing retains quote/CRLF state across source chunks and
+has a five-second work deadline per batch. There is no lifetime 2 MiB or
+10,000-row preview cutoff in the production CSV/TSV path. The synchronous
+in-memory/fallback entry point retains those earlier bounds for existing callers.
+
+Text views expose Beginning/End and Ctrl+Home/Ctrl+End through the same coordinator.
+TextPortionReader resolves EOF to its final useful Unicode-safe interval, including
+files without a final newline and empty nominal intervals caused by boundary
+lookahead. The reader seeks directly, without scanning/copying intervening content.
+The editor and selected language remain attached. Multiline highlighting context
+outside the resident window is accepted as best effort; exhaustive reader/lexer
+checkpointing is outside the agreed preview scope.
+
+Both text and tables use `LazyWindow`/`LazyBoundaryWatcher` for bounded adjacent
+portions and input handling. `SpreadsheetModel` retains at most three batches
+(192 rows maximum), using Qt insert/remove notifications and persistent model
+indexes to preserve retained selection, row anchors, column sizes and horizontal
+scrolling. Row numbers and the range summary use original source-row positions.
+Backward requests scan bounded preceding bytes from a known record boundary;
+escaped quotes and embedded newlines are respected. No source-length-dependent
+index or source copy is created. Reverse scanning is limited to 64 MiB and five
+seconds per request, not a whole-file admission limit.
+
+The shared record writer splits large logical portions into bounded JSON-lines
+records; no second transport is added. CSV/TSV permit at most 16 MiB per logical
+reply and a five-entry/64 MiB conservatively charged reply cache. Each wire
+record stays within 128 KiB, with one active request and one lookahead. These
+are content/cache/work budgets, not an OS process-memory sandbox.
 
 Table arrows navigate cells/scroll; Alt+arrows and Previous/Next browse files.
 Space/Shift+Space/Escape dismiss as for other previews. Existing mounted, SMB and
-opt-in SFTP access routes use the same bounded preparation path.
+opt-in SFTP access routes hand off the resolved source to the same helper session.
 
 ## XLSX
 
@@ -105,27 +139,84 @@ expand the grid; genuinely empty cells do not.
 The narrowed values-only scope uses [libzip](https://libzip.org/) public APIs
 and Qt's XML stream reader rather than a workbook editing/layout engine. This
 avoids QXlsx's private Qt ZIP dependency and permits cancellation between 64 KiB
-decompression reads and XML tokens. The complete compressed snapshot is capped
-at 16 MiB; the ZIP directory at 2,048 entries; all declared expanded entries
-(even ignored content) at 64 MiB; each consumed XML part at 16 MiB. Actual reads
-also enforce expanded-byte limits. No worksheet/media/style objects are loaded
-through an external office library.
+decompression reads and XML tokens. An isolated helper opens the validated source
+descriptor and exposes read/seek/stat operations through libzip's public source
+callback API; libzip still parses the ZIP container. No complete archive is copied
+to disk or memory, and there is no source-file size admission cap. Archive opening
+has a 4 MiB metadata-read budget, followed by a 128 MiB actual source-read budget.
+The ZIP directory is capped at 2,048 entries. Unused media and unselected sheets
+are indexed without decompression. No worksheet/media/style objects are loaded
+through an external office library. Source mutation can fail loading; this is not
+a snapshot. An already-open descriptor remains usable after source unlink.
 
-Display limits are 32 worksheets, 10,000 rows, 256 columns and 100,000 cell
-records across the workbook. Exceeding these gives a labelled partial preview.
-Shared strings are capped at 100,000, each field at 16,384 characters, and total
-retained string/cell/format characters at 8 Mi. Number format and cell style
-tables are each capped at 100,000 entries. XML nesting is capped at 64; DTDs are
-rejected. A five-second cooperative loading budget applies. Package, XML,
-string-budget and decompression failures show file information, not a misleading
-partial table. These are application bounds, not an OS process-memory sandbox;
-cancellation cannot interrupt an individual synchronous library call.
+Production worksheets stream through libzip into QXmlStreamReader. Initial and
+subsequent batches contain at most 64 rows, targeting 16,384 characters at row
+boundaries. The shared grid retains three adjacent batches (at most 192 rows),
+and the coordinator retains five replies within a charged 64 MiB cache. Logical
+replies are capped at 16 MiB and transported in validated 128 KiB wire records.
+Only the active sheet retains its row window. Switching releases those rows and
+remembers one resume token per sheet; return loads that region, then supports
+backward/forward scrolling. Pixel-perfect restoration across sheet changes is
+not implemented. Ordinary row insertion/eviction preserves the live scroll anchor,
+selection, column widths and window geometry through native Qt model operations.
+
+The old 10,000-row, 100,000-cell and worksheet-XML part-size cutoffs do not apply
+over the lifetime of progressive browsing. There are still 32 sheets, 256 columns
+and 16,384 characters per field. Metadata/styles/shared strings remain eager and
+bounded: 16 MiB per required metadata part, 64 MiB aggregate expansion, 100,000
+shared strings, 100,000 format/style entries, and 8 Mi retained metadata characters.
+These limits can prevent opening a workbook with a very large shared-string table.
+Expanding those limits would need separate lookup/continuation work; it is
+outside the agreed preview completion scope.
+
+Each worksheet request, including replay, has a five-second cooperative budget,
+128 MiB source-read and 64 MiB expanded-read budgets; XML depth is limited to 64
+and DTDs are rejected. A cached or immediately following batch is inexpensive.
+libzip's public `zip_fseek` supports stored, unencrypted entries only; ordinary
+compressed XLSX entries require replay for an evicted older range or sheet return.
+A distant replay may exceed the work budget even when forward browsing worked.
+There is no growing row index or extracted worksheet copy. Very sparse sheets
+retain absolute row labels and bounded batches; jumping directly over huge blank
+ranges is not implemented. Initial failures show file information; later failures
+retain useful rows and show an error. The shared helper's 30-second request deadline,
+non-waiting process cancellation and two live/reaping-helper cap still apply.
+
+Synchronous/compatibility callers retain the bounded whole-preview path (10,000
+rows, 100,000 cells and 16 MiB per worksheet XML), sharing the same cell parser
+and formatting code. Application budgets are not an OS process-memory sandbox.
 
 Builds require libzip 1.7+ development files and pkg-config. Legacy XLS, XLSB,
 XLSM require separate decisions/readers. No office suite, formula
 engine, broker service or reader-package installer is introduced.
 
 ## Formatted documents and e-books
+
+Production EPUB loads portions of the ordered spine through the shared lazy
+coordinator and rich-document record protocol. It targets 8,192 text units or 64
+semantic units per load. Inline formatting, lists and tables remain complete
+units; transparent div/section/article wrappers can span portions while their
+anchors are retained. Three adjacent native Qt text frames and the existing
+five-entry/64 MiB charged lazy cache bound retained content. Four reusable image
+resource slots prevent a growing QTextDocument image cache. Interned Qt format
+history is also refreshed through public `clear()` above 4,096 formats; only
+resident portions are reimported with the viewport anchor/selection preserved.
+The threshold triggers refresh; live portions can themselves require more formats. Decoded raster data
+uses the same document transfer validation, with a 2 Mi-pixel budget per portion;
+unsupported/over-budget images keep the existing placeholders.
+
+Contents includes unloaded spine chapters, and internal chapter/fragment links
+can request their containing block. Evicted older content reloads through the
+same renderer. Bad navigation targets keep the current document usable. Source
+mutation and later content errors retain already-visible content. Forward reads
+retain one chapter tree and a block cursor; backward misses may replay blocks
+within request deadlines/read budgets. The existing Qt XML tree parser remains:
+8 MiB per chapter/part, 200,000 nodes, depth 64, 64 MiB consumed ZIP data and five
+seconds per portion (initial metadata has a separate bounded pass). A single block still has the 200,000-character/5,000-block/
+2 MiB HTML bounds; excessive blocks produce a visible error, not a successful
+truncated continuation. Spine metadata is capped at 2,048 entries. There is no
+lifetime 200,000-character or 128-chapter cutoff on the progressive path.
+Bounded synchronous EPUB callers retain their previous preview contract.
+
 
 Stable reader IDs `docx`, `rtf`, `epub`, `fb2`, `sfb`, `mobi`, `markdown` and `doc` share `FormattedDocument` and
 `DocumentView`. The worker produces escaped, application-generated HTML, plain
@@ -135,10 +226,22 @@ where possible. Both the QTextDocument and QTextBrowser resource loaders block
 filesystem/network fallback; only retained image identifiers resolve. External
 links do not navigate. Internal links scroll to retained anchors.
 
-Markdown has a separate prefix-snapshot capability (2 MiB plus a truncation
-detection byte). Worker-side text decoding bounds its source to 200,000 UTF-16
-units and 5,000 lines. The view uses Qt's built-in Markdown parser with raw HTML
-disabled and the same resource-denying document. It adds no dependency. Shared
+Production DOCX/DOC/RTF/FB2/SFB/MOBI and Markdown now share the progressive
+rich-document path, three resident portions and bounded replay. DOCX streams
+complete XML blocks while retaining list/style state; RTF retains group/format
+state; FB2/SFB retain section/line state; MOBI retains decoder/render state across
+PalmDOC records; DOC drains antiword through a bounded stdout pipe. Older cache
+misses replay the same parser/extractor within five-second/64 MiB work budgets.
+Eager metadata and excessive indivisible blocks still have explicit limits.
+
+Markdown uses Qt's HTML-disabled importer on conservative structural segments in
+the helper, with the existing table preflight/normalization and denied external
+resources. Reference-bearing portions trigger bounded reference discovery through
+that same importer (2,048 definitions/64 KiB). This may delay initial loading or
+fail the work budget. Large indivisible lists/fences/paragraphs fail explicitly;
+table-limit fallback uses progressive plain text. Compatibility callers retain
+the earlier bounded initial preview. See [architecture](architecture.md) for the
+reader-specific limits and [validation](testing.md) for actual checks. Shared
 block typography distinguishes title anchors, heading levels and ordinary/list
 paragraph spacing. DOCX emits semantic list items; inherited explicit RGB run
 colors are retained in source-color properties so contrast can be reconsidered
@@ -149,11 +252,12 @@ DOCX and EPUB use libzip public APIs and Qt XML parsing. Package relationships
 and EPUB spine order determine content paths. Paths stay inside the archive;
 entries are never extracted to disk. RTF uses a bounded group/control parser
 and libc iconv for legacy character decoding. DOC calls optional `antiword`
-directly, with UTF-8 text output and no shell, against a private copy of bounded
-input. Its output is capped at 1 MiB, with cancellation/deadline checks while
-draining it; failure and missing dependencies return information-only results.
+with UTF-8 text output, passing the already validated descriptor through
+`/proc/self/fd/0`. No source snapshot is required. Production output drains under backpressure and
+per-request budgets; the synchronous compatibility path retains its 1 MiB cap.
+Initial failures and missing dependencies return information-only results.
 
-FB2 uses the same bounded XML tree and renders body sections in order, including
+FB2 streams section boundaries and renders bounded XML subtrees in order, including
 additional note bodies after the main body. Metadata is kept separate from body
 text and base64 binaries are not rendered. Unknown wrappers retain their text;
 tables reduce to text separators and images use placeholders. SFB accepts UTF-8
@@ -162,34 +266,46 @@ unknown commands as escaped text. It does not interpret HTML or resolve links.
 
 MOBI uses a small native reader for unencrypted MOBI 6 with uncompressed or
 PalmDOC-compressed text (UTF-8 or Windows-1252). It validates monotonically
-increasing record offsets (at most 8,192 records), strips bounded trailing data,
-limits each expanded text record to 4,096 bytes, and retains at most 2 MiB of
-source HTML before display limits. A bounded tokenizer generates only approved
-tags, with at most 200,000 tokens and 64 open elements. Attributes and resources
+increasing record offsets (at most 8,192 records), reads the header/table and
+requested text records directly, skips unused image/font/index records, strips bounded trailing data,
+limits each expanded text record to 4,096 bytes, and retains bounded decoder/tag
+carry and the current portion. The existing tokenizer generates only approved
+tags, with at most 200,000 tokens per portion and 64 open elements. Attributes and resources
 are discarded, tables become text, and images become placeholders. No source
 HTML is passed to Qt. Encrypted, HUFF/CDIC and standalone KF8 variants return
 information with an explanation. No additional dependency or converter is used.
 
-Limits: 16 MiB compressed/source input; 2,048 ZIP entries; 64 MiB declared
-expanded bytes across all entries and 64 MiB cumulative actual reads; 8 MiB per
-consumed part. XML retains at most 200,000 element/text nodes across consumed
-parts, with depth 64. DTDs and entity declarations are rejected, except for
-EPUB XHTML's ordinary HTML document-type declaration without an internal subset.
-No external DTD is fetched; a fixed small map handles common HTML entities.
+There is no whole-source file-size admission cap or complete archive copy.
+Production document readers request further source content as described above.
+DOCX/EPUB retain 4 MiB archive-open/128 MiB later source-read/64 MiB expanded-read
+budgets per request, a 2,048-entry ZIP directory and bounded eager metadata.
+DOCX main XML streams; EPUB still retains one bounded 8 MiB chapter tree. DTDs
+and entity declarations are rejected, except for EPUB XHTML's ordinary HTML
+document-type declaration without an internal subset. No external DTD is fetched;
+a fixed small map handles common HTML entities.
 
-Display retains at most 200,000 UTF-16 text units, 5,000 block boundaries and
-2 Mi UTF-16 units of generated HTML. EPUB visits at most 128 linear spine items;
-EPUB Contents retains at most 64 entries; FB2/SFB retain at most 128. Exceeding display bounds yields a labelled
-partial preview. Package/XML/resource failures yield file information instead.
-Tables beyond four nesting levels reduce to text. Up to 16 distinct raster
-images are decoded: 4 MiB encoded bytes and 2,097,152 pixels per image, with
-8,388,608 pixels total. Displayed images fit within 640 × 640 logical pixels.
-Unsupported, absent or excess images become placeholders. SVG/fonts/scripts
-and remote assets are not decoded or fetched.
+Synchronous compatibility callers retain the earlier bounded initial preview:
+16 MiB RTF/FB2/SFB source prefixes, 2 MiB Markdown prefixes, 8 MiB package parts,
+200,000 text units, 5,000 blocks, 2 Mi HTML units and at most 128 EPUB spine items.
+Those are not lifetime cutoffs for production progressive browsing. Complete
+malformed XML remains an error; only a known bounded prefix tolerates premature
+XML end. Limits or unsupported formatting have explicit notices/placeholders.
+
+Per rich portion, up to 16 raster images use the existing validated decoder.
+Each image is limited to 4 MiB encoded bytes and 2,097,152 pixels; progressive
+portions share a 2 Mi-pixel aggregate budget (8 Mi pixels for bounded callers).
+Displayed images fit within 640 × 640 logical pixels. Tables beyond four nesting
+levels reduce to text. Unsupported, absent or excess images become placeholders.
+SVG/fonts/scripts and remote assets are not decoded or fetched.
 
 A five-second cooperative loading budget applies. These are application bounds,
 not an OS memory sandbox; synchronous Qt/libzip calls cannot be interrupted
-mid-call. GUI layout is bounded by retained content, but is not asynchronous.
+mid-call. All production readers use the shared lazy helper, with a 30-second request
+deadline, a two-helper cap and non-waiting process-group cancellation, including
+extractor descendants. Compatibility readers retain StructuredDecodeJob. The host validates document
+fields, sections and raster descriptors before publication. Records are capped at
+128 KiB and a document result at 128 MiB; native pixel buffers total at most
+64 MiB, with profiles at most 1 MiB each. GUI layout is bounded by retained content, but is not asynchronous.
 The source identity, request-generation checks, mounted-share and optional
 SMB/SFTP preparation routes remain shared with other readers. See
 [user-facing scope](previews.md#formatted-documents-and-e-books).
@@ -243,3 +359,33 @@ source-access evidence. Audio and video are integrated into the reader catalog;
 [video previews](video-preview.md) describes frame readiness, bounded read-ahead,
 slow-source feedback and cancellation. Network-disconnection recovery, automatic
 resume, advanced tracks/subtitles and hard decoder-memory bounds are not claimed.
+
+## Progressive plain text
+
+The production text path uses `TextPortionReader`, `LazyCoordinator` and
+`LazyTextWindow`. Each nominal 4 KiB source interval ends at a nearby physical
+line boundary (at most 1 KiB lookahead), or a safe Unicode boundary for long
+lines. UTF-8 and BOM-declared UTF-16/UTF-32 preserve code points, CRLF and
+whitespace across portions. Initial invalid UTF-8 selects a labelled Latin-1
+fallback for the session; later encoding damage produces an error while the
+current text stays visible. Source size/mtime changes require reopening.
+
+The reader retains one validated open descriptor and no growing token/index
+collection. Evicted portions are seekable in either direction, including after
+unlinking an already-open file. The coordinator has one active request, one
+replaceable foreground target and one optional lookahead; IDs and generations
+prevent obsolete publication. It retains at most five replies and 384 KiB of
+conservatively charged payload storage, with 128 KiB wire records. The view
+retains three adjacent portions and no undo history. Source length has no
+lifetime transfer or initial-prefix cutoff. Scroll position is anchored to a
+live text cursor; loading/status feedback reserves fixed space. At most two
+lazy helpers may be live/reaping, with a 30-second deadline per request.
+
+The lower-level synchronous text provider remains a bounded decoder for existing
+in-memory/fallback callers; it is not the production progressive text path. Selection/copy/search operates on the resident text
+window. Syntax highlighting uses the existing optional adapter; context whose
+opening construct has been evicted is best effort while the language stays fixed.
+CSV/TSV, XLSX and all supported rich documents/books share this lifecycle and
+adjacent-window policy with their reader-owned continuation implementations
+described above. Images need no text-style continuation; PDF and media retain
+their page/range-based lifecycles.

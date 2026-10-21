@@ -3,7 +3,7 @@
 #include <optional>
 
 namespace dzurkel {
-enum class SourceAccess { CompleteSnapshot, PrefixSnapshot, Streaming };
+enum class SourceAccess { BoundedPrefix, Streaming, SeekableSource };
 struct ReaderCapability {
     QString id;
     QString title;

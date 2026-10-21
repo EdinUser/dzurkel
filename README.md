@@ -2,7 +2,7 @@
   <img src="src/resources/icons/hicolor/scalable/apps/dzurkel.svg" width="128" height="128" alt="Dzurkel — a peeking amber eye behind a blue shutter">
 </p>
 
-# Dzurkel — Quick Look for Linux
+# Dzurkel 1.0.0 — Quick Look for Linux
 
 **Peek-a-Dzurkel!**
 
@@ -33,8 +33,10 @@ your Qt theme. [Recording details](docs/video/README.md).*
 - Zoom images and PDFs, navigate PDF pages and switch spreadsheet sheets.
 - Play audio and video, seek where supported, and share mute/volume choices.
 - Read source code with optional syntax highlighting and remembered text wrapping.
+- Scroll text, tables, documents and e-books with small initial loads and bounded resident content.
+- Jump to the actual end of text/log/SQL files with **End** or Ctrl+End.
 - Inspect folders with asynchronous desktop-backed contents size and file counts.
-- Preview local files and mounted shares, with incremental media reads for slow sources.
+- Preview direct sources without whole-file temporary copies, including local files and mounted shares.
 - Follow your desktop's Qt theme, with Wayland and X11 integration.
 
 **Space/Escape** dismiss the preview; **P** toggles media playback. Audio and video
@@ -58,15 +60,16 @@ autoplay with sound unless muted. Dzurkel stays resident for reopening;
 
 Media support depends on installed Qt backends and codecs. Audio-only containers
 use the music view. See [supported formats and preview limits](docs/previews.md)
-and [what's new in 0.9.0](docs/releases/v0.9.0.md).
+and [what's new in 1.0.0](docs/releases/v1.0.0.md).
 
 ## Installation
 
 Download the installer matching your system from
 [Releases](https://github.com/EdinUser/dzurkel/releases). Packages are attached
-after release validation succeeds. **0.9.0 is the latest stable release**;
-validation passed, installers are attached and promotion is complete. See
-the [release page](https://github.com/EdinUser/dzurkel/releases/tag/v0.9.0) for current status.
+after release validation succeeds. **This checkout is version 1.0.0, prepared
+for release.** A source version bump does not publish installers; check the
+release listing for available downloads and the [1.0.0 notes](docs/releases/v1.0.0.md)
+for validation and known limits.
 
 | System | Package | Install the downloaded file |
 | --- | --- | --- |
@@ -97,15 +100,15 @@ leaves shortcuts unchanged; Settings provides reversible setup.
 Finish file operations before accepting a file-manager restart. Desktop focus
 policies and validation differ; see compatibility below.
 
-Version 0.9.0 also includes an optional adapter for **KDE file-open and
+An optional adapter supports **KDE file-open and
 upload dialogs**, separate from Dolphin's shortcut. Enable **Space previews in
 KDE file dialogs** in Settings and sign out/in to load it into compatible Qt
 applications. This requires a build containing a compatible adapter.
 See [setup, scope and validation](docs/file-dialog-previews.md).
 
-Version 0.9.0 adds [folder contents sizing](docs/folder-previews.md) through
+[Folder contents sizing](docs/folder-previews.md) uses
 optional desktop libraries. Existing Thunar setups offer **Update folder previews…**
-in Settings. See the [0.9.0 release notes](docs/releases/v0.9.0.md) for changes,
+in Settings. See the [1.0.0 release notes](docs/releases/v1.0.0.md) for changes,
 validation and known limits.
 
 ## Lightweight by design
@@ -113,7 +116,13 @@ validation and known limits.
 Dzurkel focuses on inspecting files in a reusable window. File contents are never
 edited or executed, and XLSX formulas are not recalculated. Complex document
 formatting is simplified for readable previews; protected/encrypted content shows
-an error.
+an error. Progressive loading keeps only adjacent portions resident and reloads
+earlier content when revisited. Later errors retain useful visible content.
+
+Dzurkel is a quick previewer: distant replay or a very large indivisible document
+construct can reach a work limit. SQL and other source files retain their selected
+language, while highlighting may lose multiline comment/string context after
+earlier text is evicted. See [preview limits](docs/previews.md).
 
 The baseline application previews images, PDFs, text, tables, documents and
 supported e-books. Media playback, syntax highlighting and desktop-specific
@@ -123,7 +132,7 @@ previews remain available.
 
 See [baseline and optional components](docs/runtime-baseline.md) for requirements
 and recovery, and [preview limits and filesystem policy](docs/previews.md) for
-bounded copies, incremental media reads and decoder limitations.
+direct-source lazy loading, incremental media reads and decoder limitations.
 
 ## Compatibility and limitations
 

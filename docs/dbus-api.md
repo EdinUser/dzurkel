@@ -81,9 +81,11 @@ builds; filesystem failures now appear asynchronously in the information view.
 
 Only URL syntax checks and loading-state setup happen before acknowledgement.
 An isolated helper resolves resources with a 30-second preparation deadline.
-Non-media readers use bounded local snapshots or prefixes; audio/video use
-helper-backed streaming reads without a whole-file copy. Image/text/PDF decoding then
-runs on a bounded worker queue. New requests and dismissal cancel preparation
+Plain text, CSV/TSV, XLSX and supported documents/e-books share a persistent
+helper lifecycle with bounded progressive portions. Images and PDF read resolved
+sources through isolated helpers, decoding bounded images or requested pages. Audio/video use
+helper-backed streaming reads. No source snapshot is created. Decoder work and
+helper concurrency are bounded. New requests and dismissal cancel preparation
 and invalidate obsolete results. The first window maps after fast provider
 selection or a 150 ms loading grace period, whichever comes first.
 

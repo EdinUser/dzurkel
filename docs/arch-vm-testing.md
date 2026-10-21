@@ -52,6 +52,14 @@ A user-local forwarding script preserves shortcuts that reference
 `~/.local/bin/dzurkel`; it launches `/usr/bin/dzurkel`. Preferences and shortcut
 configuration are preserved. The host's installed application is unchanged.
 
+The progressive-loading implementation passed this package workflow under the
+0.9.0 development version on 2026-10-21: all 34 build suites, fresh-runtime
+missing-library checks, package integrity and selected real Thunar browsing.
+Native text/document and CSV/XLSX regressions passed against the unlocked XFCE/X11
+display using already-built test executables, without guest SDK installation.
+See [the validation record](testing.md#arch-xfce-package-and-native-lazy-loading-acceptance-2026-10-21).
+Version 1.0.0 packages still require their own tagged release gates.
+
 ## Manual checks
 
 1. Open `/usr/bin/dzurkel --settings` in the VM and inspect Libraries.

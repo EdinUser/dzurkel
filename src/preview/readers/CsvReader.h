@@ -16,5 +16,6 @@ public:
     static constexpr int CellLimit = 100000;
     static constexpr int FieldLimit = 16384;
     static CsvResult read(const QString &text, bool truncated, const Cancellation &cancel, QChar delimiter = {});
+    static QChar detectDelimiter(const QString &text, bool truncated, const Cancellation &cancel);
 };
 }

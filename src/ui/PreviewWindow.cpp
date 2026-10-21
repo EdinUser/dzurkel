@@ -3,6 +3,7 @@
 #include "ZoomPreview.h"
 #include "preview/PreviewProvider.h"
 #include "preview/table/TabularDocument.h"
+#include "preview/table/SpreadsheetView.h"
 #include "preview/document/FormattedDocument.h"
 #include "preview/media/MediaBackend.h"
 #include <QWheelEvent>
@@ -17,6 +18,7 @@
 #include <QStyle>
 #include <QSlider>
 #include <QTabWidget>
+#include <QTableView>
 #include <QScrollArea>
 #include <QCursor>
 #include <QEvent>
@@ -242,6 +244,7 @@ bool PreviewWindow::usesGnomePresentation() const
 }
 void PreviewWindow::beginPreviewUpdate()
 {
+    setUpdatesEnabled(false);
     previewUpdate_ = usesGnomePresentation() && isVisible() && canCommitPreview();
     internalRemap_ = false;
     if (previewUpdate_) ++resizeRevision_;
@@ -279,6 +282,7 @@ void PreviewWindow::endPreviewUpdate()
 {
     const bool remapped = internalRemap_;
     previewUpdate_ = false;
+    setUpdatesEnabled(true);
     if (!remapped) return;
     if (!isMaximized() && !isFullScreen()) {
         // Mutter may auto-maximize a newly mapped normal reading window.
@@ -331,8 +335,26 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
 {
     if (updateGeometry && (data.kind == PreviewKind::Text || data.kind == PreviewKind::Document
         || data.kind == PreviewKind::Pdf || data.kind == PreviewKind::Table)) {
-        const bool changed = selectReadingGeometry(data.kind == PreviewKind::Text || data.kind == PreviewKind::Document);
-        if (changed && !imageMode_ && !informationMode_) restoreDocumentSize();
+        const bool changed = selectDocumentGeometry(data.kind);
+        const auto *table = dynamic_cast<SpreadsheetView *>(content_);
+        const bool fitTable = data.kind == PreviewKind::Table && table && tableLocation_ != location_;
+        if (fitTable) {
+            if (!changed && !imageMode_ && !informationMode_) {
+                previewWindowState_ = windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+                previewWindowSize_ = previewWindowState_ ? normalGeometry().size() : size();
+            }
+            layout()->activate();
+            contentLayout_->activate();
+            if (table->layout()) table->layout()->activate();
+            const int chrome = width() - contentHost_->width();
+            const int limit = qMax(1, screen()->availableGeometry().width() * 85 / 100);
+            previewWindowSize_.setWidth(std::clamp(table->preferredWidth() + chrome, qMin(400, limit), limit));
+            tableWindowSize_ = previewWindowSize_;
+            tableWindowState_ = previewWindowState_;
+            previewContentSize_ = previewWindowSize_;
+            tableLocation_ = location_;
+        }
+        if ((changed || fitTable) && !imageMode_ && !informationMode_) restoreDocumentSize();
     }
     if (updateGeometry && data.kind != PreviewKind::Image && imageMode_) {
         imageMode_ = false;
@@ -403,9 +425,30 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
             connect(tabs, &QTabWidget::currentChanged, this, update);
             update(tabs->currentIndex());
         }
+        if (data.lazy && (data.truncated || !delimited)) {
+            auto *tabs = content_->findChild<QTabWidget *>();
+            const auto range = [this, tabs] {
+                auto *grid = tabs ? qobject_cast<QTableView *>(tabs->currentWidget()) : nullptr;
+                if (!grid) return;
+                const auto *model = grid->model();
+                if (!model->rowCount()) { summary_->setText(QStringLiteral("No loaded rows")); return; }
+                const auto first = model->headerData(0, Qt::Vertical).toLongLong();
+                summary_->setText(QStringLiteral("Rows %1–%2 · %3 columns")
+                    .arg(first).arg(first + model->rowCount() - 1).arg(model->columnCount()));
+            };
+            for (auto *grid : content_->findChildren<QTableView *>()) {
+                auto *model = grid->model();
+                connect(model, &QAbstractItemModel::rowsInserted, this, range);
+                connect(model, &QAbstractItemModel::rowsRemoved, this, range);
+                connect(model, &QAbstractItemModel::columnsInserted, this, range);
+                connect(model, &QAbstractItemModel::modelReset, this, range);
+            }
+            if (tabs) connect(tabs, &QTabWidget::currentChanged, this, range);
+            range();
+        }
     } else if (data.kind == PreviewKind::Pdf) {
-        summary_->setText(QStringLiteral("%1 %2").arg(data.pdfPageSizes.size())
-            .arg(data.pdfPageSizes.size() == 1 ? QStringLiteral("page") : QStringLiteral("pages")));
+        summary_->setText(QStringLiteral("%1 %2").arg(data.pdfPageCount)
+            .arg(data.pdfPageCount == 1 ? QStringLiteral("page") : QStringLiteral("pages")));
     } else if (data.kind == PreviewKind::Text) {
         summary_->setText(QStringLiteral("%1 · %2 %3").arg(data.detail).arg(data.textLineCount)
             .arg(data.textLineCount == 1 ? QStringLiteral("line") : QStringLiteral("lines")));
@@ -425,6 +468,7 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     if (data.kind == PreviewKind::Table && data.readerId == QStringLiteral("xlsx") && data.message.isEmpty())
         setStatus(QStringLiteral("Saved results may be stale"));
     if (imageMode_) fitImage();
+    else if (updateGeometry && data.kind == PreviewKind::Pdf) fitImage();
 }
 void PreviewWindow::showFileInformation()
 {
@@ -509,22 +553,28 @@ void PreviewWindow::restoreDocumentSize()
     setPreviewState(previewWindowState_ | (windowState() & Qt::WindowMinimized));
     fitScreen(screen());
 }
-bool PreviewWindow::selectReadingGeometry(bool reading)
+bool PreviewWindow::selectDocumentGeometry(PreviewKind kind)
 {
-    if (readingGeometry_ == reading) return false;
+    const auto geometry = kind == PreviewKind::Table ? DocumentGeometry::Table
+        : kind == PreviewKind::Text || kind == PreviewKind::Document ? DocumentGeometry::Reading
+        : DocumentGeometry::General;
+    if (documentGeometry_ == geometry) return false;
     const bool temporary = imageMode_ || informationMode_;
     const auto state = temporary ? previewWindowState_
         : windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
     const auto normalSize = temporary ? previewWindowSize_ : state ? normalGeometry().size() : size();
-    if (readingGeometry_) {
+    if (documentGeometry_ == DocumentGeometry::Reading) {
         readingWindowSize_ = normalSize;
         readingWindowState_ = state;
+    } else if (documentGeometry_ == DocumentGeometry::Table) {
+        tableWindowSize_ = normalSize;
+        tableWindowState_ = state;
     } else {
         generalWindowSize_ = normalSize;
         generalWindowState_ = state;
     }
-    readingGeometry_ = reading;
-    if (reading && readingWindowSize_.isEmpty()) {
+    documentGeometry_ = geometry;
+    if (geometry == DocumentGeometry::Reading && readingWindowSize_.isEmpty()) {
         readingWindowSize_ = QSize(700, 900);
         if (screen()) {
             const auto available = screen()->availableGeometry().size() * .9;
@@ -532,8 +582,14 @@ bool PreviewWindow::selectReadingGeometry(bool reading)
                 readingWindowSize_.scale(available, Qt::KeepAspectRatio);
         }
     }
-    previewWindowSize_ = reading ? readingWindowSize_ : generalWindowSize_;
-    previewWindowState_ = reading ? readingWindowState_ : generalWindowState_;
+    if (geometry == DocumentGeometry::Table && tableWindowSize_.isEmpty()) {
+        const auto available = screen()->availableGeometry().size();
+        tableWindowSize_ = QSize(available.width() * 85 / 100, available.height() * 85 / 100);
+    }
+    previewWindowSize_ = geometry == DocumentGeometry::Reading ? readingWindowSize_
+        : geometry == DocumentGeometry::Table ? tableWindowSize_ : generalWindowSize_;
+    previewWindowState_ = geometry == DocumentGeometry::Reading ? readingWindowState_
+        : geometry == DocumentGeometry::Table ? tableWindowState_ : generalWindowState_;
     previewContentSize_ = previewWindowSize_; // Decode target remains bounded independently.
     return true;
 }
@@ -566,6 +622,10 @@ void PreviewWindow::prepareImage(const QSize &imageSize)
     enterImageMode();
     fitImage(imageSize);
 }
+void PreviewWindow::prepareLoading()
+{
+    setInformationMode(true);
+}
 void PreviewWindow::fitImage(const QSize &sourceSize)
 {
     auto *zoom = qobject_cast<ZoomPreview *>(content_);
@@ -590,6 +650,13 @@ void PreviewWindow::resizePreview(const QSize &target, const QSize &imageSize, c
     ++resizeRevision_;
     if (target != size()) hideForPreviewUpdate();
     if (isVisible() && wayland && placement_->available()) {
+        // QWidget visibility precedes Wayland mapping. A placement script sent
+        // before exposure cannot find the surface; apply the latest request
+        // from the native expose event instead.
+        if (mappingResizePending_ && windowHandle() && !windowHandle()->isExposed()) {
+            requestedWindowSize_ = target;
+            return;
+        }
         if (!isMaximized() && !isFullScreen() && !isMinimized())
             placement_->request(windowTitle(), target, imageSize, chrome);
         return;
@@ -637,12 +704,10 @@ void PreviewWindow::resizeEvent(QResizeEvent *event)
             fitImage();
         });
     }
-    if (mappingResizePending_ && event->spontaneous()) {
+    if (mappingResizePending_ && event->spontaneous()
+        && !QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         mappingResizePending_ = false;
-        if (event->size() == mappedWindowSize_
-            && !QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
-            // A Wayland configure is the compositor's authoritative placement
-            // and work-area constraint. Never expand past it to a Qt estimate.
+        if (event->size() == mappedWindowSize_) {
             // A late initial configure can restore the size used when mapping,
             // superseding a provider's subsequent compact/restore request.
             QTimer::singleShot(0, this, [this] {
@@ -748,6 +813,18 @@ bool PreviewWindow::eventFilter(QObject *watched, QEvent *event)
         const auto maximum = remapMaximum_;
         remapMaximum_ = {};
         setMaximumSize(maximum);
+    }
+    if (watched == windowHandle() && event->type() == QEvent::Expose
+        && mappingResizePending_ && placement_->available()) {
+        // QWindow updates its exposure state while dispatching this event,
+        // after application event filters. Inspect it on the next turn.
+        QTimer::singleShot(0, this, [this] {
+            if (!mappingResizePending_ || !isVisible() || !windowHandle()->isExposed()) return;
+            mappingResizePending_ = false;
+            if (informationMode_) fitInformation();
+            else if (imageMode_) fitImage();
+            else resizePreview(requestedWindowSize_);
+        });
     }
     auto *target = qobject_cast<QWidget *>(watched);
     if (isVisible() && target && target->window() == this && event->type() == QEvent::Wheel) {

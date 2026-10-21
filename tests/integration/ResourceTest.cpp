@@ -3,6 +3,7 @@
 #include "controller/PreviewController.h"
 #include "preview/PreviewRegistry.h"
 #include "preview/providers/TextPreviewProvider.h"
+#include "preview/table/TabularDocument.h"
 #include "../support/OffscreenWarnings.h"
 #include <memory>
 #include <QDBusConnection>
@@ -17,6 +18,7 @@
 #include <QPainter>
 #include <QPdfWriter>
 #include <QPlainTextEdit>
+#include <QTableView>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -81,6 +83,9 @@ private slots:
     void snapshotsSupportedRemoteFormats();
     void boundsTextAndContentCopies_data();
     void boundsTextAndContentCopies();
+    void directTextAndCsvSources_data();
+    void directTextAndCsvSources();
+    void largeCsvKeepsOnlyCompleteRecords();
     void describesSpecialResourcesWithoutReadingThem_data();
     void describesSpecialResourcesWithoutReadingThem();
     void folderSizeUsesResolvedRemotePath_data();
@@ -244,8 +249,11 @@ void ResourceTest::snapshotsSupportedRemoteFormats()
     }
     const auto textPath = write(QStringLiteral("original.txt"), "original snapshot\n");
     QVERIFY(!textPath.isEmpty());
+    const auto csvPath = write(QStringLiteral("original.csv"), "Name,Value\nFirst,42\n");
+    const auto tsvPath = write(QStringLiteral("original.tsv"), "Name\tValue\nFirst\t42\n");
     const QList<QPair<QString, PreviewKind>> fixtures = {{imagePath, PreviewKind::Image},
-        {pdfPath, PreviewKind::Pdf}, {textPath, PreviewKind::Text}};
+        {pdfPath, PreviewKind::Pdf}, {textPath, PreviewKind::Text},
+        {csvPath, PreviewKind::Table}, {tsvPath, PreviewKind::Table}};
     for (const auto &fixture : fixtures) {
         fuse_.path = fixture.first;
         const auto url = (remoteBase_ + QStringLiteral("%1")).arg(QFileInfo(fixture.first).fileName());
@@ -253,24 +261,51 @@ void ResourceTest::snapshotsSupportedRemoteFormats()
         QCOMPARE(fuse_.lastUrl, url);
         QCOMPARE(resource.url.toString(), url);
         QVERIFY(!resource.informationOnly);
-        QVERIFY(!resource.backingPath.isEmpty());
-        QVERIFY(resource.backingPath != fixture.first);
-        QCOMPARE(QFileInfo(resource.backingPath).suffix(), QFileInfo(fixture.first).suffix());
-        const auto store = resource.backingStore->path();
+        const bool directSource = true;
+        QCOMPARE(resource.seekableSource, directSource);
+        if (directSource) {
+            QCOMPARE(resource.backingPath, fixture.first);
+            QVERIFY(!resource.backingStore);
+        } else {
+            QVERIFY(resource.boundedPrefix);
+            QVERIFY(resource.backingPath.isEmpty());
+            QVERIFY(!resource.backingStore);
+            QVERIFY(!resource.prefix.isEmpty());
+        }
+        const auto store = resource.backingStore ? resource.backingStore->path() : QString();
         {
             auto data = PreviewRegistry::load(resource, QSize(100, 100), std::make_shared<std::atomic_bool>(false));
             QCOMPARE(data.kind, fixture.second);
             QCOMPARE(data.resource.url, QUrl(url));
         }
+        {
+            PreviewController controller;
+            QString error;
+            QVERIFY2(controller.show(url, error), qPrintable(error));
+            QTRY_VERIFY(!controller.loading());
+            QCOMPARE(controller.previewKind(), PreviewRegistry::kindName(fixture.second));
+            QCOMPARE(controller.fileUrl(), url);
+            controller.hide();
+        }
         resource = {};
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        QVERIFY(!QFileInfo::exists(store));
+        if (!store.isEmpty()) QVERIFY(!QFileInfo::exists(store));
     }
     fuse_.path = textPath;
     auto snapshot = prepare((remoteBase_ + QStringLiteral("original.txt")));
     QVERIFY(!write(QStringLiteral("original.txt"), "changed source\n").isEmpty());
     const auto data = PreviewRegistry::load(snapshot, QSize(100, 100), std::make_shared<std::atomic_bool>(false));
-    QCOMPARE(data.text, QStringLiteral("original snapshot\n"));
+    QCOMPARE(data.kind, PreviewKind::Text);
+    QVERIFY(data.resource.seekableSource);
+    QVERIFY(data.text.isEmpty()); // The helper opens the source when content is requested.
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show((remoteBase_ + QStringLiteral("original.txt")), error));
+    QTRY_VERIFY(!controller.loading());
+    auto *editor = controller.window()->findChild<QPlainTextEdit *>(QStringLiteral("textPreview"));
+    QVERIFY(editor);
+    QCOMPARE(editor->toPlainText(), QStringLiteral("changed source\n"));
+    controller.hide();
 }
 void ResourceTest::boundsTextAndContentCopies_data()
 {
@@ -285,22 +320,106 @@ void ResourceTest::boundsTextAndContentCopies()
     QString policyError;
     QVERIFY2(ResourceAccessPolicy::setExperimentalSftpEnabled(base.startsWith(QStringLiteral("sftp:")), policyError), qPrintable(policyError));
     fuse_.path = write(QStringLiteral("large.txt"), QByteArray(TextPreviewProvider::ByteLimit + 1024, 'a'));
+    {
+        QFile large(fuse_.path);
+        QVERIFY(large.open(QIODevice::ReadWrite));
+        QVERIFY(large.resize(256 * 1024 * 1024));
+    }
     auto resource = prepare((remoteBase_ + QStringLiteral("large.txt")));
     QVERIFY(!resource.informationOnly);
-    QCOMPARE(QFileInfo(resource.backingPath).size(), TextPreviewProvider::ByteLimit + 1);
+    QVERIFY(resource.prefix.isEmpty());
+    QVERIFY(resource.seekableSource);
+    QCOMPARE(resource.backingPath, fuse_.path);
+    QVERIFY(!resource.backingStore);
     const auto data = PreviewRegistry::load(resource, QSize(100, 100), std::make_shared<std::atomic_bool>(false));
-    QVERIFY(data.truncated);
-    QVERIFY(data.message.contains(QStringLiteral("Partial preview")));
+    QCOMPARE(data.kind, PreviewKind::Text);
+    QVERIFY(data.text.isEmpty());
     fuse_.path = write(QStringLiteral("huge.pdf"), "%PDF-1.4\n");
     QFile huge(fuse_.path);
     QVERIFY(huge.open(QIODevice::ReadWrite));
     QVERIFY(huge.resize(64 * 1024 * 1024 + 1));
     huge.close();
     resource = prepare((remoteBase_ + QStringLiteral("huge.pdf")));
-    QVERIFY(resource.informationOnly);
-    QVERIFY(resource.backingPath.isEmpty());
-    QVERIFY(resource.metadata.value(QStringLiteral("message")).toString().contains(QStringLiteral("64 MiB")));
-    QVERIFY(QDir(resource.backingStore->path()).entryList(QDir::Files).isEmpty());
+    QVERIFY(!resource.informationOnly);
+    QVERIFY(resource.seekableSource);
+    QCOMPARE(resource.backingPath, fuse_.path);
+    QVERIFY(!resource.backingStore);
+    QCOMPARE(resource.metadata.value(QStringLiteral("reader")).toString(), QStringLiteral("pdf"));
+
+}
+void ResourceTest::directTextAndCsvSources_data()
+{
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<QByteArray>("bytes");
+    QTest::addColumn<QString>("expected");
+    QTest::newRow("empty") << QStringLiteral("empty.txt") << QByteArray() << QString();
+    QTest::newRow("utf8") << QStringLiteral("unicode.txt") << QString::fromUtf8("Здравей\n").toUtf8() << QString::fromUtf8("Здравей\n");
+    QTest::newRow("utf16") << QStringLiteral("unicode16.txt") << QByteArray::fromHex("fffe41000a00") << QStringLiteral("A\n");
+    QTest::newRow("latin1") << QStringLiteral("latin.txt") << QByteArray::fromHex("636166e90a") << QString::fromUtf8("café\n");
+    QTest::newRow("malformed-csv") << QStringLiteral("malformed.csv") << QByteArray("\"unclosed") << QStringLiteral("\"unclosed");
+    QTest::newRow("binary") << QStringLiteral("binary.csv") << QByteArray("a,b\n\0x", 6) << QString();
+}
+void ResourceTest::directTextAndCsvSources()
+{
+    QFETCH(QString, name);
+    QFETCH(QByteArray, bytes);
+    QFETCH(QString, expected);
+    const auto path = write(name, bytes);
+    const auto resource = prepare(path);
+    QVERIFY(resource.seekableSource);
+    QVERIFY(resource.prefix.isEmpty());
+    QVERIFY(!resource.backingStore);
+    QCOMPARE(resource.backingPath, path);
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(path, error));
+    QTRY_VERIFY(!controller.loading());
+    if (name == QStringLiteral("binary.csv")) {
+        QCOMPARE(controller.previewKind(), QStringLiteral("information"));
+    } else {
+        QCOMPARE(controller.previewKind(), QStringLiteral("text"));
+        auto *editor = controller.window()->findChild<QPlainTextEdit *>(QStringLiteral("textPreview"));
+        QVERIFY(editor);
+        QCOMPARE(editor->toPlainText(), expected);
+        QVERIFY(QFile::remove(path));
+        QCOMPARE(editor->toPlainText(), expected); // The published result owns its content.
+    }
+    controller.hide();
+    const auto cancelled = PreviewRegistry::load(resource, {}, std::make_shared<std::atomic_bool>(true));
+    QCOMPARE(cancelled.kind, PreviewKind::Cancelled);
+}
+void ResourceTest::largeCsvKeepsOnlyCompleteRecords()
+{
+    QByteArray bytes("name,value\n");
+    const QByteArray row = QByteArray(240, 'a') + ",42\n";
+    while (bytes.size() + row.size() < TextPreviewProvider::ByteLimit - 8) bytes += row;
+    bytes += "\"unfinished,";
+    bytes += QByteArray(TextPreviewProvider::ByteLimit + 1 - bytes.size(), 'b');
+    const auto path = write(QStringLiteral("large.csv"), bytes);
+    {
+        QFile large(path);
+        QVERIFY(large.open(QIODevice::ReadWrite));
+        QVERIFY(large.resize(256 * 1024 * 1024));
+    }
+    const auto resource = prepare(path);
+    QVERIFY(resource.seekableSource);
+    QVERIFY(resource.prefix.isEmpty());
+    QVERIFY(!resource.backingStore);
+    QCOMPARE(resource.backingPath, path);
+    PreviewController controller;
+    QString error;
+    QVERIFY(controller.show(path, error));
+    QTRY_VERIFY(!controller.loading());
+    QCOMPARE(controller.previewKind(), QStringLiteral("table"));
+    auto *grid = controller.window()->findChild<QTableView *>(QStringLiteral("spreadsheetGrid"));
+    QVERIFY(grid);
+    QVERIFY(grid->model()->rowCount() > 1);
+    QVERIFY(grid->model()->rowCount() <= 64);
+    QCOMPARE(grid->model()->columnCount(), 2);
+    QCOMPARE(grid->model()->index(0, 0).data().toString(), QStringLiteral("name"));
+    QCOMPARE(grid->model()->index(1, 1).data().toString(), QStringLiteral("42"));
+    QVERIFY(QFile::remove(path));
+    controller.hide();
 }
 void ResourceTest::describesSpecialResourcesWithoutReadingThem_data()
 {
@@ -447,6 +566,8 @@ void ResourceTest::slowInformationMapsLoadingBeforeCompacting()
     QVERIFY(controller.loading());
     QVERIFY(!controller.window()->findChild<QWidget *>(QStringLiteral("fileInfoPreview")));
     const auto loadingSize = controller.window()->size();
+    QVERIFY(loadingSize.width() >= 380 && loadingSize.width() <= 560);
+    QVERIFY(loadingSize.height() < 400);
     fuse_.releaseReply();
     QTRY_VERIFY(!controller.loading());
     QCOMPARE(controller.previewKind(), QStringLiteral("information"));

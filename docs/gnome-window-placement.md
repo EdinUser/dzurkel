@@ -68,3 +68,8 @@ focus do not establish frame-perfect continuity or absence of flicker. Do not
 disable global animations to hide this limitation. The older rapid information
 fallback/reopen stress case is intermittent on native GNOME; it must not be
 reported as fixed by the placement change.
+
+The later progressive-document acceptance run recorded a separate one-pixel
+EPUB text-anchor difference after continuation (33 px versus 32 px). It concerns
+content scrolling, not a reproduced top-level size/placement regression. Its
+cause remains unestablished; see [testing](testing.md#ubuntu-gnome-vm-lazy-loading-acceptance-2026-10-21).

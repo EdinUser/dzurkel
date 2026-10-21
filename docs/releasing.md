@@ -4,17 +4,20 @@ Binary build targets are Fedora 44 x86_64, Debian 13 amd64 and current Arch Linu
 x86_64. Desktop acceptance is recorded separately in [testing](testing.md).
 Other distro versions and AppImage are not tested by this workflow.
 
-The latest stable release is **0.9.0**. Its [validation workflow](https://github.com/EdinUser/dzurkel/actions/runs/39417990306)
-passed and runtime installers/checksums were attached before promotion from
-prerelease. See the [release notes](releases/v0.9.0.md) for changes since 0.8.0.
-For future releases, publishing a prerelease starts the package and validation
+The current source version is **1.0.0**, prepared for release. Its
+[release notes](releases/v1.0.0.md) describe progressive direct-source previews,
+local/VM validation and accepted limits. The version bump does not create a
+tag, publish a release or attach installers. Earlier [0.9.0 release evidence](releases/v0.9.0.md)
+remains historical evidence for that version.
+
+Publishing a prerelease starts the package and validation
 pipeline; promote it only after all gates pass and assets are attached. Pushes
 and tags alone do not start package builds.
 
-The **0.9.0 release** adds folder contents sizing and KDE dialog
-integration. Its [release notes](releases/v0.9.0.md) distinguish local/VM checks
-from the release pipeline. All required gates and asset upload passed before
-stable promotion.
+Local and VM tests of the progressive-loading implementation were recorded under
+the preceding 0.9.0 development version. Version 1.0.0 must pass its own tagged
+release pipeline and asset-upload gates before promotion. Do not relabel those
+earlier installed binaries as tested 1.0.0 packages.
 
 ## Release builds and validation
 
@@ -113,7 +116,7 @@ report and adapters are absent. These headless tests do not establish KDE deskto
    KDE Wayland desktop: previews, Settings, Dolphin Space setup/restoration,
    scaling/focus, upgrade from the previous package and removal.
 3. Push the intended commit, including the release workflow, and create a matching
-   tag, for example `v0.8.0`. Tag creation is a maintainer action; the workflow
+   tag, for example `v1.0.0`. Tag creation is a maintainer action; the workflow
    does not create tags itself. The tag must include the release-triggered workflow.
 4. Create a GitHub release for that tag. Review its notes with compatibility,
    installation instructions, desktop results and known limitations, then choose

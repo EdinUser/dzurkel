@@ -99,8 +99,9 @@ Run on the actual KDE Plasma Wayland desktop and record results in `testing.md`.
 
 The preview is an ordinary reusable top-level Qt window. Dismissal now hides
 it while the primary process remains resident; `dzurkel --quit` ends the service.
-It targets the pointer's screen; content previews start at 85% of available
-screen width and height. The first information-only view maps at its compact
+It targets the pointer's screen. Reading previews use their remembered portrait
+size, tables derive width from columns within desktop bounds, and PDF fits its
+first page. The first information-only view maps at its compact
 size, after asynchronous provider selection, so it does not inherit a large
 loading window's top-left position. Standard window borders allow resizing and maximizing;
 the initial size is not a maximum. A resized window keeps its size across previews
@@ -112,8 +113,9 @@ or change its settings unless shortcut setup is explicitly selected. Closing
 the window lets the compositor restore focus.
 
 Mapped-window size changes use KWin's geometry transaction when that service is
-available. Other Wayland compositors, including GNOME's Mutter, use ordinary Qt
-resize requests; they retain control over final placement. A temporary image or
+available. GNOME's Mutter uses the separate
+[adaptive remapping path](gnome-window-placement.md); other Wayland compositors
+use Qt resize requests. Compositors retain control over final placement. A temporary image or
 information size must not replace the saved document reading size. Images
 temporarily leave a document's maximized state and restore it on returning to
 the document. Maximizing an image directly is retained for subsequent images.

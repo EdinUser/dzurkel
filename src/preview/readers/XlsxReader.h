@@ -1,6 +1,7 @@
 #pragma once
 #include "preview/PreviewProvider.h"
 #include "preview/table/TabularDocument.h"
+#include <QJsonObject>
 class QFile;
 namespace dzurkel {
 struct XlsxResult {
@@ -8,9 +9,22 @@ struct XlsxResult {
     QString error;
     bool cancelled = false;
 };
+// Persistent helper-side cursor; package parsing/formatting is shared with the
+// bounded synchronous reader. Qt and libzip own XML/ZIP decoding.
+class XlsxPortionReader {
+public:
+    explicit XlsxPortionReader(const QString &path);
+    ~XlsxPortionReader();
+    QJsonObject read(const QString &token);
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
 class XlsxReader {
 public:
-    static constexpr qint64 ByteLimit = 16 * 1024 * 1024;
+    // Bytes actually read, rather than total source-file size.
+    static constexpr qint64 MetadataReadLimit = 4 * 1024 * 1024;
+    static constexpr qint64 SourceReadLimit = 128 * 1024 * 1024;
     static constexpr qint64 ExpandedLimit = 64 * 1024 * 1024;
     static constexpr qint64 PartLimit = 16 * 1024 * 1024;
     static constexpr int EntryLimit = 2048;

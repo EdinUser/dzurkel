@@ -1,5 +1,6 @@
 #pragma once
 #include "preview/PreviewProvider.h"
+class QIODevice;
 
 namespace dzurkel {
 class TextPreviewProvider : public PreviewProvider {
@@ -11,5 +12,6 @@ public:
     PreviewData load(std::unique_ptr<QFile> file, PreviewData data,
                      const QSize &target, const Cancellation &cancel) const override;
     QWidget *createWidget(const PreviewData &data, QWidget *parent) const override;
+    PreviewData loadFromDevice(QIODevice &device, PreviewData data, const Cancellation &cancel) const;
 };
 } // namespace dzurkel

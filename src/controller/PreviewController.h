@@ -8,6 +8,8 @@
 #include <optional>
 
 namespace dzurkel {
+class ImageDecodeJob;
+class StructuredDecodeJob;
 class ResourcePreparation;
 class FolderNavigation;
 class NautilusPreviewService;
@@ -41,9 +43,15 @@ private:
     void startPending();
     void cancelAndClear();
     void commitReadyPreview();
-    // Empty document keeps Qt's PDF runtime initialized after the first PDF.
-    // Declare before the window so its runtime outlives any displayed document.
-    std::unique_ptr<QPdfDocument> pdfRuntime_;
+    void stopImage();
+    QPointer<ImageDecodeJob> imageLoading_;
+    void stopStructured();
+    void stopLazy();
+    std::shared_ptr<LazyCoordinator> lazyLoading_;
+    std::weak_ptr<LazyCoordinator> lazyVisible_;
+    QPointer<StructuredDecodeJob> structuredLoading_;
+    std::shared_ptr<PdfSession> pdfLoading_;
+    void stopPdf();
     PreviewWindow window_;
     FolderNavigation *navigation_;
     QThreadPool pool_;

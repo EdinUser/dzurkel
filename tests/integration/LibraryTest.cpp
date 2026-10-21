@@ -7,6 +7,7 @@
 #include "resources/ResourceAccessPolicy.h"
 #include <QDBusConnection>
 #include <QFile>
+#include <QImage>
 #include <QLabel>
 #include <QMimeDatabase>
 #include <QPlainTextEdit>
@@ -32,6 +33,7 @@ class LibraryTest : public QObject {
 private slots:
     void initTestCase();
     void catalogDrivesSelectionAndBudgets();
+    void imageSelectionOnlyReadsBoundedHeader();
     void quotedRecordsAndLiteralValues();
     void detectsSeparators_data();
     void detectsSeparators();
@@ -81,15 +83,15 @@ void LibraryTest::catalogDrivesSelectionAndBudgets()
         QVERIFY(!ids.contains(entry.id));
         ids.insert(entry.id);
         QVERIFY(!entry.description.isEmpty());
-        QVERIFY(entry.access == SourceAccess::Streaming ? entry.sourceLimit == 0 : entry.sourceLimit > 0);
+        QVERIFY((entry.access == SourceAccess::Streaming || entry.access == SourceAccess::SeekableSource) ? entry.sourceLimit == 0 : entry.sourceLimit > 0);
         QVERIFY(PreviewLibrary::createReader(entry.id));
     }
     QVERIFY(PreviewLibrary::createReader(QStringLiteral("xlsx")));
     QVERIFY(PreviewLibrary::capability(QStringLiteral("xlsx")));
     const auto csv = PreviewLibrary::capability(QStringLiteral("csv"));
     QVERIFY(csv);
-    QCOMPARE(csv->access, SourceAccess::PrefixSnapshot);
-    QCOMPARE(csv->sourceLimit, CsvReader::ByteLimit + 1);
+    QCOMPARE(csv->access, SourceAccess::SeekableSource);
+    QCOMPARE(csv->sourceLimit, 0);
     const auto path = write(QStringLiteral("extension.csv"), "a,b\n1,2\n");
     QFile file(path);
     QVERIFY(file.open(QIODevice::ReadOnly));
@@ -99,6 +101,33 @@ void LibraryTest::catalogDrivesSelectionAndBudgets()
     QFile document(pdf);
     QVERIFY(document.open(QIODevice::ReadOnly));
     QCOMPARE(PreviewLibrary::select(document, QMimeDatabase().mimeTypeForName(QStringLiteral("text/csv")), pdf), QStringLiteral("pdf"));
+}
+void LibraryTest::imageSelectionOnlyReadsBoundedHeader()
+{
+    class CountingFile final : public QFile {
+    public:
+        using QFile::QFile;
+        qint64 bytesRead = 0;
+    protected:
+        qint64 readData(char *data, qint64 count) override {
+            const auto result = QFile::readData(data, count);
+            if (result > 0) bytesRead += result;
+            return result;
+        }
+    };
+    const auto path = write(QStringLiteral("probe.sql"), "SELECT 1;\n" + QByteArray(4 * 1024 * 1024, ' '));
+    CountingFile source(path); QVERIFY(source.open(QIODevice::ReadOnly));
+    const auto sql = QMimeDatabase().mimeTypeForName(QStringLiteral("application/sql"));
+    QCOMPARE(PreviewLibrary::select(source, sql, path), QStringLiteral("text"));
+    QVERIFY(source.bytesRead <= 32768);
+    QCOMPARE(source.pos(), 0);
+    // Signature selection still recognizes an actual image with a text suffix.
+    const auto misleading = directory_.filePath(QStringLiteral("picture.sql"));
+    QImage image(12, 20, QImage::Format_RGB32); image.fill(Qt::blue);
+    QVERIFY(image.save(misleading, "PNG"));
+    CountingFile picture(misleading); QVERIFY(picture.open(QIODevice::ReadOnly));
+    QCOMPARE(PreviewLibrary::select(picture, sql, misleading), QStringLiteral("image"));
+    QVERIFY(picture.bytesRead <= 32768);
 }
 void LibraryTest::quotedRecordsAndLiteralValues()
 {

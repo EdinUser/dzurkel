@@ -2,9 +2,10 @@
 
 The useful minimum is Qt 6 base runtime components, Qt PDF/PDF Widgets and
 libzip. It covers file information, basic images, text, Markdown, CSV/TSV,
-PDF and the existing bounded XLSX/DOCX/EPUB readers. Existing RTF/FB2/SFB/MOBI
-readers remain included. Individual format/variant and resource limits still
-apply; see [preview behavior](previews.md).
+PDF and progressive XLSX/DOCX/RTF/EPUB/FB2/SFB/MOBI readers. Legacy DOC uses
+optional antiword. Progressive readers reuse these existing libraries and
+extractors; no new parser or layout package is required. Format/variant and
+resource limits still apply; see [preview behavior](previews.md).
 
 Audio/video, syntax highlighting, legacy DOC extraction, extra image plugins and
 specialised desktop activation are optional. Missing optional readers produce

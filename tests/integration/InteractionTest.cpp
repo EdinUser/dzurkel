@@ -8,8 +8,8 @@
 #include <QImage>
 #include <QLabel>
 #include <QPainter>
-#include <QPdfView>
-#include <QPdfPageRenderer>
+#include "preview/pdf/PdfView.h"
+#include "preview/pdf/PdfSession.h"
 #include <QPdfWriter>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -280,28 +280,29 @@ void InteractionTest::pdfZoomKeepsDocumentAndNativeArrows()
     QTRY_VERIFY(!controller.loading());
     auto *window = const_cast<PreviewWindow *>(controller.window());
     auto *zoom = window->findChild<ZoomPreview *>();
-    auto *view = window->findChild<QPdfView *>();
+    auto *view = window->findChild<PdfView *>();
     QVERIFY(zoom && view);
-    auto *document = view->document();
+    auto *document = view->session();
     QTest::keyClick(view, Qt::Key_Plus);
-    QCOMPARE(view->zoomMode(), QPdfView::ZoomMode::Custom);
-    QCOMPARE(view->document(), document);
+    QVERIFY(!view->isFit());
+    QCOMPARE(view->session(), document);
     QVERIFY(qAbs(zoom->zoomFactor() * 100 - window->findChild<QLabel *>(QStringLiteral("zoomStatus"))->text().remove('%').toInt()) < 1);
     zoom->zoomBy(100);
     QVERIFY(zoom->zoomFactor() <= zoom->maximumZoom() + .001);
     QVERIFY(zoom->maximumZoom() <= 8.0);
     QTest::keyClick(view, Qt::Key_Right);
     QCOMPARE(controller.fileUrl(), QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded));
-    QSignalSpy rendered(view->findChild<QPdfPageRenderer *>(), &QPdfPageRenderer::pageRendered);
+    QSignalSpy rendered(view->session(), &PdfSession::frameReady);
     QTest::keyClick(view, Qt::Key_0);
-    QCOMPARE(view->zoomMode(), QPdfView::ZoomMode::FitToWidth);
+    QVERIFY(view->isFit());
     // Inspect the first page after fitting, independently of the current
     // document scroll position retained by zoom/fit.
-    view->verticalScrollBar()->setValue(0);
-    view->horizontalScrollBar()->setValue(0);
+    auto *scroll = view->findChild<QScrollArea *>();
+    scroll->verticalScrollBar()->setValue(0);
+    scroll->horizontalScrollBar()->setValue(0);
     QTRY_VERIFY(!rendered.isEmpty());
-    const auto pageIsVisible = [view] {
-        const auto image = view->viewport()->grab().toImage();
+    const auto pageIsVisible = [scroll] {
+        const auto image = scroll->viewport()->grab().toImage();
         for (int y = 8; y < image.height(); y += 8)
             for (int x = 8; x < image.width(); x += 8) {
                 const auto color = image.pixelColor(x, y);
