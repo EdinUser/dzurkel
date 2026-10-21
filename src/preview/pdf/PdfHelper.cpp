@@ -6,7 +6,9 @@
 #include <QJsonArray>
 #include <QPainter>
 #include <QPdfDocument>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
 #include <QPdfLinkModel>
+#endif
 #include <QSocketNotifier>
 #include <algorithm>
 #include <cmath>
@@ -113,6 +115,8 @@ int servePdf(const QString &path)
             image.fill(Qt::white);
             { QPainter painter(&image); painter.drawImage(0, 0, rendered); }
             QJsonArray links;
+            // Qt 6.4/6.5 can render pages but have no public link model.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
             QPdfLinkModel model;
             model.setDocument(&document);
             model.setPage(page);
@@ -133,6 +137,7 @@ int servePdf(const QString &path)
                     links.append(entry);
                 }
             }
+#endif
             if (!reply({{"id", id}, {"page", page}, {"pages", document.pageCount()}, {"links", links},
                         {"width", pixels.width()}, {"height", pixels.height()},
                         {"pointWidth", points.width()}, {"pointHeight", points.height()}}, image)) {

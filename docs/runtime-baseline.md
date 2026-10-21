@@ -7,6 +7,10 @@ optional antiword. Progressive readers reuse these existing libraries and
 extractors; no new parser or layout package is required. Format/variant and
 resource limits still apply; see [preview behavior](previews.md).
 
+PDF page rendering supports the Qt 6.4 baseline. Clickable PDF links require
+Qt 6.6 or newer, which provides `QPdfLinkModel`; older builds return pages without
+link annotations. This does not raise the application's minimum Qt version.
+
 Audio/video, syntax highlighting, legacy DOC extraction, extra image plugins and
 specialised desktop activation are optional. Missing optional readers produce
 file information explaining the missing component and an **Open Settings**

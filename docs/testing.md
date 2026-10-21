@@ -1,5 +1,19 @@
 # Validation
 
+## 1.0.0 release baseline blocker (2026-10-21)
+
+The [tagged release run](https://github.com/EdinUser/dzurkel/actions/runs/39619822934)
+failed its Debian 12 / Qt 6.4 build because `PdfHelper.cpp` unconditionally included
+`QPdfLinkModel`, introduced in Qt 6.6. The user cancelled the workflow; no runtime
+installers were attached and 1.0.0 remains a prerelease.
+
+The correction guards the include and link extraction for Qt 6.6+, retaining
+page rendering and an empty link list on older Qt versions. The local application
+and PDF test target rebuilt on Qt 6.11.2; `dzurkel_pdf` passed (5.37 s). The corrected
+Qt 6.4 build and remaining release gates have not been rerun. The published tag
+still identifies the original release attempt; this source correction does not
+change that tag or restart CI.
+
 ## Video window aspect fitting (2026-10-21)
 
 Video previews now fit the first reported display dimensions plus playback
