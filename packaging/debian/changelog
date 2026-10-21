@@ -3,6 +3,8 @@ dzurkel (1.0.0-1) trixie; urgency=medium
   * Load text, tables, documents and e-books progressively from direct sources.
   * Bound resident portions and add practical Beginning/End access for text files.
   * Preserve preview geometry and document formatting during continuation.
+  * Avoid helper process-wrapper destruction waits during application shutdown.
+  * Fit video windows to display dimensions while preserving manual resizing.
 
  -- Dzurkel contributors <noreply@github.com>  Wed, 21 Oct 2026 15:00:00 +0300
 

@@ -87,6 +87,8 @@ trap 'rm -rf "$XDG_RUNTIME_DIR"' EXIT
 - Load text, tables, documents and e-books progressively from direct sources.
 - Bound resident portions and add practical Beginning/End access for text files.
 - Preserve preview geometry and document formatting during continuation.
+- Avoid helper process-wrapper destruction waits during application shutdown.
+- Fit video windows to display dimensions while preserving manual resizing.
 
 * Tue Oct 20 2026 Dzurkel contributors - 0.9.0-1
 - Add desktop-backed folder contents sizing with optional KIO and GIO adapters.
