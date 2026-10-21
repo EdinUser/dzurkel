@@ -22,11 +22,19 @@ public:
     virtual QWidget *create(const PreviewData &data, QWidget *parent) = 0;
     virtual int activeHelpers() const = 0;
 };
+// Optional geometry notification; keep existing media adapter interfaces intact.
+class MediaGeometry {
+public:
+    virtual ~MediaGeometry() = default;
+    virtual void setVideoSizeCallback(QObject *context,
+        std::function<void(const QSize &, QWidget *)> callback) = 0;
+};
 struct MediaAvailability { bool available; bool adapterFound; QString explanation; };
 MediaAvailability mediaAvailability(bool recheck = false);
 QWidget *createMediaPreview(const PreviewData &data, QWidget *parent);
 int activeMediaHelpers();
 }
 Q_DECLARE_INTERFACE(dzurkel::MediaControls, "org.dzurkel.MediaControls/1")
+Q_DECLARE_INTERFACE(dzurkel::MediaGeometry, "org.dzurkel.MediaGeometry/1")
 #define DZURKEL_MEDIA_BACKEND_IID "org.dzurkel.MediaBackend/1"
 Q_DECLARE_INTERFACE(dzurkel::MediaBackend, DZURKEL_MEDIA_BACKEND_IID)

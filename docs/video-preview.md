@@ -27,6 +27,15 @@ the preview. Plain arrows browse files except while a media slider has focus;
 Alt+arrows retain existing file navigation behavior. Subtitles and track menus
 are outside this initial scope. Video can play without audio or an output device.
 
+When the backend first reports the video display size, the normal preview window
+fits that aspect ratio plus playback controls within the available screen. The
+fit happens once per preview; later metadata and seeking do not override manual
+resizing. Maximized/fullscreen windows retain their state. Missing dimensions
+leave the fallback geometry in place. Encoded black bars remain part of the
+picture, and portrait videos may retain side space when controls require a wider
+window. Sizing uses the existing playback output and window-placement path,
+without another source scan or decoder.
+
 Loading remains visible until a valid video frame arrives. A seek remains
 pending until a frame near the target arrives; Qt position notifications alone
 do not prove completion. Interruptions show buffering feedback based on both
@@ -60,7 +69,8 @@ I/O completion. An uninterruptible filesystem operation can delay helper reaping
 ## Validation
 
 `dzurkel_video` covers selection without snapshots, silent video, controls,
-actual-frame seeking, audio-only MP4, front/tail MP4 indexes, MKV/WebM,
+actual-frame seeking, landscape/portrait window fitting, subsequent manual
+resizing and maximized/fullscreen preservation, audio-only MP4, front/tail MP4 indexes, MKV/WebM,
 replacement, stale failures and invalid-media fallback. Playback fixtures need
 FFmpeg with MPEG4, AAC and VP8 encoders; unavailable fixture tools are explicitly
 skipped. Source/playback suites cover delayed reads, bounded read-ahead,

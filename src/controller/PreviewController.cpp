@@ -418,6 +418,15 @@ void PreviewController::commitReadyPreview()
                 }
             });
     }
+    if (auto *geometry = qobject_cast<MediaGeometry *>(mediaWidget)) {
+        const auto generation = generation_;
+        geometry->setVideoSizeCallback(this, [this, generation](const QSize &size, QWidget *surface) {
+            if (generation != generation_ || !isVisible() || kind_ != PreviewKind::Video) return;
+            window_.beginPreviewUpdate();
+            window_.prepareVideo(size, surface);
+            window_.endPreviewUpdate();
+        });
+    }
     window_.setPreviewData(data);
     window_.setArrowNavigation(!folder && chooserOwner_.isEmpty() && (data.kind == PreviewKind::Image || data.kind == PreviewKind::Information
         || data.kind == PreviewKind::Audio || data.kind == PreviewKind::Video));

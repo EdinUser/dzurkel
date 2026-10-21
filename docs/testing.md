@@ -1,5 +1,21 @@
 # Validation
 
+## Video window aspect fitting (2026-10-21)
+
+Video previews now fit the first reported display dimensions plus playback
+controls within the available screen, using the existing window-placement path.
+An optional geometry interface preserves the existing media adapter interfaces.
+Later metadata and seeking preserve manual resizing; maximized and fullscreen
+windows retain their state. Encoded black bars remain part of the picture.
+
+Generated landscape and portrait playback tests cover fitting, screen bounds and
+manual resize preservation; a separate window test covers maximized/fullscreen
+preservation. The full build passed and all 35 CTest targets passed (131.55 s),
+including existing image geometry and reading-size restoration regressions.
+After installing the updated application in Ubuntu and Arch Linux VMs, the user
+confirmed that video window sizing works as expected on both. This is user-reported
+desktop validation; no new automated native compositor capture was performed.
+
 ## Helper shutdown regression coverage (2026-10-21)
 
 Resource preparation, folder navigation and streamed-media source shutdown now

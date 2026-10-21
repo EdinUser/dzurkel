@@ -199,6 +199,8 @@ void PreviewWindow::present(const QString &activationToken)
 }
 void PreviewWindow::setContent(QWidget *content)
 {
+    videoSize_ = {};
+    videoChrome_ = QSize(0, 0);
     wheelRemainder_ = 0;
     previewToolbar_->hide();
     if (auto *zoom = qobject_cast<ZoomPreview *>(content_)) {
@@ -356,7 +358,7 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
         }
         if ((changed || fitTable) && !imageMode_ && !informationMode_) restoreDocumentSize();
     }
-    if (updateGeometry && data.kind != PreviewKind::Image && imageMode_) {
+    if (updateGeometry && data.kind != PreviewKind::Image && data.kind != PreviewKind::Video && imageMode_) {
         imageMode_ = false;
         imageRestorePending_ = false;
         if (data.kind != PreviewKind::Information && data.kind != PreviewKind::Audio) restoreDocumentSize();
@@ -467,7 +469,7 @@ void PreviewWindow::setPreviewData(const PreviewData &data, bool updateGeometry)
     setStatus(visibleNotice);
     if (data.kind == PreviewKind::Table && data.readerId == QStringLiteral("xlsx") && data.message.isEmpty())
         setStatus(QStringLiteral("Saved results may be stale"));
-    if (imageMode_) fitImage();
+    if (imageMode_ && data.kind != PreviewKind::Video) fitImage();
     else if (updateGeometry && data.kind == PreviewKind::Pdf) fitImage();
 }
 void PreviewWindow::showFileInformation()
@@ -626,14 +628,27 @@ void PreviewWindow::prepareLoading()
 {
     setInformationMode(true);
 }
+void PreviewWindow::prepareVideo(const QSize &videoSize, QWidget *surface)
+{
+    if (videoSize.isEmpty() || !surface || !content_ || !content_->isAncestorOf(surface)
+        || isMaximized() || isFullScreen()) return;
+    enterImageMode();
+    contentLayout_->activate();
+    if (content_->layout()) content_->layout()->activate();
+    layout()->activate();
+    videoSize_ = videoSize;
+    videoChrome_ = contentHost_->size() - surface->size();
+    fitImage();
+}
 void PreviewWindow::fitImage(const QSize &sourceSize)
 {
     auto *zoom = qobject_cast<ZoomPreview *>(content_);
-    const QSize natural = sourceSize.isEmpty() && zoom ? zoom->naturalSize() : sourceSize;
+    const QSize natural = !sourceSize.isEmpty() ? sourceSize
+        : zoom ? zoom->naturalSize() : videoSize_;
     if (natural.isEmpty() || isMaximized() || isFullScreen()) return;
     layout()->invalidate();
     layout()->activate();
-    const QSize chrome = size() - contentHost_->size();
+    const QSize chrome = size() - contentHost_->size() + videoChrome_;
     const QSize decoration = frameGeometry().size() - size();
     const QSize limit = (screen()->availableGeometry().size() - decoration - QSize(32, 32)).expandedTo(QSize(1, 1));
     setPreviewMinimum(QSize(400, 400).boundedTo(limit));

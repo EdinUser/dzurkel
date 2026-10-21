@@ -37,6 +37,7 @@ public:
     void beginPreviewUpdate();
     void endPreviewUpdate();
     void prepareImage(const QSize &imageSize);
+    void prepareVideo(const QSize &videoSize, QWidget *surface);
     void prepareLoading();
     void setInformationMode(bool information);
     QSize previewSize() const;
@@ -95,7 +96,9 @@ private:
     bool presentationPrepared_ = false;
     bool trackingScreen_ = false;
     bool informationMode_ = false;
-    bool imageMode_ = false;
+    bool imageMode_ = false; // Natural-size geometry, also borrowed by video.
+    QSize videoSize_;
+    QSize videoChrome_{0, 0};
     WindowPlacement *placement_;
     bool informationRestorePending_ = false;
     bool imageRestorePending_ = false;

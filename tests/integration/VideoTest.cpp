@@ -15,6 +15,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QScreen>
 #include <QSlider>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -22,6 +23,7 @@
 #include <QVideoFrame>
 #include <QVideoSink>
 #include <QVideoWidget>
+#include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
 
@@ -34,6 +36,9 @@ private slots:
     void selectsVideoWithoutSnapshotOrInstalledCodecs();
     void sharesMuteAndVolumeAcrossAudioAndVideo();
     void silentVideoControlsSeekingAndDismissal();
+    void fitsVideoWindowOnce_data();
+    void fitsVideoWindowOnce();
+    void keepsMaximizedAndFullscreenVideoWindows();
     void audioOnlyMp4UsesAudioPresentation();
     void pausedVideoAndEndSeekDoNotRemainBuffering();
     void mp4IndexAtBeginningAndEnd_data();
@@ -82,6 +87,73 @@ bool VideoTest::fixtures()
     return true;
 }
 void VideoTest::cleanup() { QTRY_COMPARE_WITH_TIMEOUT(activeMediaHelpers(), 0, 3000); }
+void VideoTest::fitsVideoWindowOnce_data()
+{
+    QTest::addColumn<QSize>("resolution");
+    QTest::newRow("landscape") << QSize(1280, 720);
+    QTest::newRow("portrait") << QSize(360, 640);
+}
+void VideoTest::fitsVideoWindowOnce()
+{
+    QFETCH(QSize, resolution);
+    const auto ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    if (ffmpeg.isEmpty()) QSKIP("ffmpeg is required for generated video fixtures");
+    const auto path = directory_.filePath(QStringLiteral("geometry-%1.mp4").arg(resolution.width()));
+    QProcess generator;
+    generator.start(ffmpeg, {"-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+        QStringLiteral("testsrc2=size=%1x%2:rate=5:duration=5").arg(resolution.width()).arg(resolution.height()),
+        "-an", "-c:v", "mpeg4", path});
+    QVERIFY(generator.waitForFinished(30000));
+    QCOMPARE(generator.exitCode(), 0);
+    PreviewController controller;
+    QString error;
+    QVERIFY2(controller.show(path, error, nullptr, {}, false, true), qPrintable(error));
+    QTRY_VERIFY_WITH_TIMEOUT(controller.window()->findChild<QVideoWidget *>(), 10000);
+    auto *surface = controller.window()->findChild<QVideoWidget *>();
+    QTRY_COMPARE_WITH_TIMEOUT(surface->videoSink()->videoSize(), resolution, 10000);
+    const auto aspectMatches = [&] {
+        // A portrait surface can be wider than its picture when the playback
+        // controls impose a minimum width and screen height limits the fit.
+        if (resolution.height() > resolution.width())
+            return controller.window()->height() > controller.window()->width()
+                && surface->height() > surface->width();
+        return std::abs(double(surface->width()) / surface->height()
+            - double(resolution.width()) / resolution.height()) < .03;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(aspectMatches(), 3000);
+    const auto available = controller.window()->screen()->availableGeometry().size();
+    QVERIFY(controller.window()->width() <= available.width());
+    QVERIFY(controller.window()->height() <= available.height());
+    auto *player = controller.window()->findChild<QMediaPlayer *>();
+    QVERIFY(player);
+    player->pause();
+    surface->window()->resize(600, 600);
+    QTRY_COMPARE(controller.window()->size(), QSize(600, 600));
+    player->setPosition(2000);
+    QTest::qWait(250);
+    QCOMPARE(controller.window()->size(), QSize(600, 600));
+    controller.hide();
+}
+void VideoTest::keepsMaximizedAndFullscreenVideoWindows()
+{
+    PreviewWindow window;
+    auto *content = new QWidget;
+    auto *layout = new QVBoxLayout(content);
+    auto *surface = new QVideoWidget(content);
+    layout->addWidget(surface);
+    window.setContent(content);
+    PreviewData data;
+    data.kind = PreviewKind::Video;
+    window.setPreviewData(data);
+    window.showMaximized();
+    QTRY_VERIFY(window.isMaximized());
+    window.prepareVideo(QSize(1280, 720), surface);
+    QVERIFY(window.isMaximized());
+    window.showFullScreen();
+    QTRY_VERIFY(window.isFullScreen());
+    window.prepareVideo(QSize(1280, 720), surface);
+    QVERIFY(window.isFullScreen());
+}
 void VideoTest::selectsVideoWithoutSnapshotOrInstalledCodecs()
 {
     const auto capability = PreviewLibrary::capability(QStringLiteral("video"));

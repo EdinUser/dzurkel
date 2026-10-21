@@ -18,6 +18,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QVideoWidget>
+#include <QVideoSink>
 #include <algorithm>
 
 namespace dzurkel {
@@ -103,6 +104,7 @@ MediaPreviewWidget::MediaPreviewWidget(const PreviewData &data, QWidget *parent)
     video_->setAspectRatioMode(Qt::KeepAspectRatio);
     video_->setMinimumSize(160, 100);
     video_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    connect(video_->videoSink(), &QVideoSink::videoSizeChanged, this, &MediaPreviewWidget::reportVideoSize);
     presentations_->addWidget(audio_);
     presentations_->addWidget(video_);
     layout->addWidget(presentations_, 1);
@@ -152,6 +154,7 @@ MediaPreviewWidget::MediaPreviewWidget(const PreviewData &data, QWidget *parent)
     connect(session_.get(), &MediaSession::kindChanged, this, [this](bool video) {
         setKind(video);
         emit kindChanged(video);
+        reportVideoSize();
     });
     connect(session_.get(), &MediaSession::failed, this, &MediaPreviewWidget::failed);
     setKind(videoMode_);
@@ -188,6 +191,18 @@ void MediaPreviewWidget::setCallbacks(QObject *context, MediaCallback failure, M
     connect(this, &MediaPreviewWidget::failed, context, std::move(failure));
     connect(this, &MediaPreviewWidget::detailsChanged, context, std::move(details));
     connect(this, &MediaPreviewWidget::kindChanged, context, std::move(kind));
+}
+void MediaPreviewWidget::setVideoSizeCallback(QObject *context,
+    std::function<void(const QSize &, QWidget *)> callback)
+{
+    connect(this, &MediaPreviewWidget::videoSizeReady, context, std::move(callback));
+}
+void MediaPreviewWidget::reportVideoSize()
+{
+    const auto size = video_->videoSink()->videoSize();
+    if (!videoMode_ || videoSizeReported_ || size.isEmpty()) return;
+    videoSizeReported_ = true;
+    emit videoSizeReady(size, video_);
 }
 void MediaPreviewWidget::updateControls()
 {
